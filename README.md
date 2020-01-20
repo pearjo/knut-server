@@ -1,3 +1,5 @@
+[![Documentation Status](https://readthedocs.org/projects/knut-server/badge/?version=latest)](https://knut-server.readthedocs.io/en/latest/?badge=latest)
+
 # Knut Server
 
 ![Image of Knut](knut.png)
@@ -75,7 +77,7 @@ light:
       colorWarm: "#efd275"
 ```
 
-Please read the docs to see which APIs and services are available and
+Please [read the docs](https://knut-server.readthedocs.io) to see which APIs and services are available and
 what keyword arguments they need for their configuration. With a
 proper configuration in place, the Knut server is run by:
 
