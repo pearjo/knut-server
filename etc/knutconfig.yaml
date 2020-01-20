@@ -1,0 +1,44 @@
+socket:
+  ip: 127.0.0.1
+  port: 8080
+
+temperature:
+  localWeather:
+    serviceid: 0x01
+    location: Hamburg
+    module: knutservices.dummytemperature
+    object: DummyTemperature
+
+light:
+  advancedLight:
+    serviceid: 0x02
+    location: Sofa Light
+    module: knutservices.dummylight
+    object: DummyLight
+    kwargs:
+      room: Living Room
+      dimlevel: true
+      color: true
+      temperature: true
+      colorCold: "#f5faf6"
+      colorWarm: "#efd275"
+  simpleLight:
+    serviceid: 0x02
+    location: TV Backlight
+    module: knutservices.dummylight
+    object: DummyLight
+    kwargs:
+      room: Living Room
+      dimlevel: true
+      color: false
+      temperature: false
+  basicLight:
+    serviceid: 0x02
+    location: Main Light
+    module: knutservices.dummylight
+    object: DummyLight
+    kwargs:
+      room: Kitchen
+      dimlevel: false
+      color: false
+      temperature: false
