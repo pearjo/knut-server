@@ -1,5 +1,7 @@
 # Knut Server
 
+![Image of Knut](knut.png)
+
 *Knut* is a friendly penguin to help organize your home.
 
 Knut has various APIs to control e.g. lights or supply temperature
