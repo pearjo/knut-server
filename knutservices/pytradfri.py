@@ -171,17 +171,23 @@ class PyTradfriLight(Light):
         thread. If no error occurs, the observation ends after one minute.
         """
         # args is needed to be called as fallback by the observer
-        observe_thread = threading.Thread(
-            target=self.api,
-            name='observe_thread',
-            args=(self.device.observe(self.update_backend,
-                                      self.start_observe,
-                                      duration=60),)
-        )
-        observe_thread.daemon = True
-        observe_thread.start()
-        time.sleep(1)  # sleep is needed to start observation task
-        logging.debug("Start observing TRADFRI lights.")
+        # TODO: Check if an other fallback for the observer could restart with
+        # a delay the observation.
+        try:
+            observe_thread = threading.Thread(
+                target=self.api,
+                name='observe_thread',
+                args=(self.device.observe(self.update_backend,
+                                          self.start_observe,
+                                          duration=60),)
+            )
+            observe_thread.daemon = True
+            observe_thread.start()
+            time.sleep(1)  # sleep is needed to start observation task
+            logging.debug("Start observing TRADFRI lights.")
+        except RuntimeError:
+            logging.error("Can't start new thread for observation.")
+            self.start_observe()
 
     def update_backend(self, device):
         """Updates the back-end to the *device* state.
