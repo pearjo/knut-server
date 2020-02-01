@@ -1,7 +1,8 @@
-from events import Events
 from pytradfri import Gateway
 from pytradfri.api.libcoap_api import APIFactory
 from knutservices import Light
+import logging
+import pytradfri.error
 import threading
 import time
 
@@ -84,7 +85,15 @@ class PyTradfriLight(Light):
         else:
             self.has_temperature = False
 
+        # Start the observation first and then the timer to prevent a request
+        # timeout.
         self.start_observe()
+        observation_timer_thread = threading.Thread(
+            target=self.observation_timer,
+            name='observation_timer_thread'
+        )
+        observation_timer_thread.daemon = True
+        observation_timer_thread.start()
 
     def percent_to_mired(self, value):
         """Return the mired value of *value*.
@@ -126,18 +135,32 @@ class PyTradfriLight(Light):
         device_state = self.device.light_control.lights[0]
         light_control = self.device.light_control
 
-        if device_state.state != self.state:
-            self.api(light_control.set_state(self.state))
+        try:
+            if device_state.state != self.state:
+                self.api(light_control.set_state(self.state))
 
-        if self.has_dimlevel:
-            dimlevel_hex = int(254*self.dimlevel/100)
-            if device_state.dimmer != dimlevel_hex:
-                self.api(light_control.set_dimmer(dimlevel_hex))
+            if self.has_dimlevel:
+                dimlevel_hex = int(254*self.dimlevel/100)
+                if device_state.dimmer != dimlevel_hex:
+                    self.api(light_control.set_dimmer(dimlevel_hex))
 
-        if self.has_temperature:
-            temperature_mired = self.percent_to_mired(self.temperature)
-            if (device_state.color_temp != temperature_mired):
-                self.api(light_control.set_color_temp(temperature_mired))
+            if self.has_temperature:
+                temperature_mired = self.percent_to_mired(self.temperature)
+                if (device_state.color_temp != temperature_mired):
+                    self.api(light_control.set_color_temp(temperature_mired))
+        except pytradfri.error.RequestTimeout:
+            logging.error('pytradfri has a request timeout.')
+            self.update_device()
+
+    def observation_timer(self):
+        """Restarts the observation of TRÅDFRI devices.
+
+        The observation of the TRÅDFRI devices is restarted every minute to
+        ensure the connection.
+        """
+        while True:
+            time.sleep(60)
+            self.start_observe()
 
     def start_observe(self, *args):
         """Observe the TRÅDFRI devices in a new thread.
@@ -145,16 +168,20 @@ class PyTradfriLight(Light):
         If a TRÅDFRI device changes, :meth:`update_backend` will be called
         for that *device* to update the back-end if necessary. If an error
         occurs, this method will be called again to restart the observation
-        thread.
+        thread. If no error occurs, the observation ends after one minute.
         """
+        # args is needed to be called as fallback by the observer
         observe_thread = threading.Thread(
             target=self.api,
             name='observe_thread',
             args=(self.device.observe(self.update_backend,
-                                      self.start_observe),))
+                                      self.start_observe,
+                                      duration=60),)
+        )
         observe_thread.daemon = True
         observe_thread.start()
         time.sleep(1)  # sleep is needed to start observation task
+        logging.debug("Start observing TRADFRI lights.")
 
     def update_backend(self, device):
         """Updates the back-end to the *device* state.
@@ -165,6 +192,7 @@ class PyTradfriLight(Light):
         if device.id != self.device_id:
             return
 
+        logging.debug('Update the TRADFRI light %i in the back-end.' % device.id)
         device_state = device.light_control.lights[0]
 
         # apply new states to back-end
