@@ -1,30 +1,25 @@
 #!/usr/bin/env python3
+from knutapis import Light
+from knutapis import Temperature
+from knutserver import KnutTcpSocket
+import argparse
 import logging
 import sys
-import argparse
+import threading
 import time
-import pathlib
-import configparser
 import yaml
-import knutcore.utility
-from knutserver import KnutTcpSocket
-from knutapis import Temperature
-from knutapis import Light
-
-# global variables
-interrupt = False  # interrupt and exit gracefully if true
 
 # global constants
 LOGLEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 config_file = '/etc/knut/knutconfig.yaml'
 
 
-def load_config(config_file: str) -> dict:
+def load_config(config_file):
     with open(config_file, 'r') as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
 
-def load_service_backend(config: dict, service: str) -> list():
+def load_service_backend(config, service):
     objects = list()
 
     for id in config[service].keys():
@@ -60,7 +55,7 @@ def load_service_backend(config: dict, service: str) -> list():
     return objects
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description='TCP server example.')
     parser.add_argument('--log', dest='logLevel', choices=LOGLEVELS,
                         help='Set the logging level')
@@ -70,44 +65,37 @@ def main() -> None:
     if args.logLevel:
         logging.basicConfig(level=getattr(logging, args.logLevel))
 
-    # handle interrupt signal
-    utility = knutcore.utility.KnutUtility()
-
     # load config
     config = load_config(config_file)
 
     # initialize the Knut TCP server socket
     socket = KnutTcpSocket(config['socket']['ip'], config['socket']['port'])
 
-    # load all service modules
-    # load temperature module
-    temp = Temperature(socket)
-    socket.add_service(temp)
+    try:
+        # load all service modules
+        # load temperature module
+        temp = Temperature(socket)
+        socket.add_service(temp)
 
-    # load light module
-    light = Light(socket)
-    socket.add_service(light)
+        # load light module
+        light = Light(socket)
+        socket.add_service(light)
 
-    # iterate over all sections, where each section name is a backend ID
-    temp_service_backends = load_service_backend(config, 'temperature')
-    for temp_service_backend in temp_service_backends:
-        temp.add_backend(temp_service_backend)
+        # iterate over all sections, where each section name is a backend ID
+        temp_service_backends = load_service_backend(config, 'temperature')
+        for temp_service_backend in temp_service_backends:
+            temp.add_backend(temp_service_backend)
 
-    light_service_backends = load_service_backend(config, 'light')
-    for light_service_backend in light_service_backends:
-        light.add_backend(light_service_backend)
+        light_service_backends = load_service_backend(config, 'light')
+        for light_service_backend in light_service_backends:
+            light.add_backend(light_service_backend)
 
-    # start main loop
-    while True:
-        if utility.interrupt:
-            # close open sockets
-            logging.debug('Close open server sockets.')
-            socket.exit()
-
-            logging.info('Goodbye Knut, see you soon!')
-            sys.exit(0)
-
-        time.sleep(0.2)
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logging.debug('Close open server sockets.')
+        socket.exit()
+        sys.exit(0)
 
 
 if __name__ == '__main__':
