@@ -75,11 +75,16 @@ class KnutTcpSocket():
             self.clients.append(clientsocket)
 
             # start handler thread
-            handlerThread = threading.Thread(target=self.handler,
-                                             name='handlerThread',
-                                             args=(clientsocket, clientaddr))
-            handlerThread.daemon = True
-            handlerThread.start()
+            try:
+                handler_thread = threading.Thread(
+                    target=self.handler,
+                    name='handler_thread',
+                    args=(clientsocket, clientaddr)
+                )
+                handler_thread.daemon = True
+                handler_thread.start()
+            except RuntimeError:
+                logging.error('Can\'t start thread for message handler.')
 
     def handler(self, clientsocket, clientaddr):
         """Handle client requests.
