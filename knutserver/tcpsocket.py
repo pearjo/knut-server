@@ -24,10 +24,8 @@ class KnutTcpSocket():
 
     For each received message, a request handler is called to process the
     incoming request by the client and to send a proper response.
-
     """
-
-    def __init__(self, host='localhost', port=8080, bufsize= 1024):
+    def __init__(self, host='localhost', port=8080, bufsize=1024):
         self.services = dict()
         self.bufsize = bufsize
         self.addr = (host, port)
@@ -49,7 +47,6 @@ class KnutTcpSocket():
 
         The passed *service* is added to the dictionary of services and it's
         ``push`` event is connected to the sockets ``send`` method.
-
         """
         if not all([hasattr(service, 'serviceid'),
                     hasattr(service, 'push')]):
@@ -94,7 +91,6 @@ class KnutTcpSocket():
         the JSON format. Those data in JSON format are then parsed to the
         :meth:`request_handler` and the returned response is send back to the
         client.
-
         """
         logging.debug(str('Accepted connection from '
                           + clientaddr[0]
@@ -154,7 +150,6 @@ class KnutTcpSocket():
         This method calls the :meth:`request_handler` method of the
         corresponding service. The services returned response is then return by
         this method.
-
         """
         if service_id not in self.services.keys():
             logging.warning('No known service \'%s\'.' % hex(service_id))
@@ -167,7 +162,6 @@ class KnutTcpSocket():
 
         The message *msg* needs to be of type ``dict`` and is deserialized
         using the JSON format.
-
         """
         for client in self.clients:
             if client is not self.serversocket:
@@ -183,7 +177,6 @@ class KnutTcpSocket():
         """Build a message byte array.
 
         Build a byte array from the *msg* with the message size field.
-
         """
         msg_str = json.dumps(msg)
         if len(msg_str) > 65535:
