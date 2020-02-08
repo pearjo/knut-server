@@ -178,6 +178,7 @@ class Light(Events):
         self.rooms[light.room].fetch()
 
         # push the message to registered objects
+        logging.debug('Push status of \'%s\' to listeners.' % unique_name)
         self.push(self.serviceid, MessageId.STATUS_RESPONSE,
                   self.status(unique_name))
 

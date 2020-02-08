@@ -37,10 +37,14 @@ class KnutTcpSocket():
         self.clients = [self.serversocket]
 
         # start listener
-        listenerThread = threading.Thread(target=self.listener,
-                                          name='listenerThread')
-        listenerThread.daemon = True
-        listenerThread.start()
+        try:
+            listenerThread = threading.Thread(target=self.listener,
+                                              name='listenerThread')
+            listenerThread.daemon = True
+            listenerThread.start()
+        except RuntimeError:
+            # TODO: kill knut here since nothing makes any sense anymore
+            logging.error('Can\'t start new thread for listener.')
 
     def add_service(self, service):
         """Add a service to the socket.
