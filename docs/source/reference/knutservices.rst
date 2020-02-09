@@ -11,3 +11,6 @@ Knut Services
 
 .. autoclass:: knutservices.pytradfri.PyTradfriLight
    :members:
+
+.. autoclass:: knutservices.rflight.RFLight
+   :members:
