@@ -5,7 +5,6 @@ from knutserver import KnutTcpSocket
 import argparse
 import logging
 import sys
-import threading
 import time
 import yaml
 
