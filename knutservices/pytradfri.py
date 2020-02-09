@@ -57,8 +57,15 @@ class PyTradfriLight(Light):
         self.color_warm = '#efd275'
 
         self.api = APIFactory(host, psk_id, psk).request
+        self.device = None
         gateway = Gateway()
-        self.device = self.api(gateway.get_device(self.device_id))
+
+        while not self.device:
+            logging.debug('Try to get device \'%s\'...' % unique_name)
+            try:
+                self.device = self.api(gateway.get_device(self.device_id))
+            except pytradfri.error.RequestTimeout:
+                pass
 
         # get device information
         self.state = self.device.light_control.lights[0].state
@@ -90,6 +97,7 @@ class PyTradfriLight(Light):
                                               name='%s-thread' % unique_name)
         observation_thread.daemon = True
         observation_thread.start()
+        logging.info('Initialized TRADFRI device \'%s\'.' % self.unique_name)
 
     def percent_to_mired(self, value):
         """Return the mired value of *value*.
@@ -145,7 +153,7 @@ class PyTradfriLight(Light):
                 if (device_state.color_temp != temperature_mired):
                     self.api(light_control.set_color_temp(temperature_mired))
         except pytradfri.error.RequestTimeout:
-            logging.error('pytradfri has a request timeout.')
+            logging.error('\'%s\' has a request timeout.' % self.unique_name)
             self.update_device()
 
     def observation(self):
@@ -156,7 +164,8 @@ class PyTradfriLight(Light):
         thread = None
 
         def err_callback(err):
-            logging.error('Error in TRADFRI observation %i.' % 1)
+            logging.error('Error in TRADFRI observation \'%s\'.'
+                          % self.unique_name)
 
         while True:
             # check if the observation is alive and restart it if not
