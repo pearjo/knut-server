@@ -135,7 +135,7 @@ class KnutTcpSocket():
                 try:
                     logging.debug(str('Send response '
                                       + json.dumps(response)))
-                    clientsocket.send(byte_response)
+                    clientsocket.sendall(byte_response)
                 except BrokenPipeError:
                     logging.critical('Connection to client lost.')
                     break
@@ -161,7 +161,7 @@ class KnutTcpSocket():
 
         return self.services[service_id].request_handler(msg_id, payload)
 
-    def send(self, service_id: int, msg_id: int, msg: dict) -> None:
+    def send(self, service_id, msg_id, msg):
         """Send a message to all open sockets.
 
         The message *msg* needs to be of type ``dict`` and is deserialized
@@ -172,7 +172,7 @@ class KnutTcpSocket():
                 try:
                     logging.debug(str('Send message ' + json.dumps(msg)))
                     byte_msg = self.msg_builder(service_id, msg_id, msg)
-                    client.send(byte_msg)
+                    client.sendall(byte_msg)
                 except BrokenPipeError:
                     logging.critical('Connection to client lost.')
                     self.clients.remove(client)
