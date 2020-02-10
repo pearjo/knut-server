@@ -1,7 +1,9 @@
+from events import Events
+import logging
 import os
 import pathlib
 import pickle
-from events import Events
+import time
 
 # location to save temperature history data
 DATA_DIR = str(pathlib.Path.home()) + '/.local/share/knut/'
@@ -21,9 +23,9 @@ class Temperature(Events):
         """
         self.history = [list(), list()]
         """A nested list where ``history[0]`` is a list of the :attr:`temperature`
-        values and history[1] the time stamps in the format hh:mm:ss.
+        values and history[1] the time stamps in seconds since the epoch January
+        1, 1970, 00:00:00 (UTC).
         """
-
         self.make_user_dir()
         self.load_data()
 
@@ -41,6 +43,28 @@ class Temperature(Events):
                 self.history = pickle.load(f)
         except FileNotFoundError:
             pass
+
+    def save_data(self):
+        """Appends the current temperature to the :attr:`history` and writes the
+        pickled representation of :attr:`history` to a file.
+        """
+        current_time = time.time()
+
+        try:
+            if (time.localtime(current_time).tm_mday
+                    > time.localtime(self.history[1][-1]).tm_mday):
+                self.history = [list(), list()]
+        except IndexError:
+            pass
+
+        self.history[0].append(self.temperature)
+        self.history[1].append(current_time)
+
+        with open(self.data_file, 'wb') as f:
+            # store the data as binary data stream
+            logging.debug('Write temperature history of \'%s\' to file...' %
+                          self.unique_name)
+            pickle.dump(self.history, f)
 
     def make_user_dir(self):
         """Makes a user data directory if it does not exists."""

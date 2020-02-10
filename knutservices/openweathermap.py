@@ -60,21 +60,5 @@ class OpenWeatherMap(Temperature):
             if previus_data != self.data:
                 self.on_change(self.unique_name)
 
-            # clear history after day changed
-            try:
-                if (time.strptime(self.history[1][-1], "%H:%M:%S")
-                        > time.localtime()):
-                    self.history = [list(), list()]
-            except IndexError:
-                pass
-
-            self.history[0].append(self.temperature)
-            self.history[1].append(time.strftime("%H:%M:%S"))
-
-            with open(self.data_file, 'wb') as f:
-                # store the data as binary data stream
-                logging.debug('Dump temperature history of \'%s\' to file.' %
-                              self.unique_name)
-                pickle.dump(self.history, f)
-
+            self.save_data()
             time.sleep(90)  # wait 1.5 minutes to not exceed the polling limit
