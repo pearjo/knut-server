@@ -355,10 +355,11 @@ class Temperature(Events):
 
         try:
             unique_name = payload['uniqueName']
-            backend = self.backends[payload[unique_name]]
-            response['time'] = backend.history[0]
-            response['temperature'] = backend.history[1]
+            backend = self.backends[unique_name]
+            response['temperature'] = backend.history[0]
+            response['time'] = backend.history[1]
             response['uniqueName'] = unique_name
+            response_id = MessageId.TEMPERATURE_HISTORY_RESPONSE
         except KeyError:
             logging.warning('Received temperature history request for unknown'
                             + ' temperature back-end.')
