@@ -23,8 +23,8 @@ class Temperature(Events):
         """
         self.history = [list(), list()]
         """A nested list where ``history[0]`` is a list of the :attr:`temperature`
-        values and history[1] the time stamps in seconds since the epoch January
-        1, 1970, 00:00:00 (UTC).
+        values and ``history[1]`` the time stamps in seconds since the epoch
+        January 1, 1970, 00:00:00 (UTC).
         """
         self.make_user_dir()
         self.load_data()
@@ -53,6 +53,8 @@ class Temperature(Events):
         try:
             if (time.localtime(current_time).tm_mday
                     > time.localtime(self.history[1][-1]).tm_mday):
+                logging.info('Clearing temperature history of \'%s\'...'
+                             % self.unique_name)
                 self.history = [list(), list()]
         except IndexError:
             pass
