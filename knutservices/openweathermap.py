@@ -36,12 +36,20 @@ class OpenWeatherMap(Temperature):
                        + '&APPID=' + kwargs['appid'])
 
         # start the data poller daemon
-        daemonThread = threading.Thread(target=self.daemon,
-                                        name='daemonThread')
-        daemonThread.daemon = True
-        daemonThread.start()
+        daemon_thread = threading.Thread(target=self.daemon,
+                                         name='owm-daemon')
+        daemon_thread.daemon = True
+        daemon_thread.start()
+
+        # start the data logger
+        data_logger_thread = threading.Thread(target=self.data_logger,
+                                              name='owm-logger')
+        data_logger_thread.daemon = True
+        data_logger_thread.start()
 
     def request_data(self):
+        """Sends a HTTP request to the openweathermap API.
+        """
         try:
             self.data = requests.get(self.url).json()
             self.location = self.data['name']
@@ -52,6 +60,9 @@ class OpenWeatherMap(Temperature):
             logging.warning('Can not connect to api.openweathermap.org.')
 
     def daemon(self):
+        """Runs every 1.5 minutes :meth:`request_data` to get new weather data.
+        If the data changed, the :meth:`on_change` event is called.
+        """
         while True:
             previus_data = self.data
             self.request_data()
@@ -60,5 +71,11 @@ class OpenWeatherMap(Temperature):
             if previus_data != self.data:
                 self.on_change(self.unique_name)
 
-            self.save_data()
             time.sleep(90)  # wait 1.5 minutes to not exceed the polling limit
+
+    def data_logger(self):
+        """Runs every hour :meth:`save_data` to save the temperature history.
+        """
+        while True:
+            self.save_data
+            time.sleep(3600)
