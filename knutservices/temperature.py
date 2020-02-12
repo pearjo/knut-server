@@ -31,6 +31,9 @@ class Temperature(Events):
 
         self.__events__ = ('on_change')
 
+    def __del__(self):
+        self.save_data()
+
     def load_data(self):
         """Load temperature history from file.
 
