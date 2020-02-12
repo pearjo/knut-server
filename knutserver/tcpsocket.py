@@ -175,7 +175,8 @@ class KnutTcpSocket():
                     client.sendall(byte_msg)
                 except BrokenPipeError:
                     logging.critical('Connection to client lost.')
-                    self.clients.remove(client)
+                    if client in self.clients:
+                        self.clients.remove(client)
 
     def msg_builder(self, service_id, msg_id, msg):
         """Build a message byte array.
