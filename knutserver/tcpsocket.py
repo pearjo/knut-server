@@ -122,12 +122,13 @@ class KnutTcpSocket():
                     byte_data = clientsocket.recv(msg_size)
                     data = json.loads(byte_data, encoding=encoding)
                     logging.debug(str('Received ' + str(data)))
+
+                response_id, response = self.request_handler(service_id, msg_id,
+                                                             data)
             except (json.decoder.JSONDecodeError, ValueError,
                     ConnectionResetError):
                 logging.critical('No valid message received.')
-
-            response_id, response = self.request_handler(service_id, msg_id,
-                                                         data)
+                response_id, response = 0x0000, dict()
 
             if response_id > 0:
                 byte_response = self.msg_builder(service_id, response_id,
