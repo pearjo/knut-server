@@ -98,5 +98,5 @@ class OpenWeatherMap(Temperature):
             time.sleep(1)
 
         while True:
-            self.save_data()
             time.sleep(3600)
+            self.save_data()
