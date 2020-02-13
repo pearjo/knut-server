@@ -31,7 +31,9 @@ class Temperature(Events):
         self.location = location
         self.unique_name = unique_name
         self.data_file = DATA_DIR + unique_name
-        self.temperature = float()  # TODO: use Kelvin instead of degree Celsius
+        # Use -273.15 °C since this is the absolute zero temperature. If the
+        # temperature is not above that value, it is invalid.
+        self.temperature = -273.15  # TODO: use Kelvin instead of degree Celsius
         """Temperature in degree Celsius."""
         self.condition = str()  # TODO: move to front-end app and supply state
         """A string with the code point for the `Weather Icon
@@ -69,6 +71,11 @@ class Temperature(Events):
         """Appends the current temperature to the :attr:`history` and writes the
         pickled representation of :attr:`history` to a file.
         """
+        # check if temperature is valid before adding it to the history
+        # -273.15 is the lowest possible temperature
+        if not self.temperature > -273.15:
+            return
+
         self.check_history()
         self.history[0].append(self.temperature)
         self.history[1].append(time.time())
@@ -94,8 +101,6 @@ class Temperature(Events):
             logging.info('Clearing temperature history of \'%s\'...'
                          % self.unique_name)
             self.history = [list(), list()]
-            self.history[0].append(self.temperature)
-            self.history[1].append(time.time())
 
     def make_user_dir(self):
         """Makes a user data directory if it does not exists."""

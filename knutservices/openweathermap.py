@@ -57,9 +57,6 @@ class OpenWeatherMap(Temperature):
         daemon_thread.daemon = True
         daemon_thread.start()
 
-        # sleep for 30 seconds so that the daemon thread got its first data
-        time.sleep(30)
-
         # start the data logger
         data_logger_thread = threading.Thread(target=self.data_logger,
                                               name='owm-logger')
@@ -95,6 +92,11 @@ class OpenWeatherMap(Temperature):
     def data_logger(self):
         """Runs every hour :meth:`save_data` to save the temperature history.
         """
+        # wait for first value to be written to history
+        while len(self.history[0]) == 0:
+            self.save_data()
+            time.sleep(1)
+
         while True:
-            self.save_data
+            self.save_data()
             time.sleep(3600)
