@@ -57,6 +57,9 @@ class OpenWeatherMap(Temperature):
         daemon_thread.daemon = True
         daemon_thread.start()
 
+        # sleep for 30 seconds so that the daemon thread got its first data
+        time.sleep(30)
+
         # start the data logger
         data_logger_thread = threading.Thread(target=self.data_logger,
                                               name='owm-logger')
