@@ -42,34 +42,44 @@ class Temperature(Events):
         """
         try:
             with open(self.data_file, 'rb') as f:
+                logging.info('Load temperature history for \'%s\'...'
+                             % self.unique_name)
                 # read the data file as binary data stream
                 self.history = pickle.load(f)
+                self.check_history()
         except FileNotFoundError:
-            pass
+            logging.warning('Failed to load temperature history for \'%s\'.'
+                            % self.unique_name)
 
     def save_data(self):
         """Appends the current temperature to the :attr:`history` and writes the
         pickled representation of :attr:`history` to a file.
         """
-        current_time = time.time()
-
-        try:
-            if (time.localtime(current_time).tm_mday
-                    > time.localtime(self.history[1][-1]).tm_mday):
-                logging.info('Clearing temperature history of \'%s\'...'
-                             % self.unique_name)
-                self.history = [list(), list()]
-        except IndexError:
-            pass
-
+        self.check_history()
         self.history[0].append(self.temperature)
-        self.history[1].append(current_time)
+        self.history[1].append(time.time())
 
         with open(self.data_file, 'wb') as f:
             # store the data as binary data stream
             logging.debug('Write temperature history of \'%s\' to file...' %
                           self.unique_name)
             pickle.dump(self.history, f)
+
+    def check_history(self):
+        """Checks if the :attr:`history` is from the current day and clears the
+        :attr:`history` if not.
+        """
+        # check first if data are in history
+        if len(self.history[1]) < 1:
+            return
+
+        day_today = time.localtime().tm_mday
+        day_history = time.localtime(self.history[1][-1]).tm_mday
+
+        if (day_today > day_history):
+            logging.info('Clearing temperature history of \'%s\'...'
+                         % self.unique_name)
+            self.history = [list(), list()]
 
     def make_user_dir(self):
         """Makes a user data directory if it does not exists."""
