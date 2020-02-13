@@ -31,9 +31,6 @@ class Temperature(Events):
 
         self.__events__ = ('on_change')
 
-    def __del__(self):
-        self.save_data()
-
     def load_data(self):
         """Load temperature history from file.
 
@@ -80,6 +77,8 @@ class Temperature(Events):
             logging.info('Clearing temperature history of \'%s\'...'
                          % self.unique_name)
             self.history = [list(), list()]
+            self.history[0].append(self.temperature)
+            self.history[1].append(time.time())
 
     def make_user_dir(self):
         """Makes a user data directory if it does not exists."""
