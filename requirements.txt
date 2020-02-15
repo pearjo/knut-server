@@ -1,3 +1,5 @@
 events
 sphinx_rtd_theme
 pytradfri[async]
+pyyaml
+rpi-rf

@@ -1,6 +1,22 @@
+"""
+Copyright (C) 2020  Joe Pearson
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
 from knutservices import Temperature
 import logging
-import pickle
 import requests
 import threading
 import time
@@ -36,12 +52,20 @@ class OpenWeatherMap(Temperature):
                        + '&APPID=' + kwargs['appid'])
 
         # start the data poller daemon
-        daemonThread = threading.Thread(target=self.daemon,
-                                        name='daemonThread')
-        daemonThread.daemon = True
-        daemonThread.start()
+        daemon_thread = threading.Thread(target=self.daemon,
+                                         name='owm-daemon')
+        daemon_thread.daemon = True
+        daemon_thread.start()
+
+        # start the data logger
+        data_logger_thread = threading.Thread(target=self.data_logger,
+                                              name='owm-logger')
+        data_logger_thread.daemon = True
+        data_logger_thread.start()
 
     def request_data(self):
+        """Sends a HTTP request to the openweathermap API.
+        """
         try:
             self.data = requests.get(self.url).json()
             self.location = self.data['name']
@@ -52,6 +76,9 @@ class OpenWeatherMap(Temperature):
             logging.warning('Can not connect to api.openweathermap.org.')
 
     def daemon(self):
+        """Runs every 1.5 minutes :meth:`request_data` to get new weather data.
+        If the data changed, the :meth:`on_change` event is called.
+        """
         while True:
             previus_data = self.data
             self.request_data()
@@ -60,21 +87,16 @@ class OpenWeatherMap(Temperature):
             if previus_data != self.data:
                 self.on_change(self.unique_name)
 
-            # clear history after day changed
-            try:
-                if (time.strptime(self.history[1][-1], "%H:%M:%S")
-                        > time.localtime()):
-                    self.history = [list(), list()]
-            except IndexError:
-                pass
-
-            self.history[0].append(self.temperature)
-            self.history[1].append(time.strftime("%H:%M:%S"))
-
-            with open(self.data_file, 'wb') as f:
-                # store the data as binary data stream
-                logging.debug('Dump temperature history of \'%s\' to file.' %
-                              self.unique_name)
-                pickle.dump(self.history, f)
-
             time.sleep(90)  # wait 1.5 minutes to not exceed the polling limit
+
+    def data_logger(self):
+        """Runs every hour :meth:`save_data` to save the temperature history.
+        """
+        # wait for first value to be written to history
+        while len(self.history[0]) == 0:
+            self.save_data()
+            time.sleep(1)
+
+        while True:
+            time.sleep(3600)
+            self.save_data()

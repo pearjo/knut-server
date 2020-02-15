@@ -1,7 +1,24 @@
+"""
+Copyright (C) 2020  Joe Pearson
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
+import json
 import logging
 import threading
-import json
-from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 
 encoding = 'UTF-8'
 
@@ -24,10 +41,8 @@ class KnutTcpSocket():
 
     For each received message, a request handler is called to process the
     incoming request by the client and to send a proper response.
-
     """
-
-    def __init__(self, host='localhost', port=8080, bufsize= 1024):
+    def __init__(self, host='localhost', port=8080, bufsize=1024):
         self.services = dict()
         self.bufsize = bufsize
         self.addr = (host, port)
@@ -39,17 +54,20 @@ class KnutTcpSocket():
         self.clients = [self.serversocket]
 
         # start listener
-        listenerThread = threading.Thread(target=self.listener,
-                                          name='listenerThread')
-        listenerThread.daemon = True
-        listenerThread.start()
+        try:
+            listenerThread = threading.Thread(target=self.listener,
+                                              name='listenerThread')
+            listenerThread.daemon = True
+            listenerThread.start()
+        except RuntimeError:
+            # TODO: kill knut here since nothing makes any sense anymore
+            logging.error('Can\'t start new thread for listener.')
 
     def add_service(self, service):
         """Add a service to the socket.
 
         The passed *service* is added to the dictionary of services and it's
         ``push`` event is connected to the sockets ``send`` method.
-
         """
         if not all([hasattr(service, 'serviceid'),
                     hasattr(service, 'push')]):
@@ -75,11 +93,16 @@ class KnutTcpSocket():
             self.clients.append(clientsocket)
 
             # start handler thread
-            handlerThread = threading.Thread(target=self.handler,
-                                             name='handlerThread',
-                                             args=(clientsocket, clientaddr))
-            handlerThread.daemon = True
-            handlerThread.start()
+            try:
+                handler_thread = threading.Thread(
+                    target=self.handler,
+                    name='handler_thread',
+                    args=(clientsocket, clientaddr)
+                )
+                handler_thread.daemon = True
+                handler_thread.start()
+            except RuntimeError:
+                logging.error('Can\'t start thread for message handler.')
 
     def handler(self, clientsocket, clientaddr):
         """Handle client requests.
@@ -89,7 +112,6 @@ class KnutTcpSocket():
         the JSON format. Those data in JSON format are then parsed to the
         :meth:`request_handler` and the returned response is send back to the
         client.
-
         """
         logging.debug(str('Accepted connection from '
                           + clientaddr[0]
@@ -117,12 +139,13 @@ class KnutTcpSocket():
                     byte_data = clientsocket.recv(msg_size)
                     data = json.loads(byte_data, encoding=encoding)
                     logging.debug(str('Received ' + str(data)))
+
+                response_id, response = self.request_handler(service_id, msg_id,
+                                                             data)
             except (json.decoder.JSONDecodeError, ValueError,
                     ConnectionResetError):
                 logging.critical('No valid message received.')
-
-            response_id, response = self.request_handler(service_id, msg_id,
-                                                         data)
+                response_id, response = 0x0000, dict()
 
             if response_id > 0:
                 byte_response = self.msg_builder(service_id, response_id,
@@ -130,7 +153,7 @@ class KnutTcpSocket():
                 try:
                     logging.debug(str('Send response '
                                       + json.dumps(response)))
-                    clientsocket.send(byte_response)
+                    clientsocket.sendall(byte_response)
                 except BrokenPipeError:
                     logging.critical('Connection to client lost.')
                     break
@@ -149,7 +172,6 @@ class KnutTcpSocket():
         This method calls the :meth:`request_handler` method of the
         corresponding service. The services returned response is then return by
         this method.
-
         """
         if service_id not in self.services.keys():
             logging.warning('No known service \'%s\'.' % hex(service_id))
@@ -157,28 +179,27 @@ class KnutTcpSocket():
 
         return self.services[service_id].request_handler(msg_id, payload)
 
-    def send(self, service_id: int, msg_id: int, msg: dict) -> None:
+    def send(self, service_id, msg_id, msg):
         """Send a message to all open sockets.
 
         The message *msg* needs to be of type ``dict`` and is deserialized
         using the JSON format.
-
         """
         for client in self.clients:
             if client is not self.serversocket:
                 try:
                     logging.debug(str('Send message ' + json.dumps(msg)))
                     byte_msg = self.msg_builder(service_id, msg_id, msg)
-                    client.send(byte_msg)
+                    client.sendall(byte_msg)
                 except BrokenPipeError:
                     logging.critical('Connection to client lost.')
-                    self.clients.remove(client)
+                    if client in self.clients:
+                        self.clients.remove(client)
 
     def msg_builder(self, service_id, msg_id, msg):
         """Build a message byte array.
 
         Build a byte array from the *msg* with the message size field.
-
         """
         msg_str = json.dumps(msg)
         if len(msg_str) > 65535:

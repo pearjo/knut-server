@@ -27,6 +27,10 @@ To install the Knut package run:
 python setup.py install
 ```
 
+Knut uses [pytradfri](https://github.com/ggravlingen/pytradfri) to
+communicate with the TRÅDFRI system. Follow the instructions of the
+pytradfri system to get it up and running.
+
 The code documentation can be build by running the following:
 
 ```bash
