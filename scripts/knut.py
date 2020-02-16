@@ -32,41 +32,43 @@ config_file = '/etc/knut/knutconfig.yaml'
 
 def load_config(config_file):
     with open(config_file, 'r') as f:
-        return yaml.load(f, Loader=yaml.FullLoader)
+        return yaml.load(f, Loader=yaml.SafeLoader)
 
 
 def load_service_backend(config, service):
     objects = list()
 
-    for id in config[service].keys():
-        module = __import__(config[service][id]['module'],
-                            fromlist=[config[service][id]['object']])
-        service_object = getattr(module, config[service][id]['object'])
+    for service_id in config[service].keys():
+        module = __import__(config[service][service_id]['module'],
+                            fromlist=[config[service][service_id]['object']])
+        service_object = getattr(module, config[service][service_id]['object'])
 
-        logging.info(('Adding service backend \'%s\' with ID \'%s\' to'
-                      + ' service %s.') % (config[service][id]['object'],
-                                           id,
-                                           hex(config[service][id]['serviceid'])))
-        location = config[service][id]['location']
+        logging.info(('Adding service backend \'%s\' with service id \'%s\' to'
+                      + ' service %s.') % (
+                          config[service][service_id]['object'],
+                          service_id,
+                          hex(config[service][service_id]['serviceid'])
+                      ))
+        location = config[service][service_id]['location']
 
         try:
-            args = config[service][id]['args']
+            args = config[service][service_id]['args']
         except KeyError:
             args = None
 
         try:
-            kwargs = config[service][id]['kwargs']
+            kwargs = config[service][service_id]['kwargs']
         except KeyError:
             kwargs = None
 
         if args and not kwargs:
-            objects.append(service_object(location, id, *args))
+            objects.append(service_object(location, service_id, *args))
         elif kwargs and not args:
-            objects.append(service_object(location, id, **kwargs))
+            objects.append(service_object(location, service_id, **kwargs))
         elif args and kwargs:
-            objects.append(service_object(location, id, *args, **kwargs))
+            objects.append(service_object(location, service_id, *args, **kwargs))
         else:
-            objects.append(service_object(location, id))
+            objects.append(service_object(location, service_id))
 
     return objects
 
