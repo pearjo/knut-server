@@ -15,58 +15,86 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
+import socket
 import json
 import logging
+import select
 import threading
+import queue
 
-encoding = 'UTF-8'
+ENCODING = 'utf-8'
 
 
 class KnutTcpSocket():
-    """The knut TCP socket.
+    """The Knut TCP socket.
 
-    The IP address and port where the knut socket should be opened are specified
-    by *host* and *port*. The maximal amount of data to be received is set by
-    the *bufsize* and is on default set to 1024.
+    The Knut server is bound to *host* with the specified *port*.
 
-    A Knut message is split into the following three parts:
+    Clients can communicate with the server using JSON formatted messages.
+    The message is constructed out of the following two parts:
 
-    1. ``msg_size`` : The message size field has the length of 2 bytes
-        and represents the number of bytes needed by the message as hex.
-        Due to the size of two bytes, a message is limited to a length of 65535
-        byte. The byte order of the message size is big endian.
-    2. ``service_id`` : The service ID is 1 byte long and as hex
-    3. ``msg`` : The message is formatted as JSON and encoded as UTF-8.
+    1. A unsigned 32 bit long integer defining the JSON message length
+    2. The UTF-8 encoded JSON message
+
+    The JSON message itself has the following keys:
+
+    ``serviceId``
+
+       The service id of the targeted Knut service. Each API handles requests
+       for a specific service id. The following table lists the service ids and
+       the corresponding APIs.
+
+       +------------+-------------------------------+
+       | Service Id | API                           |
+       +============+===============================+
+       |   ``0x01`` | :class:`knutapis.Temperature` |
+       +------------+-------------------------------+
+       |   ``0x02`` | :class:`knutapis.Light`       |
+       +------------+-------------------------------+
+
+    ``msgId``
+
+       The id of the message. Each API defines which messages it can understand
+       and what ids they have. Read the API documentation to get more
+       information about the supported messages and their ids.
+
+    ``msg``
+
+       The message as JSON formatted string and encoded as UTF-8.
+
+    For example, lets assume we have a temperature back-end called
+    ``myTempSensor`` and we want to request the current status, we would need
+    to send the following request from the client side::
+
+       {"seviceId": 1, "msgId": 1, "msg": {"uniqueName": "myTempSensor"}}
+
+    The message length of the example message is ``0x0000003e``.
 
     For each received message, a request handler is called to process the
     incoming request by the client and to send a proper response.
     """
-    def __init__(self, host='localhost', port=8080, bufsize=1024):
+    def __init__(self, host='localhost', port=8080):
+        logging.info('Open server on socket %s:%i...' % (host, port))
         self.services = dict()
-        self.bufsize = bufsize
         self.addr = (host, port)
-        self.serversocket = socket(AF_INET, SOCK_STREAM)
-        self.serversocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.serversocket.setblocking(0)
         self.serversocket.bind(self.addr)
         self.serversocket.listen(5)
-        logging.debug(str('Open server on socket ' + host + ':' + str(port)))
-        self.clients = [self.serversocket]
 
-        # start listener
-        try:
-            listenerThread = threading.Thread(target=self.listener,
-                                              name='listenerThread')
-            listenerThread.daemon = True
-            listenerThread.start()
-        except RuntimeError:
-            # TODO: kill knut here since nothing makes any sense anymore
-            logging.error('Can\'t start new thread for listener.')
+        self._in_sockets = [self.serversocket]  # sockets to read from
+        self._out_sockets = list()  # sockets to write to
+        self._out_msg_queues = dict()  # outgoing message queues
+
+        listener_thread = threading.Thread(target=self.listener,
+                                           name='listener_thread')
+        listener_thread.daemon = True
+        listener_thread.start()
 
     def add_service(self, service):
-        """Add a service to the socket.
+        """Add a service to the server socket.
 
-        The passed *service* is added to the dictionary of services and it's
+        The parsed *service* is added to the dictionary of services and it's
         ``push`` event is connected to the sockets ``send`` method.
         """
         if not all([hasattr(service, 'serviceid'),
