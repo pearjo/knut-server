@@ -81,90 +81,127 @@ class KnutTcpSocket():
             self.services[service_id].push += self.send
 
     def listener(self):
-        """Listen for connections.
+        """Listen for connections and manages in- and outgoing messages."""
+        while self._in_sockets:
+            logging.info('Server is listening for connections...')
+            ready_in_sockets, ready_out_sockets, error_sockets = \
+                select.select(self._in_sockets,
+                              self._out_sockets,
+                              self._in_sockets)
 
-        If a connection is established, the client socket is append to the list
-        of clients and a handler thread is started.
+            # input handler
+            for in_socket in ready_in_sockets:
+                self._input_socket_handler(in_socket)
 
+            # output handler
+            for out_socket in ready_out_sockets:
+                self._output_socket_handler(out_socket)
+
+            # error handler
+            for in_error in error_sockets:
+                logging.debug('Cleanup socket %s with error...'
+                              % str(in_error.getpeername()))
+                self._in_sockets.remove(in_error)
+                if in_error in self._out_sockets:
+                    self._out_sockets.remove(in_error)
+
+                in_error.close()
+                del self._out_msg_queues[self.in_error]
+
+    def _input_socket_handler(self, in_socket):
+        """Handles an input socket *in_socket*."""
+        if in_socket is self.serversocket:
+            clientsocket, clientaddr = in_socket.accept()
+            clientsocket.setblocking(0)
+
+            # add socket to input sockets
+            self._in_sockets.append(clientsocket)
+
+            # queue for data to send
+            self._out_msg_queues[clientsocket] = queue.Queue()
+        else:
+            byte_response = self.client_reader(in_socket)
+
+            if byte_response:
+                # add response to out queue
+                self._out_msg_queues[in_socket].put(byte_response)
+
+                # add socket to output sockets
+                if in_socket not in self._out_sockets:
+                    self._out_sockets.append(in_socket)
+            else:
+                self._in_sockets.remove(in_socket)
+                if in_socket in self._out_sockets:
+                    self._out_sockets.remove(in_socket)
+
+                # close socket and delete from outgoing message queue
+                in_socket.close()
+                del self._out_msg_queues[in_socket]
+
+    def _output_socket_handler(self, out_socket):
+        """Handles an *out_socket* and sends message via the socket."""
+        try:
+            # get next message from the queue
+            next_msg = self._out_msg_queues[out_socket].get_nowait()
+        except queue.Empty:
+            logging.debug('Socket output queue for %s is empty.'
+                          % str(out_socket.getpeername()))
+            self._out_sockets.remove(out_socket)
+        else:
+            logging.debug('Send %s to %s...' % (next_msg,
+                                                str(out_socket.getpeername())))
+            out_socket.sendall(next_msg)
+
+    def client_reader(self, clientsocket):
+        """Returns a Knut response message upon a clients message.
+
+        If the *clientsocket* has data to read, those will be read and parsed
+        to the :meth:`request_handler()`. The response upon the clients message
+        is then returned as Knut message.
         """
-        while True:
-            logging.debug('Server is listening for connections')
-            clientsocket, clientaddr = self.serversocket.accept()
-            self.clients.append(clientsocket)
-
-            # start handler thread
-            try:
-                handler_thread = threading.Thread(
-                    target=self.handler,
-                    name='handler_thread',
-                    args=(clientsocket, clientaddr)
-                )
-                handler_thread.daemon = True
-                handler_thread.start()
-            except RuntimeError:
-                logging.error('Can\'t start thread for message handler.')
-
-    def handler(self, clientsocket, clientaddr):
-        """Handle client requests.
-
-        The handler listens for connections on the *clientsocket* with the IP
-        address *clientaddr*. If data are received, they will be serialized to
-        the JSON format. Those data in JSON format are then parsed to the
-        :meth:`request_handler` and the returned response is send back to the
-        client.
-        """
-        logging.debug(str('Accepted connection from '
-                          + clientaddr[0]
-                          + ':'
-                          + str(clientaddr[1])))
         byte_data = bytearray()
         byte_response = bytearray()
         data = dict()
+        response = dict()
+        response_id = 0x0000
 
-        while True:
-            try:
-                # read the first to message size bytes to check if connection
-                # is open
-                msg_size_bytes = clientsocket.recv(2)
-                if not msg_size_bytes:
-                    break
+        try:
+            # read the first to message size bytes to check if connection
+            # is open
+            msg_size_bytes = clientsocket.recv(4)
 
-                msg_size = int.from_bytes(msg_size_bytes, byteorder='big')
-                service_id = int.from_bytes(clientsocket.recv(1),
-                                            byteorder='big')
-                msg_id = int.from_bytes(clientsocket.recv(2),
-                                        byteorder='big')
+            # if no header is read, return none
+            if not msg_size_bytes:
+                return
 
-                if msg_size > 0:
-                    byte_data = clientsocket.recv(msg_size)
-                    data = json.loads(byte_data, encoding=encoding)
-                    logging.debug(str('Received ' + str(data)))
+            msg_size = int.from_bytes(msg_size_bytes, byteorder='big')
+            logging.debug('Received %i bytes.' % msg_size)
 
-                response_id, response = self.request_handler(service_id, msg_id,
-                                                             data)
-            except (json.decoder.JSONDecodeError, ValueError,
-                    ConnectionResetError):
-                logging.critical('No valid message received.')
-                response_id, response = 0x0000, dict()
+            if msg_size > 0:
+                byte_data = clientsocket.recv(msg_size)
+                logging.debug('Received raw bytes %s.'
+                              % str(byte_data))
+                data = json.loads(byte_data, encoding=ENCODING)
+                logging.debug(str('Received ' + str(data)))
 
-            if response_id > 0:
-                byte_response = self.msg_builder(service_id, response_id,
-                                                 response)
-                try:
-                    logging.debug(str('Send response '
-                                      + json.dumps(response)))
-                    clientsocket.sendall(byte_response)
-                except BrokenPipeError:
-                    logging.critical('Connection to client lost.')
-                    break
+                msg_id = data['msgId']
+                service_id = data['serviceId']
 
-        logging.debug(str('Close connection to '
-                          + clientaddr[0]
-                          + ':'
-                          + str(clientaddr[1])))
-        if clientsocket in self.clients:
-            self.clients.remove(clientsocket)
-        clientsocket.close()
+                logging.debug('Received message id %i for service %i.'
+                              % (msg_id, service_id))
+
+                response_id, response = self.request_handler(service_id,
+                                                             msg_id,
+                                                             data['msg'])
+        except (json.decoder.JSONDecodeError,
+                ValueError,
+                ConnectionResetError):
+            logging.warning('Failed to decode JSON message.')
+
+        if response_id > 0:
+            byte_response = self.msg_builder(service_id, response_id, response)
+
+        return byte_response
 
     def request_handler(self, service_id, msg_id, payload):
         """Handles the data of a valid request.
