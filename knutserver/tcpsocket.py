@@ -245,38 +245,31 @@ class KnutTcpSocket():
         return self.services[service_id].request_handler(msg_id, payload)
 
     def send(self, service_id, msg_id, msg):
-        """Send a message to all open sockets.
+        """Sends the message *msg* to all open sockets."""
+        byte_msg = self.msg_builder(service_id, msg_id, msg)
 
-        The message *msg* needs to be of type ``dict`` and is deserialized
-        using the JSON format.
-        """
-        for client in self.clients:
-            if client is not self.serversocket:
-                try:
-                    logging.debug(str('Send message ' + json.dumps(msg)))
-                    byte_msg = self.msg_builder(service_id, msg_id, msg)
-                    client.sendall(byte_msg)
-                except BrokenPipeError:
-                    logging.critical('Connection to client lost.')
-                    if client in self.clients:
-                        self.clients.remove(client)
+        for out_socket, msg_queue in self._out_msg_queues.items():
+            msg_queue.put(byte_msg)
+            self._output_socket_handler(out_socket)
 
     def msg_builder(self, service_id, msg_id, msg):
-        """Build a message byte array.
+        """Returns *msg* as Knut message with header as byte array."""
+        data = dict()
 
-        Build a byte array from the *msg* with the message size field.
-        """
-        msg_str = json.dumps(msg)
-        if len(msg_str) > 65535:
-            raise ValueError('message size must be in range(0, 65535)')
+        data['serviceId'] = service_id
+        data['msgId'] = msg_id
+        data['msg'] = msg
 
-        msg_size = len(msg_str).to_bytes(2, byteorder='big')
-        service_id = service_id.to_bytes(1, byteorder='big')
-        msg_id = msg_id.to_bytes(2, byteorder='big')
+        data_str = json.dumps(data)
+        msg_size = len(data_str).to_bytes(4, byteorder='big')
 
-        return msg_size + service_id + msg_id + bytearray(msg_str, encoding)
+        logging.debug('Build %i byte long message %s.'
+                      % (len(data_str), str(data_str)))
+
+        return msg_size + bytearray(data_str, ENCODING)
 
     def exit(self):
         """Close the server socket."""
         logging.info('Close server socket.')
         self.serversocket.close()
+        self._in_sockets.remove(self.serversocket)
