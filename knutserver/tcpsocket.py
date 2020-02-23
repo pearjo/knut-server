@@ -223,7 +223,8 @@ class KnutTcpSocket():
                                                              data['msg'])
         except (json.decoder.JSONDecodeError,
                 ValueError,
-                ConnectionResetError):
+                ConnectionResetError,
+                TypeError):
             logging.warning('Failed to decode JSON message.')
 
         if response_id > 0:
