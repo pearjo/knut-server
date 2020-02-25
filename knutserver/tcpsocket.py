@@ -85,6 +85,8 @@ class KnutTcpSocket():
         self._in_sockets = [self.serversocket]  # sockets to read from
         self._out_sockets = list()  # sockets to write to
         self._out_msg_queues = dict()  # outgoing message queues
+        self._ready_in_sockets = list()  # sockets that are actually readyble
+        self._ready_out_sockets = list()  # sockets that are actually writable
 
         listener_thread = threading.Thread(target=self.listener,
                                            name='listener_thread')
@@ -112,17 +114,17 @@ class KnutTcpSocket():
         """Listen for connections and manages in- and outgoing messages."""
         while self._in_sockets:
             logging.info('Server is listening for connections...')
-            ready_in_sockets, ready_out_sockets, error_sockets = \
+            self._ready_in_sockets, self._ready_out_sockets, error_sockets = \
                 select.select(self._in_sockets,
                               self._out_sockets,
                               self._in_sockets)
 
             # input handler
-            for in_socket in ready_in_sockets:
+            for in_socket in self._ready_in_sockets:
                 self._input_socket_handler(in_socket)
 
             # output handler
-            for out_socket in ready_out_sockets:
+            for out_socket in self._ready_out_sockets:
                 self._output_socket_handler(out_socket)
 
             # error handler
@@ -249,8 +251,8 @@ class KnutTcpSocket():
         """Sends the message *msg* to all open sockets."""
         byte_msg = self.msg_builder(service_id, msg_id, msg)
 
-        for out_socket, msg_queue in self._out_msg_queues.items():
-            msg_queue.put(byte_msg)
+        for out_socket in self._ready_out_sockets:
+            self._out_msg_queues[out_socket].put(byte_msg)
             self._output_socket_handler(out_socket)
 
     def msg_builder(self, service_id, msg_id, msg):
