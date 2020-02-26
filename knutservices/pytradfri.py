@@ -83,6 +83,10 @@ class PyTradfriLight(Light):
                 self.device = self.api(gateway.get_device(self.device_id))
             except pytradfri.error.RequestTimeout:
                 pass
+            except FileNotFoundError:
+                logging.critical('Failed to load pytradfri service \'%s\'.'
+                                 % self.unique_name)
+                return
 
         # get device information
         self.state = self.device.light_control.lights[0].state
