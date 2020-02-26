@@ -173,14 +173,13 @@ class KnutTcpSocket():
         try:
             # get next message from the queue
             next_msg = self._out_msg_queues[out_socket].get_nowait()
-        except queue.Empty:
-            logging.debug('Socket output queue for %s is empty.'
-                          % str(out_socket.getpeername()))
-            self._out_sockets.remove(out_socket)
-        else:
             logging.debug('Send %s to %s...' % (next_msg,
                                                 str(out_socket.getpeername())))
             out_socket.sendall(next_msg)
+        except (queue.Empty, OSError):
+            logging.debug('Remove output socket...')
+            self._out_sockets.remove(out_socket)
+            self._ready_out_sockets.remove(out_socket)
 
     def client_reader(self, clientsocket):
         """Returns a Knut response message upon a clients message.
