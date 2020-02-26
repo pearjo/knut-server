@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/pearjo/knut-server.svg?branch=devel)](https://travis-ci.org/pearjo/knut-server)
 [![Documentation Status](https://readthedocs.org/projects/knut-server/badge/?version=latest)](https://knut-server.readthedocs.io/en/latest/?badge=latest)
 [![CodeFactor](https://www.codefactor.io/repository/github/pearjo/knut-server/badge)](https://www.codefactor.io/repository/github/pearjo/knut-server)
 
