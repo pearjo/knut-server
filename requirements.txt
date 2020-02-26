@@ -1,5 +1,6 @@
+coloredlogs
 events
-sphinx_rtd_theme
 pytradfri[async]
 pyyaml
 rpi-rf
+sphinx_rtd_theme

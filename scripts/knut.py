@@ -20,6 +20,7 @@ from knutapis import Light
 from knutapis import Temperature
 from knutserver import KnutTcpSocket
 import argparse
+import coloredlogs
 import logging
 import sys
 import time
@@ -27,7 +28,6 @@ import yaml
 
 # global constants
 LOGLEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-config_file = '/etc/knut/knutconfig.yaml'
 
 
 def load_config(config_file):
@@ -78,20 +78,28 @@ def main():
         'knut.py  Copyright (C) 2020  Joe Pearson\n'
         'This program comes with ABSOLUTELY NO WARRANTY; for details read LICENSE.\n'
         'This is free software, and you are welcome to redistribute it\n'
-        'under certain conditions; read LICENSE for details.'
+        'under certain conditions; read LICENSE for details.\n'
     )
 
-    parser = argparse.ArgumentParser(description='TCP server example.')
+    parser = argparse.ArgumentParser(
+        description='Runs the Knut server and all configured services.'
+    )
     parser.add_argument('--log', dest='logLevel', choices=LOGLEVELS,
+                        default=LOGLEVELS[0],
                         help='Set the logging level')
+    parser.add_argument('--conf', dest='configFile',
+                        default='/etc/knut/knutserver.yml',
+                        help='Set the knut server configuration file')
 
     args = parser.parse_args()
 
-    if args.logLevel:
-        logging.basicConfig(level=getattr(logging, args.logLevel))
+    # setup logging
+    logging.basicConfig(level=getattr(logging, args.logLevel))
+    logger = logging.getLogger(__name__)
+    coloredlogs.install(level=args.logLevel, logger=logger)
 
     # load config
-    config = load_config(config_file)
+    config = load_config(args.configFile)
 
     # initialize the Knut TCP server socket
     socket = KnutTcpSocket(config['socket']['ip'], config['socket']['port'])
