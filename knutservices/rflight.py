@@ -18,7 +18,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from knutservices import Light
 import logging
 
-rpi_rf = None
+try:
+    import rpi_rf
+except RuntimeError:
+    logging.critical('Failed to load module for RFLight.')
+    rpi_rf = None
 
 
 class RFLight(Light):
@@ -34,12 +38,6 @@ class RFLight(Light):
         self._gpio = gpio
         self._code_on = code_on
         self._code_off = code_off
-
-        try:
-            global rpi_rf
-            rpi_rf = __import__('rpi_rf')
-        except RuntimeError:
-            pass
 
     def status_setter(self, status):
         if rpi_rf:
