@@ -176,8 +176,11 @@ class KnutTcpSocket():
             logging.debug('Send %s to %s...' % (next_msg,
                                                 str(out_socket.getpeername())))
             out_socket.sendall(next_msg)
-        except (queue.Empty,
-                KeyError,
+        except queue.Empty:
+            logging.debug('Message queue for socket %s is empty.'
+                          % str(out_socket.getpeername()))
+            pass
+        except (KeyError,
                 OSError):
             logging.debug('Remove output socket...')
             self._out_sockets.remove(out_socket)
