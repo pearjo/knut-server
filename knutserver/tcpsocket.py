@@ -128,14 +128,8 @@ class KnutTcpSocket():
 
             # error handler
             for in_error in error_sockets:
-                logging.debug(str('Cleanup socket %s with error...'
-                                  % str(in_error.getpeername())))
-                self._in_sockets.remove(in_error)
-                if in_error in self._out_sockets:
-                    self._out_sockets.remove(in_error)
-
-                in_error.close()
-                del self._out_msg_queues[in_error]
+                logging.debug('Cleanup socket with error...')
+                self.remove_socket(in_error)
 
     def _input_socket_handler(self, in_socket):
         """Handles an input socket *in_socket*."""
@@ -160,16 +154,9 @@ class KnutTcpSocket():
 
                 # add socket to output sockets
                 if in_socket not in self._out_sockets:
+                    logging.debug(str('Add %s to outgoing sockets...'
+                                      % str(in_socket.getpeername())))
                     self._out_sockets.append(in_socket)
-            else:
-                if in_socket in self._in_sockets:
-                    self._in_sockets.remove(in_socket)
-                if in_socket in self._out_sockets:
-                    self._out_sockets.remove(in_socket)
-
-                # close socket and delete from outgoing message queue
-                in_socket.close()
-                del self._out_msg_queues[in_socket]
 
     def _output_socket_handler(self, out_socket):
         """Handles an *out_socket* and sends message via the socket."""
@@ -184,9 +171,7 @@ class KnutTcpSocket():
                               % str(out_socket.getpeername())))
             self._out_sockets.remove(out_socket)
         except (KeyError, OSError):
-            if out_socket in self._out_sockets:
-                logging.debug('Remove output socket...')
-                self._out_sockets.remove(out_socket)
+            self.remove_socket(out_socket)
 
     def client_reader(self, clientsocket):
         """Returns a Knut response message upon a clients message.
@@ -196,7 +181,7 @@ class KnutTcpSocket():
         is then returned as Knut message.
         """
         byte_data = bytearray()
-        byte_response = None
+        byte_response = bytearray()
         data = dict()
         response = dict()
         response_id = 0x0000
@@ -224,15 +209,39 @@ class KnutTcpSocket():
                 response_id, response = self.request_handler(service_id,
                                                              msg_id,
                                                              data['msg'])
+            else:
+                # if the message size is zero, remove the client from the input
+                # sockets
+                self.remove_socket(clientsocket)
         except json.decoder.JSONDecodeError:
             logging.warning('Failed to decode JSON message.')
         except ConnectionResetError:
             logging.debug('Connection reset by peer...')
+            self.remove_socket(clientsocket)
 
         if response_id > 0:
             byte_response = msg_builder(service_id, response_id, response)
 
         return byte_response
+
+    def remove_socket(self, clientsocket):
+        """Remove the *clientsocket* from the list of in- and outgoing sockets."""
+        try:
+            peername = str(clientsocket.getpeername())
+        except OSError:
+            peername = 'unknown'
+        finally:
+            logging.debug(str('Remove %s from in- and outgoing sockets...'
+                              % peername))
+
+        if clientsocket in self._in_sockets:
+            self._in_sockets.remove(clientsocket)
+        if clientsocket in self._out_sockets:
+            self._out_sockets.remove(clientsocket)
+        if clientsocket in self._out_msg_queues.keys():
+            del self._out_msg_queues[clientsocket]
+
+        clientsocket.close()
 
     def request_handler(self, service_id, msg_id, payload):
         """Handles the data of a valid request.
@@ -257,18 +266,16 @@ class KnutTcpSocket():
                                   % str(client.getpeername())))
                 client.sendall(byte_msg)
             except OSError:
+                logging.debug('Remove client from known clients list...')
                 self._known_clients.remove(client)
                 client.close()
 
     def exit(self):
         """Close the server socket."""
-        logging.info('Close server socket.')
+        logging.info('Close server socket...')
 
         for in_socket in self._in_sockets:
-            in_socket.close()
-
-        for out_socket in self._out_sockets:
-            out_socket.close()
+            self.remove_socket(in_socket)
 
 
 def msg_builder(service_id, msg_id, msg):
