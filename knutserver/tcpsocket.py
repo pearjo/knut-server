@@ -229,6 +229,11 @@ class KnutTcpSocket():
                 ConnectionResetError,
                 TypeError):
             logging.warning('Failed to decode JSON message.')
+        except ConnectionResetError:
+            logging.debug('Connection reset by peer...')
+            self.remove_socket(clientsocket)
+        except MemoryError:
+            logging.warning('Received message with invalid header.')
 
         if response_id > 0:
             byte_response = self.msg_builder(service_id, response_id, response)
