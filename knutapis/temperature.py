@@ -296,12 +296,12 @@ class Temperature(Events):
            :meth:`status()`. For example::
 
               {
-                  "myTemperatureBackend": [
+                  "myTemperatureBackend": {
                       "location": "Miami",
                       "unit": "°C",
                       "condition": "\\uf00d",
                       "temperature": 30.1
-                  ]
+                  }
               }
 
         ``TEMPERATURE_LIST_REQUEST`` -- 0x0002
@@ -317,18 +317,18 @@ class Temperature(Events):
 
 
               {
-                  "myTemperatureBackend1": [
+                  "myTemperatureBackend1": {
                       "location": "Miami",
                       "unit": "°C",
                       "condition": "\\uf00d",
                       "temperature": 30.420000000000009
-                  ],
-                  "myTemperatureBackend2": [
+                  },
+                  "myTemperatureBackend2": {
                       "location": "Hamburg",
                       "unit": "°C",
                       "condition": "\\uf008",
                       "temperature": 14.240000000000009
-                  ]
+                  }
               }
 
         ``TEMPERATURE_HISTORY_REQUEST`` -- 0x0003
