@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knutservices import Temperature
+from knut.services import Temperature
 import logging
 import requests
 import threading

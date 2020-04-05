@@ -10,20 +10,20 @@ The following services are the base services which are inherited by the custom
 services. Each custom services can then extend the functionality of the base
 service while maintaining its core functionality.
 
-.. autoclass:: knutservices.Light
+.. autoclass:: knut.services.Light
    :members:
 
-.. autoclass:: knutservices.Temperature
+.. autoclass:: knut.services.Temperature
    :members:
 
 Custom Services
 ---------------
 
-.. autoclass:: knutservices.pytradfri.PyTradfriLight
+.. autoclass:: knut.services.pytradfri.PyTradfriLight
    :members:
 
-.. autoclass:: knutservices.rflight.RFLight
+.. autoclass:: knut.services.rflight.RFLight
    :members:
 
-.. autoclass:: knutservices.openweathermap.OpenWeatherMap
+.. autoclass:: knut.services.openweathermap.OpenWeatherMap
    :members:

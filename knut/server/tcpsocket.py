@@ -44,13 +44,13 @@ class KnutTcpSocket():
        for a specific service id. The following table lists the service ids and
        the corresponding APIs.
 
-       +------------+-------------------------------+
-       | Service Id | API                           |
-       +============+===============================+
-       |   ``0x01`` | :class:`knutapis.Temperature` |
-       +------------+-------------------------------+
-       |   ``0x02`` | :class:`knutapis.Light`       |
-       +------------+-------------------------------+
+       +------------+--------------------------------+
+       | Service Id | API                            |
+       +============+================================+
+       |   ``0x01`` | :class:`knut.apis.Temperature` |
+       +------------+--------------------------------+
+       |   ``0x02`` | :class:`knut.apis.Light`       |
+       +------------+--------------------------------+
 
     ``msgId``
 

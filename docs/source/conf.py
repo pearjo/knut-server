@@ -14,15 +14,16 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../../'))
 
+import knut
 
 # -- Project information -----------------------------------------------------
 
 project = 'Knut Server Documentation'
-copyright = '2019, Joe Pearson'
+copyright = '2020, Joe Pearson'
 author = 'Joe Pearson'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
+release = knut.__version__
 
 
 # -- General configuration ---------------------------------------------------
@@ -60,8 +61,6 @@ html_theme_options = {
     'display_version': True,
     'prev_next_buttons_location': 'bottom',
     'style_external_links': False,
-    'style_nav_header_background': '#CFD8DC',
-    # Toc options
     'collapse_navigation': True,
     'sticky_navigation': True,
     'navigation_depth': 4,

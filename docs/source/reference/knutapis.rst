@@ -6,14 +6,14 @@ Knut APIs
 Temperature API
 ---------------
 
-.. autoclass:: knutapis.Temperature
+.. autoclass:: knut.apis.Temperature
    :members:
 
 Light API
 ---------
 
-.. autoclass:: knutapis.Light
+.. autoclass:: knut.apis.Light
    :members:
 
-.. autoclass:: knutapis.light.Room
+.. autoclass:: knut.apis.light.Room
    :members:

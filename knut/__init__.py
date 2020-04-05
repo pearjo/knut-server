@@ -15,5 +15,4 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knutservices.light import Light
-from knutservices.temperature import Temperature
+__version__ = '0.0.1'

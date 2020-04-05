@@ -248,7 +248,7 @@ class Temperature(Events):
         self.backends = dict()
         """A dictionary with all back-ends where the keys are the ``unique_name`` and
         the values are the corresponding temperature objects
-        :class:`knutservices.Temperature`
+        :class:`knut.services.Temperature`
         """
         self.unit = UNIT
         self.serviceid = 0x01

@@ -3,5 +3,5 @@
 Knut Server
 ===========
 
-.. autoclass:: knutserver.KnutTcpSocket
+.. autoclass:: knut.server.KnutTcpSocket
    :members:

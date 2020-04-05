@@ -118,7 +118,7 @@ class Light(Events):
         self.backends = dict()
         """A dictionary with all back-ends where the keys are the ``unique_name`` and
         the values are the corresponding light objects
-        :class:`knutservices.Light`
+        :class:`knut.services.Light`
         """
         self.rooms = dict()
         self.serviceid = 0x02
@@ -267,7 +267,7 @@ class Light(Events):
         ``ROOMS_LIST_RESPONSE`` -- 0x0104
 
            The rooms list *response* is a dictionary with the unique names of
-           the rooms as keys and the :attr:`knutapis.light.Room.state` as values::
+           the rooms as keys and the :attr:`knut.apis.light.Room.state` as values::
 
               {
                   "myRoom1": 0.5,
@@ -276,7 +276,7 @@ class Light(Events):
 
         ``ROOM_REQUEST`` -- 0x0005
 
-           Requests to set the :attr:`knutapis.light.Room.state` for a room.
+           Requests to set the :attr:`knut.apis.light.Room.state` for a room.
            The keys *room* and *state* are required, where only the states
            *0* and *1* are applied. A request should look like::
 
@@ -288,7 +288,7 @@ class Light(Events):
         ``ROOM_RESPONSE`` -- 0x0105
 
            The *response* dictionary is the dictionary returned by
-           :meth:`knutapis.light.Room.status`
+           :meth:`knut.apis.light.Room.status`
 
         """
         response = dict()

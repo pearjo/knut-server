@@ -16,9 +16,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knutapis import Light
-from knutapis import Temperature
-from knutserver import KnutTcpSocket
+from knut.apis import Light
+from knut.apis import Temperature
+from knut.server import KnutTcpSocket
 import argparse
 import coloredlogs
 import logging
@@ -75,7 +75,7 @@ def load_service_backend(config, service):
 
 def main():
     print(
-        'knut.py  Copyright (C) 2020  Joe Pearson\n'
+        'knutserver.py  Copyright (C) 2020  Joe Pearson\n'
         'This program comes with ABSOLUTELY NO WARRANTY; for details read LICENSE.\n'
         'This is free software, and you are welcome to redistribute it\n'
         'under certain conditions; read LICENSE for details.\n'

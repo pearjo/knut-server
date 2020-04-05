@@ -65,14 +65,14 @@ temperature:
   localWeather: # localWeather is the unique name
     serviceid: 0x01
     location: Hamburg
-    module: knutservices.dummytemperature
+    module: knut.services.dummytemperature
     object: DummyTemperature
 
 light:
   advancedLight:
     serviceid: 0x02
     location: Sofa Light
-    module: knutservices.dummylight
+    module: knut.services.dummylight
     object: DummyLight
     # the object DummyLight requires multiple keyword arguments
     kwargs:
@@ -89,7 +89,7 @@ what keyword arguments they need for their configuration. With a
 proper configuration in place, the Knut server is run by:
 
 ```bash
-knut.py
+knutserver.py
 ```
 
 To run in debug mode, use `--log=DEBUG` as additional argument.
