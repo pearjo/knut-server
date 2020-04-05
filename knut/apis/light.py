@@ -311,9 +311,9 @@ class Light(Events):
             response_id, response = self._handle_room_request(payload)
 
         self.fetch()  # update light_state_all
+
         # check if the response is valid
         response_id = response_id if len(response) > 0 else NULL
-        return response_id, response
 
         return response_id, response
 
