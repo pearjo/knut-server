@@ -234,6 +234,8 @@ class KnutTcpSocket():
             self.remove_socket(clientsocket)
         except MemoryError:
             logging.warning('Received message with invalid header.')
+        except OSError as err:
+            logging.warning('OSError %s' % str(err))
 
         if response_id > 0:
             byte_response = self.msg_builder(service_id, response_id, response)
