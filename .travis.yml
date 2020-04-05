@@ -1,0 +1,14 @@
+language: python
+
+python:
+  - "3.7"
+
+os:
+  - "linux"
+
+# command to install dependencies
+install:
+  - pip install -r requirements.txt
+  - pip install .
+
+scripts: knutserver.py --conf=etc/knutserver.yml & sleep 10 && kill -SIGINT $!

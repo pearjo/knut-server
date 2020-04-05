@@ -15,8 +15,14 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knutservices import Light
+from knut.services import Light
 import logging
+
+try:
+    import rpi_rf
+except RuntimeError:
+    logging.critical('Failed to load module for RFLight.')
+    rpi_rf = None
 
 
 class RFLight(Light):
@@ -32,17 +38,9 @@ class RFLight(Light):
         self._gpio = gpio
         self._code_on = code_on
         self._code_off = code_off
-        self._runnable = False
-
-        try:
-            global rpi_rf
-            rpi_rf = __import__('rpi_rf')
-            self._runnable = True
-        except RuntimeError:
-            pass
 
     def status_setter(self, status):
-        if self._runnable:
+        if rpi_rf:
             logging.debug('Enable TX for device \'%s\'...' % self.unique_name)
             device = rpi_rf.RFDevice(self._gpio)
             enabled = device.enable_tx()

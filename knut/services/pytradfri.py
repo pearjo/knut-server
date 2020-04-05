@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knutservices import Light
+from knut.services import Light
 from pytradfri import Gateway
 from pytradfri.api.libcoap_api import APIFactory
 import logging
@@ -83,6 +83,10 @@ class PyTradfriLight(Light):
                 self.device = self.api(gateway.get_device(self.device_id))
             except pytradfri.error.RequestTimeout:
                 pass
+            except FileNotFoundError:
+                logging.critical('Failed to load pytradfri service \'%s\'.'
+                                 % self.unique_name)
+                return
 
         # get device information
         self.state = self.device.light_control.lights[0].state

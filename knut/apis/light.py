@@ -19,20 +19,18 @@ from enum import IntEnum
 from events import Events
 import logging
 
-
-class MessageId(IntEnum):
-    """Message IDs used by the light API."""
-    NULL = 0x0000
-    STATUS_REQUEST = 0x0001
-    STATUS_RESPONSE = 0x0101
-    LIGHTS_REQUEST = 0x0002
-    LIGHTS_RESPONSE = 0x0102
-    ALL_LIGHTS_REQUEST = 0x0003
-    ALL_LIGHTS_RESPONSE = 0x0103
-    ROOMS_LIST_REQUEST = 0x0004
-    ROOMS_LIST_RESPONSE = 0x0104
-    ROOM_REQUEST = 0x0005
-    ROOM_RESPONSE = 0x0105
+# supported messages
+NULL = 0x0000
+STATUS_REQUEST = 0x0001
+STATUS_RESPONSE = 0x0101
+LIGHTS_REQUEST = 0x0002
+LIGHTS_RESPONSE = 0x0102
+ALL_LIGHTS_REQUEST = 0x0003
+ALL_LIGHTS_RESPONSE = 0x0103
+ROOMS_LIST_REQUEST = 0x0004
+ROOMS_LIST_RESPONSE = 0x0104
+ROOM_REQUEST = 0x0005
+ROOM_RESPONSE = 0x0105
 
 
 class Room(Events):
@@ -41,6 +39,8 @@ class Room(Events):
         self.backends = list()
         self.room = room
         self.state = float()
+        """The state of the room where 0 is all lights are off, 1 all lights on
+        and 0.5 when neither all lights are on nor off."""
         # use the push event to push new status to parent object
         self.__events__ = ('push')
         logging.debug('Added room \'%s\' to bundle lights' % self.room)
@@ -100,20 +100,34 @@ class Room(Events):
         if self.state != state:
             self.state = state
             # push new status to registered event listeners
-            self.push(self.serviceid, MessageId.ROOM_RESPONSE, self.status())
+            self.push(self.serviceid, ROOM_RESPONSE, self.status())
 
 
 class Light(Events):
-    # TODO: add docstring
+    """Knut light API.
+
+    The light object has a dictionary :attr:`backends` of all available
+    back-ends. A back-end can be added using :meth:`add_backend()`.  To interact
+    with the back-ends, this API has as request handler method
+    :meth:`request_handler()`. Using this method, requests can be send to the
+    back-ends to get e.g. the status of all lights. See
+    :meth:`request_handler()` to get information for all supported requests.
+    """
     def __init__(self, socket):
         self.socket = socket
         self.backends = dict()
+        """A dictionary with all back-ends where the keys are the ``unique_name`` and
+        the values are the corresponding light objects
+        :class:`knut.services.Light`
+        """
         self.rooms = dict()
-        self.serviceid = int('0x02', 16)
+        self.serviceid = 0x02
+        """The light service has the id 0x02."""
         self.light_state_all = float()
         self.__events__ = ('push')
 
     def add_backend(self, backend):
+        """Adds the *backend* to :attr:`backends`."""
         if not all([hasattr(backend, 'has_temperature'),
                     hasattr(backend, 'has_color'),
                     hasattr(backend, 'has_dimlevel'),
@@ -156,53 +170,182 @@ class Light(Events):
         if self.light_state_all != light_state_all:
             self.light_state_all = light_state_all
             # push response to all clients
-            self.push(self.serviceid, MessageId.ALL_LIGHTS_RESPONSE,
+            self.push(self.serviceid, ALL_LIGHTS_RESPONSE,
                       {'state': self.light_state_all})
 
     def request_handler(self, msg_id, payload):
-        """Handles all light requests.
+        """Returns the tuple (*response_id*, *response*) upon a request.
 
-        All light requests are handled by this method. The client can send the
-        *requests* defined in the ``MessageId``.
+        The following message types *msg_id* are supported with the required
+        message *msg* and their *response* with its *response_id*:
+
+        ``STATUS_REQUEST`` -- 0x0001
+
+           Requests the status of a back-end. The message *msg* must have the
+           key *uniqueName*. For example::
+
+              {"uniqueName": "myLightBackend"}
+
+        ``STATUS_RESPONSE`` -- 0x0101
+
+           The status *response* is the dictionary returned by :meth:`status()`.
+           For example::
+
+              {
+                  "uniqueName": "myLightBackend",
+                  "location": "Somewhere in a room...",
+                  "room": "Some room",
+                  "state": false,
+                  "hasTemperature": true,
+                  "hasDimlevel": true,
+                  "hasColor": false,
+                  "temperature": 100,
+                  "colorCold": "#f5faf6",
+                  "colorWarm": "#efd275",
+                  "dimlevel": 50,
+                  "color": ""
+              }
+
+        ``LIGHTS_REQUEST`` -- 0x0002
+
+           Requests the status of all back-ends. The message *msg* can be emtpy.
+
+        ``LIGHTS_RESPONSE`` -- 0x0102
+
+           The *response* of the lights response is similar to
+           the ``STATUS_RESPONSE``, only with all known back-ends that are in
+           :attr:`backends`. For example::
+
+              {
+                  "myLightBackend1": {
+                      "location": "Somewhere in a room...",
+                      "room": "Some room",
+                      "state": false,
+                      "hasTemperature": true,
+                      "hasDimlevel": true,
+                      "hasColor": false,
+                      "temperature": 100,
+                      "colorCold": "#f5faf6",
+                      "colorWarm": "#efd275",
+                      "dimlevel": 50,
+                      "color": ""
+                  },
+                  "myLightBackend1": {
+                      "location": "Somewhere else in a room...",
+                      "room": "Some other room",
+                      "state": true,
+                      "hasTemperature": true,
+                      "hasDimlevel": true,
+                      "hasColor": false,
+                      "temperature": 100,
+                      "colorCold": "#f5faf6",
+                      "colorWarm": "#efd275",
+                      "dimlevel": 50,
+                      "color": ""
+                  }
+              }
+
+        ``ALL_LIGHTS_REQUEST`` -- 0x0003
+
+           Requests the combined state of all lights. The message *msg* can be
+           emtpy.
+
+        ``ALL_LIGHTS_RESPONSE`` -- 0x0103
+
+           The all lights *response* is a dictionary with one key *state*, where
+           *0* is all lights off, *1* all lights on and *0.5* where neither all
+           lights are on nor off. A client can send this response to switch all
+           lights on or off. For example::
+
+              {"state": 1.0}
+
+        ``ROOMS_LIST_REQUEST`` -- 0x0004
+
+           Requests a list of all rooms with their state. The message *msg* can
+           be emtpy.
+
+        ``ROOMS_LIST_RESPONSE`` -- 0x0104
+
+           The rooms list *response* is a dictionary with the unique names of
+           the rooms as keys and the :attr:`knut.apis.light.Room.state` as values::
+
+              {
+                  "myRoom1": 0.5,
+                  "myRoom2": 0.0
+              }
+
+        ``ROOM_REQUEST`` -- 0x0005
+
+           Requests to set the :attr:`knut.apis.light.Room.state` for a room.
+           The keys *room* and *state* are required, where only the states
+           *0* and *1* are applied. A request should look like::
+
+              {
+                  "room": "myRoom1",
+                  "state": 0
+              }
+
+        ``ROOM_RESPONSE`` -- 0x0105
+
+           The *response* dictionary is the dictionary returned by
+           :meth:`knut.apis.light.Room.status`
 
         """
         response = dict()
-        response_id = MessageId.NULL
+        response_id = NULL
         logging.debug('Received light request.')
 
-        if msg_id == MessageId.STATUS_REQUEST:
-            response_id, response = self.handle_status_request(payload)
-        elif msg_id == MessageId.LIGHTS_REQUEST:
-            response_id, response = self.handle_lights_request(payload)
-        elif msg_id == MessageId.STATUS_RESPONSE:
-            response_id, response = self.handle_status_response(payload)
-        elif msg_id == MessageId.ALL_LIGHTS_REQUEST:
-            response_id, response = self.handle_all_lights_request(payload)
-        elif msg_id == MessageId.ALL_LIGHTS_RESPONSE:
-            response_id, response = self.handle_all_lights_response(payload)
-        elif msg_id == MessageId.ROOMS_LIST_REQUEST:
-            response_id, response = self.handle_rooms_list_request(payload)
-        elif msg_id == MessageId.ROOM_REQUEST:
-            response_id, response = self.handle_room_request(payload)
+        if msg_id == STATUS_REQUEST:
+            response_id, response = self._handle_status_request(payload)
+        elif msg_id == LIGHTS_REQUEST:
+            response_id, response = self._handle_lights_request(payload)
+        elif msg_id == STATUS_RESPONSE:
+            response_id, response = self._handle_status_response(payload)
+        elif msg_id == ALL_LIGHTS_REQUEST:
+            response_id, response = self._handle_all_lights_request(payload)
+        elif msg_id == ALL_LIGHTS_RESPONSE:
+            response_id, response = self._handle_all_lights_response(payload)
+        elif msg_id == ROOMS_LIST_REQUEST:
+            response_id, response = self._handle_rooms_list_request(payload)
+        elif msg_id == ROOM_REQUEST:
+            response_id, response = self._handle_room_request(payload)
 
         self.fetch()  # update light_state_all
+
+        # check if the response is valid
+        response_id = response_id if len(response) > 0 else NULL
+
         return response_id, response
 
     def notifier(self, unique_name):
+        """Pushes the :meth:`status()` of *unique_name* to all listeners of the
+        :meth:`push` event."""
         # update room in which the light is located
         light = self.backends[unique_name]
         self.rooms[light.room].fetch()
 
         # push the message to registered objects
         logging.debug('Push status of \'%s\' to listeners.' % unique_name)
-        self.push(self.serviceid, MessageId.STATUS_RESPONSE,
+        self.push(self.serviceid, STATUS_RESPONSE,
                   self.status(unique_name))
 
     def status(self, unique_name):
-        """Status information.
+        """Returns the status information of the light *unique_name*.
 
-        Returns the status information of the light with the unique name
-        *unique_name*.
+        The status dictionary has the keys
+
+        - *color*
+        - *colorCold*
+        - *colorWarm*
+        - *dimlevel*
+        - *hasColor*
+        - *hasDimlevel*
+        - *hasTemperature*
+        - *location*
+        - *room*
+        - *state*
+        - *temperature*
+        - *uniqueName*
 
         """
         light = self.backends[unique_name]
@@ -221,31 +364,31 @@ class Light(Events):
             'color': light.color if light.has_color else str()
         }
 
-    def handle_status_request(self, payload):
+    def _handle_status_request(self, payload):
         response = dict()
-        response_id = MessageId.NULL
+        response_id = NULL
 
         if payload['uniqueName'] not in self.backends.keys():
             logging.warning('No light service with unique name \'%s\' known.'
                             % payload['uniqueName'])
         else:
             response = self.status(payload['uniqueName'])
-            response_id = MessageId.STATUS_RESPONSE
+            response_id = STATUS_RESPONSE
 
         return response_id, response
 
-    def handle_lights_request(self, payload):
+    def _handle_lights_request(self, payload):
         response = dict()
-        response_id = MessageId.LIGHTS_RESPONSE
+        response_id = LIGHTS_RESPONSE
 
         for light in self.backends.keys():
             response[light] = self.status(light)
 
         return response_id, response
 
-    def handle_status_response(self, payload):
+    def _handle_status_response(self, payload):
         response = dict()
-        response_id = MessageId.NULL
+        response_id = NULL
 
         if payload['uniqueName'] not in self.backends.keys():
             logging.warning('No light service with unique name \'%s\' known.'
@@ -257,30 +400,14 @@ class Light(Events):
 
             # send new status as response
             response = self.status(payload['uniqueName'])
-            response_id = MessageId.STATUS_RESPONSE
+            response_id = STATUS_RESPONSE
 
         return response_id, response
 
-    def handle_all_lights_request(self, payload):
-        """Handles a ``ALL_LIGHTS_REQUEST``.
+    def _handle_all_lights_request(self, payload):
+        return ALL_LIGHTS_RESPONSE, {'state': self.light_state_all}
 
-        A ``ALL_LIGHTS_RESPONSE`` is send upon the request. The *payload*
-        can be empty, since it will be ignored when only the state is
-        requested. The response contains the key *state* with the all light
-        state being either 0 for all off, 1 for all on and 0.5 for neither
-        all on nor off.
-        """
-        return MessageId.ALL_LIGHTS_RESPONSE, {'state': self.light_state_all}
-
-    def handle_all_lights_response(self, payload):
-        """Handles a ``ALL_LIGHTS_RESPONSE``.
-
-        Handles a ``ALL_LIGHTS_RESPONSE``. The state of each backend
-        light will be set to the state parsed with the *payload*. This triggers
-        also the rooms to be updated and to send a ``ROOM_RESPONSE`` if their
-        state changed. The *payload* needs to have the key ``state`` with an
-        float being either 0 or 1.
-        """
+    def _handle_all_lights_response(self, payload):
         try:
             state = payload['state']
 
@@ -295,23 +422,22 @@ class Light(Events):
             logging.warning('Invalid \'ALL_LIGHTS_RESPONSE\' received.')
 
         # no response will be send since fetch() sends one
-        return MessageId.NULL, dict()
+        return NULL, dict()
 
-    def handle_room_request(self, payload):
-        """Handles a room request."""
+    def _handle_room_request(self, payload):
         room = payload['room']
         state = payload['state']
         self.rooms[room].switch(state)
 
         for light in self.rooms[room].backends:
-            self.push(self.serviceid, MessageId.STATUS_RESPONSE,
+            self.push(self.serviceid, STATUS_RESPONSE,
                       self.status(light.unique_name))
 
-        return MessageId.ROOM_RESPONSE, self.rooms[room].status()
+        return ROOM_RESPONSE, self.rooms[room].status()
 
-    def handle_rooms_list_request(self, payload):
+    def _handle_rooms_list_request(self, payload):
         response = dict()
         for room_name, room in self.rooms.items():
             response[room_name] = room.state
 
-        return MessageId.ROOMS_LIST_RESPONSE, response
+        return ROOMS_LIST_RESPONSE, response

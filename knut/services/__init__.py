@@ -15,14 +15,5 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from distutils.core import setup
-
-setup(name='Knut Server',
-      description='A kind helper for your home.',
-      author='Joe Pearson',
-      author_email='pearjo@protonmail.com',
-      scripts=['scripts/knutserver.py'],
-      packages=['knut.apis',
-                'knut.core',
-                'knut.server',
-                'knut.services'])
+from knut.services.light import Light
+from knut.services.temperature import Temperature

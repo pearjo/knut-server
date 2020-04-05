@@ -6,14 +6,14 @@ temperature:
   localWeather:
     serviceid: 0x01
     location: Hamburg
-    module: knutservices.dummytemperature
+    module: knut.services.dummytemperature
     object: DummyTemperature
 
 light:
   advancedLight:
     serviceid: 0x02
     location: Sofa Light
-    module: knutservices.dummylight
+    module: knut.services.dummylight
     object: DummyLight
     kwargs:
       room: Living Room
@@ -25,7 +25,7 @@ light:
   simpleLight:
     serviceid: 0x02
     location: TV Backlight
-    module: knutservices.dummylight
+    module: knut.services.dummylight
     object: DummyLight
     kwargs:
       room: Living Room
@@ -35,7 +35,7 @@ light:
   basicLight:
     serviceid: 0x02
     location: Main Light
-    module: knutservices.dummylight
+    module: knut.services.dummylight
     object: DummyLight
     kwargs:
       room: Kitchen

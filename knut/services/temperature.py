@@ -73,7 +73,7 @@ class Temperature(Events):
         """
         # check if temperature is valid before adding it to the history
         # -273.15 is the lowest possible temperature
-        if not self.temperature > -273.15:
+        if self.temperature <= -273.15:
             return
 
         self.check_history()

@@ -16,10 +16,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knutapis import Light
-from knutapis import Temperature
-from knutserver import KnutTcpSocket
+from knut.apis import Light
+from knut.apis import Temperature
+from knut.server import KnutTcpSocket
 import argparse
+import coloredlogs
 import logging
 import sys
 import time
@@ -27,69 +28,78 @@ import yaml
 
 # global constants
 LOGLEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-config_file = '/etc/knut/knutconfig.yaml'
 
 
 def load_config(config_file):
     with open(config_file, 'r') as f:
-        return yaml.load(f, Loader=yaml.FullLoader)
+        return yaml.load(f, Loader=yaml.SafeLoader)
 
 
 def load_service_backend(config, service):
     objects = list()
 
-    for id in config[service].keys():
-        module = __import__(config[service][id]['module'],
-                            fromlist=[config[service][id]['object']])
-        service_object = getattr(module, config[service][id]['object'])
+    for service_id in config[service].keys():
+        module = __import__(config[service][service_id]['module'],
+                            fromlist=[config[service][service_id]['object']])
+        service_object = getattr(module, config[service][service_id]['object'])
 
-        logging.info(('Adding service backend \'%s\' with ID \'%s\' to'
-                      + ' service %s.') % (config[service][id]['object'],
-                                           id,
-                                           hex(config[service][id]['serviceid'])))
-        location = config[service][id]['location']
+        logging.info(('Adding service backend \'%s\' with service id \'%s\' to'
+                      + ' service %s.') % (
+                          config[service][service_id]['object'],
+                          service_id,
+                          hex(config[service][service_id]['serviceid'])
+                      ))
+        location = config[service][service_id]['location']
 
         try:
-            args = config[service][id]['args']
+            args = config[service][service_id]['args']
         except KeyError:
             args = None
 
         try:
-            kwargs = config[service][id]['kwargs']
+            kwargs = config[service][service_id]['kwargs']
         except KeyError:
             kwargs = None
 
         if args and not kwargs:
-            objects.append(service_object(location, id, *args))
+            objects.append(service_object(location, service_id, *args))
         elif kwargs and not args:
-            objects.append(service_object(location, id, **kwargs))
+            objects.append(service_object(location, service_id, **kwargs))
         elif args and kwargs:
-            objects.append(service_object(location, id, *args, **kwargs))
+            objects.append(service_object(location, service_id, *args, **kwargs))
         else:
-            objects.append(service_object(location, id))
+            objects.append(service_object(location, service_id))
 
     return objects
 
 
 def main():
     print(
-        'knut.py  Copyright (C) 2020  Joe Pearson\n'
+        'knutserver.py  Copyright (C) 2020  Joe Pearson\n'
         'This program comes with ABSOLUTELY NO WARRANTY; for details read LICENSE.\n'
         'This is free software, and you are welcome to redistribute it\n'
-        'under certain conditions; read LICENSE for details.'
+        'under certain conditions; read LICENSE for details.\n'
     )
 
-    parser = argparse.ArgumentParser(description='TCP server example.')
+    parser = argparse.ArgumentParser(
+        description='Runs the Knut server and all configured services.'
+    )
     parser.add_argument('--log', dest='logLevel', choices=LOGLEVELS,
+                        default=LOGLEVELS[0],
                         help='Set the logging level')
+    parser.add_argument('--conf', dest='configFile',
+                        default='/etc/knut/knutserver.yml',
+                        help='Set the knut server configuration file')
 
     args = parser.parse_args()
 
-    if args.logLevel:
-        logging.basicConfig(level=getattr(logging, args.logLevel))
+    # setup logging
+    logging.basicConfig(level=getattr(logging, args.logLevel))
+    logger = logging.getLogger(__name__)
+    coloredlogs.install(level=args.logLevel, logger=logger)
 
     # load config
-    config = load_config(config_file)
+    config = load_config(args.configFile)
 
     # initialize the Knut TCP server socket
     socket = KnutTcpSocket(config['socket']['ip'], config['socket']['port'])

@@ -1,4 +1,9 @@
+# build directories
 build/
 __pycache__/
 
+# user environments
+*env
+
+# emacs helper files
 TAGS

@@ -1,4 +1,7 @@
+[![Build Status](https://travis-ci.org/pearjo/knut-server.svg?branch=devel)](https://travis-ci.org/pearjo/knut-server)
 [![Documentation Status](https://readthedocs.org/projects/knut-server/badge/?version=latest)](https://knut-server.readthedocs.io/en/latest/?badge=latest)
+[![CodeFactor](https://www.codefactor.io/repository/github/pearjo/knut-server/badge)](https://www.codefactor.io/repository/github/pearjo/knut-server)
+[![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://github.com/pearjo/knut-server/blob/master/LICENSE)
 
 # Knut Server
 
@@ -62,14 +65,14 @@ temperature:
   localWeather: # localWeather is the unique name
     serviceid: 0x01
     location: Hamburg
-    module: knutservices.dummytemperature
+    module: knut.services.dummytemperature
     object: DummyTemperature
 
 light:
   advancedLight:
     serviceid: 0x02
     location: Sofa Light
-    module: knutservices.dummylight
+    module: knut.services.dummylight
     object: DummyLight
     # the object DummyLight requires multiple keyword arguments
     kwargs:
@@ -86,7 +89,7 @@ what keyword arguments they need for their configuration. With a
 proper configuration in place, the Knut server is run by:
 
 ```bash
-knut.py
+knutserver.py
 ```
 
 To run in debug mode, use `--log=DEBUG` as additional argument.

@@ -3,11 +3,17 @@
 Knut APIs
 =========
 
-.. autoclass:: knutapis.Temperature
+Temperature API
+---------------
+
+.. autoclass:: knut.apis.Temperature
    :members:
 
-.. autoclass:: knutapis.Light
+Light API
+---------
+
+.. autoclass:: knut.apis.Light
    :members:
 
-.. autoclass:: knutapis.light.Room
+.. autoclass:: knut.apis.light.Room
    :members:
