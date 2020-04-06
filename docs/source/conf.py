@@ -19,7 +19,7 @@ import knut
 # -- Project information -----------------------------------------------------
 
 project = 'Knut Server Documentation'
-copyright = '2020, Joe Pearson'
+copyright = '2019-2020, Joe Pearson'
 author = 'Joe Pearson'
 
 # The full version, including alpha/beta/rc tags
@@ -57,10 +57,14 @@ master_doc = 'index'
 html_theme = 'sphinx_rtd_theme'
 html_theme_options = {
     'canonical_url': '',
+    'analytics_id': '',  #  Provided by Google in your dashboard
     'logo_only': True,
-    'display_version': True,
+    'display_version': False,
     'prev_next_buttons_location': 'bottom',
     'style_external_links': False,
+    'vcs_pageview_mode': '',
+    'style_nav_header_background': '',
+    # Toc options
     'collapse_navigation': True,
     'sticky_navigation': True,
     'navigation_depth': 4,
