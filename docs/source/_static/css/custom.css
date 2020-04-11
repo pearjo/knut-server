@@ -1,0 +1,136 @@
+/**
+ * Various tweaks to the Read the Docs theme. Many colors are also
+ * overridden to use CSS variables. This CSS file is based on the
+ * Godot engine documentation by Juan Linietsky, Ariel Manzur and the
+ * Godot community.
+ */
+
+ /* Default (light) theme colors */
+ :root {
+    --navbar-heading-color: #fafafa;
+
+    --highlight-background-color: #f5ffe1;
+    --highlight-comment-color: #408090;
+    --highlight-keyword-color: #007020;
+    --highlight-keyword2-color: #902000;
+    --highlight-number-color: #208050;
+    --highlight-decorator-color: #4070a0;
+    --highlight-type-color: #007020;
+    --highlight-type2-color: #0e84b5;
+    --highlight-function-color: #06287e;
+    --highlight-operator-color: #666666;
+    --highlight-string-color: #4070a0;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+input[type="text"],
+input[type="button"],
+input[type="reset"],
+input[type="submit"],
+textarea,
+legend,
+.btn,
+.rst-content .toctree-wrapper p.caption,
+.rst-versions {
+    /* Use a system font stack for better performance (no Web fonts required) */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+legend,
+.rst-content .toctree-wrapper p.caption {
+    /* Use a lighter font for headers (Medium instead of Bold) */
+    font-weight: 500;
+}
+
+/* Syntax highlighting */
+
+.highlight {
+    background-color: var(--highlight-background-color);
+}
+
+.highlight .c1,
+.highlight .cm {
+    color: var(--highlight-comment-color);
+}
+
+.highlight .bp,
+.highlight .k,
+.highlight .kd,
+.highlight .kn,
+.highlight .kt,
+.highlight .ow {
+    color: var(--highlight-keyword-color);
+}
+
+.highlight .cp {
+    color: var(--highlight-keyword2-color);
+}
+
+.highlight .m,
+.highlight .mf,
+.highlight .mi {
+    color: var(--highlight-number-color);
+}
+
+.highlight .na {
+    color: var(--highlight-decorator-color);
+}
+
+.highlight .nb {
+    color: var(--highlight-type-color);
+}
+
+.highlight .nc,
+.highlight .nn,
+.highlight .nv {
+    color: var(--highlight-type2-color);
+}
+
+.highlight .nf,
+.highlight .nt {
+    color: var(--highlight-function-color);
+}
+
+.highlight .o {
+    color: var(--highlight-operator-color);
+}
+
+.highlight .cpf,
+.highlight .s,
+.highlight .s1,
+.highlight .s2,
+.highlight .se {
+    color: var(--highlight-string-color);
+}
+
+.wy-menu-vertical header,
+.wy-menu-vertical p.caption {
+    color: var(--navbar-heading-color);
+
+    /* Improves the appearance of uppercase text */
+    letter-spacing: 0.75px;
+}
+
+.rst-versions .rst-other-versions {
+    color: var(--navbar-heading-color);
+}
+
+/* Navbar's scrollbar styling */
+.wy-menu.wy-menu-vertical {
+    scrollbar-color: var(--navbar-heading-color) var(--navbar-scrollbar-background);
+}
+.wy-menu.wy-menu-vertical::-webkit-scrollbar-thumb {
+    background-color: var(--navbar-heading-color);
+}

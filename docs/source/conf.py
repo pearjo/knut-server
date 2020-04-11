@@ -57,10 +57,14 @@ master_doc = 'index'
 html_theme = 'sphinx_rtd_theme'
 html_theme_options = {
     'canonical_url': '',
+    'analytics_id': '',  #  Provided by Google in your dashboard
     'logo_only': True,
-    'display_version': True,
+    'display_version': False,
     'prev_next_buttons_location': 'bottom',
     'style_external_links': False,
+    'vcs_pageview_mode': '',
+    'style_nav_header_background': '#343131',
+    # Toc options
     'collapse_navigation': True,
     'sticky_navigation': True,
     'navigation_depth': 4,
@@ -74,3 +78,7 @@ html_theme_options = {
 html_static_path = ['_static']
 
 html_logo = '_static/knut.png'
+
+# These paths are either relative to html_static_path
+# or fully qualified paths (eg. https://...)
+html_css_files = ['css/custom.css']
