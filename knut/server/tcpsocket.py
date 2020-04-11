@@ -23,7 +23,7 @@ import threading
 import queue
 
 ENCODING = 'utf-8'
-
+HEARTBEAT_FREQUENCY = 0.25  # send a heartbeat every 4 seconds
 
 class KnutTcpSocket():
     """The Knut TCP socket.
@@ -72,6 +72,13 @@ class KnutTcpSocket():
 
     For each received message, a request handler is called to process the
     incoming request by the client and to send a proper response.
+
+    .. note::
+       A :meth:`heartbeat()` is send to all connected clients every 4 seconds,
+       so that the client can check if it is still connected to Knut. The
+       heartbeat is an empty message with only a message length of
+       ``0x00000000``.
+
     """
     def __init__(self, host='localhost', port=8080):
         logging.info(str('Open server on socket %s:%i...' % (host, port)))
@@ -86,6 +93,12 @@ class KnutTcpSocket():
         self._out_sockets = list()  # sockets to write to
         self._out_msg_queues = dict()  # outgoing message queues
         self._known_clients = list()  # client sockets which might be open
+
+        heartbeat_thread = threading.Thread(target=self.heartbeat,
+                                            name='heartbeat_thread')
+        heartbeat_thread.daemon = True
+        logging.debug('Start the heartbeat...')
+        heartbeat_thread.start()
 
         listener_thread = threading.Thread(target=self.listener,
                                            name='listener_thread')
@@ -108,6 +121,24 @@ class KnutTcpSocket():
         # add the notifier method to the back-end's on_change event
         if callable(self.services[service_id].push):
             self.services[service_id].push += self.send
+
+    def heartbeat(self):
+        """Sends frequently a heartbeat.
+
+        The heartbeat is a frequently send message, where only a message length
+        of ``0x00000000`` is send.
+
+        The heartbeat is send to all available clients.
+        """
+        for client in self._known_clients:
+            try:
+                client.sendall(int(0).to_bytes(4, byteorder='big'))
+            except OSError:
+                logging.debug('Remove client from known clients list...')
+                self._known_clients.remove(client)
+                client.close()
+
+        threading.Timer(1 / HEARTBEAT_FREQUENCY, self.heartbeat).start()
 
     def listener(self):
         """Listen for connections and manages in- and outgoing messages."""
@@ -280,6 +311,8 @@ class KnutTcpSocket():
 
         for in_socket in self._in_sockets:
             self.remove_socket(in_socket)
+
+        self.serversocket.close()
 
 
 def msg_builder(service_id, msg_id, msg):
