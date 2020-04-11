@@ -14,7 +14,7 @@ To get a first overview of what Knut is and how it works, have a look at the
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Contents
 
    gettingstarted
    reference/knutserver
