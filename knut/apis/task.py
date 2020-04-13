@@ -100,7 +100,7 @@ class Task(Events):
         objects :class:`knut.services.Task`
         """
 
-        self.__events__ = ('push')
+        self.__events__ = ('on_push')
 
     def load_tasks(self, dir=None):
         """Load all tasks saved in the directory *dir*.
@@ -215,4 +215,4 @@ class Task(Events):
 
     def _reminder(self, uid):
         msg = {'uid': uid, 'reminder': self.tasks[uid].reminder}
-        self.push(Task.serviceid, Task.REMINDER, msg)
+        self.on_push(Task.serviceid, Task.REMINDER, msg)
