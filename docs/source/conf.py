@@ -48,6 +48,7 @@ exclude_patterns = []
 # contains the root toctree directive. Default is 'index'.
 master_doc = 'index'
 
+needs_sphinx = '2.4'
 
 # -- Options for HTML output -------------------------------------------------
 
