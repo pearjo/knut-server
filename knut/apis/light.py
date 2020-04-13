@@ -239,8 +239,7 @@ class Light(Events):
     serviceid = 0x02
     """The light service id."""
 
-    def __init__(self, socket):
-        self.socket = socket
+    def __init__(self):
         self.backends = dict()
         """A dictionary with all back-ends where the keys are the ``unique_name`` and
         the values are the corresponding light objects

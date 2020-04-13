@@ -110,15 +110,15 @@ def main():
     try:
         # load all service modules
         # load task module
-        task = Task(socket)
+        task = Task()
         socket.add_service(task)
 
         # load temperature module
-        temp = Temperature(socket)
+        temp = Temperature()
         socket.add_service(temp)
 
         # load light module
-        light = Light(socket)
+        light = Light()
         socket.add_service(light)
 
         # load tasks from file
