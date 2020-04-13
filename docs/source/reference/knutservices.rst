@@ -13,6 +13,9 @@ service while maintaining its core functionality.
 .. autoclass:: knut.services.Light
    :members:
 
+.. autoclass:: knut.services.Task
+   :members:
+
 .. autoclass:: knut.services.Temperature
    :members:
 
