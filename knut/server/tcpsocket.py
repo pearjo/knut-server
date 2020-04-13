@@ -38,7 +38,7 @@ class KnutTcpSocket():
 
     The JSON message itself has the following keys:
 
-    ``serviceId``
+    ``'serviceId'``
 
        The service id of the targeted Knut service. Each API handles requests
        for a specific service id. The following table lists the service ids and
@@ -52,13 +52,13 @@ class KnutTcpSocket():
        |   ``0x02`` | :class:`knut.apis.Light`       |
        +------------+--------------------------------+
 
-    ``msgId``
+    ``'msgId'``
 
        The id of the message. Each API defines which messages it can understand
        and what ids they have. Read the API documentation to get more
        information about the supported messages and their ids.
 
-    ``msg``
+    ``'msg'``
 
        The message as JSON formatted string and encoded as UTF-8.
 
@@ -73,11 +73,17 @@ class KnutTcpSocket():
     For each received message, a request handler is called to process the
     incoming request by the client and to send a proper response.
 
+    .. warning::
+       The response returned by each an API's ``request_handler()`` method is
+       only send to the client who send a request in the first place. If a
+       message if from interest for all clients, e.g. a light state change,
+       the API should use its ``on_push()`` method for a response.
+
     .. note::
        A :meth:`heartbeat()` is send to all connected clients every 4 seconds,
        so that the client can check if it is still connected to Knut. The
-       heartbeat is an empty message with only a message length of
-       ``0x00000000``.
+       heartbeat is a message with only the message length header which has the
+       value ``0x00000000``.
 
     """
     def __init__(self, host='localhost', port=8080):
@@ -109,24 +115,24 @@ class KnutTcpSocket():
         """Add a service to the server socket.
 
         The parsed *service* is added to the dictionary of services and it's
-        ``push`` event is connected to the sockets ``send`` method.
+        ``on_push`` event is connected to the sockets ``send`` method.
         """
         if not all([hasattr(service, 'serviceid'),
-                    hasattr(service, 'push')]):
+                    hasattr(service, 'on_push')]):
             raise AttributeError('The service \'%s\' is missing either a'
-                                 + '\'serviceid\' or a \'push\' event.')
+                                 + '\'serviceid\' or a \'on_push\' event.')
 
         service_id = service.serviceid
         self.services[service_id] = service
         # add the notifier method to the back-end's on_change event
-        if callable(self.services[service_id].push):
-            self.services[service_id].push += self.send
+        if callable(self.services[service_id].on_push):
+            self.services[service_id].on_push += self.send
 
     def heartbeat(self):
         """Sends frequently a heartbeat.
 
-        The heartbeat is a frequently send message, where only a message length
-        of ``0x00000000`` is send.
+        The heartbeat is a frequently send message, where only the a message
+        length header with the value ``0x00000000`` is send.
 
         The heartbeat is send to all available clients.
         """

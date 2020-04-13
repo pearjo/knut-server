@@ -38,37 +38,39 @@ def load_config(config_file):
 def load_service_backend(config, service):
     objects = list()
 
-    for service_id in config[service].keys():
-        module = __import__(config[service][service_id]['module'],
-                            fromlist=[config[service][service_id]['object']])
-        service_object = getattr(module, config[service][service_id]['object'])
+    for unique_name in config[service].keys():
+        module = __import__(config[service][unique_name]['module'],
+                            fromlist=[config[service][unique_name]['object']])
+        service_object = getattr(module,
+                                 config[service][unique_name]['object'])
 
-        logging.info(('Adding service backend \'%s\' with service id \'%s\' to'
+        logging.info(('Adding service backend \'%s\' with unique name \'%s\' to'
                       + ' service %s.') % (
-                          config[service][service_id]['object'],
-                          service_id,
-                          hex(config[service][service_id]['serviceid'])
-                      ))
-        location = config[service][service_id]['location']
+                          config[service][unique_name]['object'],
+                          unique_name,
+                          hex(config[service][unique_name]['serviceid'])
+        ))
+        location = config[service][unique_name]['location']
 
         try:
-            args = config[service][service_id]['args']
+            args = config[service][unique_name]['args']
         except KeyError:
             args = None
 
         try:
-            kwargs = config[service][service_id]['kwargs']
+            kwargs = config[service][unique_name]['kwargs']
         except KeyError:
             kwargs = None
 
         if args and not kwargs:
-            objects.append(service_object(location, service_id, *args))
+            objects.append(service_object(location, unique_name, *args))
         elif kwargs and not args:
-            objects.append(service_object(location, service_id, **kwargs))
+            objects.append(service_object(location, unique_name, **kwargs))
         elif args and kwargs:
-            objects.append(service_object(location, service_id, *args, **kwargs))
+            objects.append(service_object(
+                location, unique_name, *args, **kwargs))
         else:
-            objects.append(service_object(location, service_id))
+            objects.append(service_object(location, unique_name))
 
     return objects
 

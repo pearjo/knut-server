@@ -223,15 +223,6 @@ WEATHER_ICON_MAP = {
     'night-thunderstorm': '\uf03b'
 }
 
-# supported messages
-NULL = 0x0000
-STATUS_REQUEST = 0x0001
-STATUS_RESPONSE = 0x0101
-TEMPERATURE_LIST_REQUEST = 0x0002
-TEMPERATURE_LIST_RESPONSE = 0x0102
-TEMPERATURE_HISTORY_REQUEST = 0x0003
-TEMPERATURE_HISTORY_RESPONSE = 0x0103
-
 
 class Temperature(Events):
     """Knut temperature API.
@@ -240,20 +231,111 @@ class Temperature(Events):
     back-ends. A back-end can be added using :meth:`add_backend()`.  To interact
     with the back-ends, this API has as request handler method
     :meth:`request_handler()`. Using this method, requests can be send to the
-    back-ends to get e.g. the current weather data. See
-    :meth:`request_handler()` to get information for all supported requests.
+    back-ends to get e.g. the current weather data.
+
+    The following message types *msg_id* are supported with the required
+    message *msg* and their *response* with its *response_id*:
+
+    .. data:: STATUS_REQUEST
+       :value: 0x0001
+
+       Requests the status of a back-end. The message *msg* must have the
+       key *uniqueName*. For example::
+
+          {"uniqueName": "myTemperatureBackend"}
+
+    .. data:: STATUS_RESPONSE
+       :value: 0x0101
+
+       The status *response* has as key the *uniqueName* of the specific
+       back-end and value the dictionary that is returned by
+       :meth:`status()`. For example::
+
+          {
+              "myTemperatureBackend": {
+                  "location": "Miami",
+                  "unit": "°C",
+                  "condition": "\\uf00d",
+                  "temperature": 30.1
+              }
+          }
+
+    .. data:: TEMPERATURE_LIST_REQUEST
+       :value: 0x0002
+
+       Requests a list of all temperature back-ends with their status. The
+       message *msg* for this request can be an empty dictionary.
+
+    .. data:: TEMPERATURE_LIST_RESPONSE
+       :value: 0x0102
+
+       The *response* of the temperature list response is similar to
+       the :const:`STATUS_RESPONSE`, only with all known back-ends that are in
+       :attr:`backends`. For example::
+
+
+          {
+              "myTemperatureBackend1": {
+                  "location": "Miami",
+                  "unit": "°C",
+                  "condition": "\\uf00d",
+                  "temperature": 30.420000000000009
+              },
+              "myTemperatureBackend2": {
+                  "location": "Hamburg",
+                  "unit": "°C",
+                  "condition": "\\uf008",
+                  "temperature": 14.240000000000009
+              }
+          }
+
+    .. data:: TEMPERATURE_HISTORY_REQUEST
+       :value: 0x0003
+
+       Request the temperature history of a back-end. The message must be in
+       the same format as for a :const:`STATUS_REQUEST`.
+
+    .. data:: TEMPERATURE_HISTORY_RESPONSE
+       :value: 0x0103
+
+       The *response* is a dictionary with the keys ``'uniqueName'``, ``'time'``
+       and ``'temperature'``. The *time* value is an array of floats with the
+       time in seconds since the seconds since the epoch January 1, 1970,
+       00:00:00 (UTC). The *temperature* value is also an array with the
+       corresponding temperature values as float. For example::
+
+          {
+              "uniqueName": "myTemperatureBackend",
+              "temperature": [
+                  30.420000000000009,
+                  32.420000000000009
+              ],
+              "time": [
+                  1581863822.2132704,
+                  1581863882.2132704
+              ]
+          }
+
     """
-    def __init__(self, socket):
-        self.socket = socket
+    NULL = 0x0000
+    STATUS_REQUEST = 0x0001
+    STATUS_RESPONSE = 0x0101
+    TEMPERATURE_LIST_REQUEST = 0x0002
+    TEMPERATURE_LIST_RESPONSE = 0x0102
+    TEMPERATURE_HISTORY_REQUEST = 0x0003
+    TEMPERATURE_HISTORY_RESPONSE = 0x0103
+
+    serviceid = 0x01
+    """The temperature service id."""
+
+    def __init__(self):
         self.backends = dict()
         """A dictionary with all back-ends where the keys are the ``unique_name`` and
         the values are the corresponding temperature objects
         :class:`knut.services.Temperature`
         """
         self.unit = UNIT
-        self.serviceid = 0x01
-        """The temperature service has the id 0x01."""
-        self.__events__ = ('push')
+        self.__events__ = ('on_push')
 
     def add_backend(self, backend):
         """Adds the *backend* to :attr:`backends`."""
@@ -279,103 +361,33 @@ class Temperature(Events):
     def request_handler(self, msg_id, msg):
         """Returns the tuple (*response_id*, *response*) upon a request.
 
-        The following message types *msg_id* are supported with the required
-        message *msg* and their *response* with its *response_id*:
+        The following messages can be send by a client and will be handled:
 
-        ``STATUS_REQUEST`` -- 0x0001
-
-           Requests the status of a back-end. The message *msg* must have the
-           key *uniqueName*. For example::
-
-              {"uniqueName": "myTemperatureBackend"}
-
-        ``STATUS_RESPONSE`` -- 0x0101
-
-           The status *response* has as key the *uniqueName* of the specific
-           back-end and value the dictionary that is returned by
-           :meth:`status()`. For example::
-
-              {
-                  "myTemperatureBackend": {
-                      "location": "Miami",
-                      "unit": "°C",
-                      "condition": "\\uf00d",
-                      "temperature": 30.1
-                  }
-              }
-
-        ``TEMPERATURE_LIST_REQUEST`` -- 0x0002
-
-           Requests a list of all temperature back-ends with their status. The
-           message *msg* for this request can be an empty dictionary.
-
-        ``TEMPERATURE_LIST_RESPONSE`` -- 0x0102
-
-           The *response* of the temperature list response is similar to
-           the ``STATUS_RESPONSE``, only with all known back-ends that are in
-           :attr:`backends`. For example::
-
-
-              {
-                  "myTemperatureBackend1": {
-                      "location": "Miami",
-                      "unit": "°C",
-                      "condition": "\\uf00d",
-                      "temperature": 30.420000000000009
-                  },
-                  "myTemperatureBackend2": {
-                      "location": "Hamburg",
-                      "unit": "°C",
-                      "condition": "\\uf008",
-                      "temperature": 14.240000000000009
-                  }
-              }
-
-        ``TEMPERATURE_HISTORY_REQUEST`` -- 0x0003
-
-           Request the temperature history of a back-end. The message must be in
-           the same format as for a ``STATUS_REQUEST``.
-
-        ``TEMPERATURE_HISTORY_RESPONSE`` -- 0x0103
-
-           The *response* is a dictionary with the keys *uniqueName*, *time* and
-           *temperature*. The *time* value is an array of floats with the time
-           in seconds since the seconds since the epoch January 1, 1970,
-           00:00:00 (UTC). The *temperature* value is also an array with the
-           corresponding temperature values as float. For example::
-
-              {
-                  "uniqueName": "myTemperatureBackend",
-                  "temperature": [
-                      30.420000000000009,
-                      32.420000000000009
-                  ],
-                  "time": [
-                      1581863822.2132704,
-                      1581863882.2132704
-                  ]
-              }
-
+        - :const:`STATUS_REQUEST`
+        - :const:`TEMPERATURE_LIST_REQUEST`
+        - :const:`TEMPERATURE_HISTORY_REQUEST`
         """
         response = dict()
-        response_id = NULL
+        response_id = Temperature.NULL
 
         logging.debug('Received temperature request.')
 
-        if msg_id == STATUS_REQUEST:
+        if msg_id == Temperature.STATUS_REQUEST:
             response_id, response = self._handle_status_request(msg)
-        elif msg_id == TEMPERATURE_LIST_REQUEST:
+        elif msg_id == Temperature.TEMPERATURE_LIST_REQUEST:
             response_id, response = self._handle_temperature_list_request()
-        elif msg_id == TEMPERATURE_HISTORY_REQUEST:
-            response_id, response = self._handle_temperature_history_request(msg)
+        elif msg_id == Temperature.TEMPERATURE_HISTORY_REQUEST:
+            response_id, response = self._handle_temperature_history_request(
+                msg
+            )
 
         # check if the response is valid
-        response_id = response_id if len(response) > 0 else NULL
+        response_id = response_id if len(response) > 0 else Temperature.NULL
         return response_id, response
 
     def notifier(self, unique_name):
-        self.push(self.serviceid, STATUS_RESPONSE,
-                  {unique_name: self.status(unique_name)})
+        self.on_push(Temperature.serviceid, Temperature.STATUS_RESPONSE,
+                     {unique_name: self.status(unique_name)})
 
     def status(self, unique_name):
         """Returns a status dictionary of the back-end specified by its
@@ -424,7 +436,7 @@ class Temperature(Events):
 
         response[unique_name] = self.status(unique_name)
 
-        return STATUS_RESPONSE, response
+        return Temperature.STATUS_RESPONSE, response
 
     def _handle_temperature_list_request(self):
         """Handles a ``TEMPERATURE_LIST_REQUEST`` and returns a tuple
@@ -435,7 +447,7 @@ class Temperature(Events):
         for temperature in self.backends.keys():
             response[temperature] = self.status(temperature)
 
-        return TEMPERATURE_LIST_RESPONSE, response
+        return Temperature.TEMPERATURE_LIST_RESPONSE, response
 
     def _handle_temperature_history_request(self, msg):
         """Handles a ``TEMPERATURE_HISTORY_REQUEST`` and returns a tuple
@@ -454,4 +466,4 @@ class Temperature(Events):
             logging.warning('Received temperature history request for unknown'
                             + ' temperature back-end.')
 
-        return TEMPERATURE_HISTORY_RESPONSE, response
+        return Temperature.TEMPERATURE_HISTORY_RESPONSE, response

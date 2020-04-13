@@ -20,7 +20,15 @@ import logging
 
 
 class Light(Events):
-    """Light service."""
+    """A Knut light service.
+
+    This class represents a Knut light service. The light has a *unique_name*
+    and has a *location* within a *room*.
+
+    If the state of the light changes, e.g. when calling
+    :meth:`status_setter()`, the method :meth:`on_change()` is called with the
+    *unique_name* as argument. Any listener can register upon this event.
+    """
     def __init__(self, location, unique_name, room):
         self.has_color = bool()
         self.has_dimlevel = bool()
@@ -121,3 +129,5 @@ class Light(Events):
         if self.has_color and 'color' in status.keys():
             color = status['color']
             self.color = color
+
+        self.on_change(self.unique_name)
