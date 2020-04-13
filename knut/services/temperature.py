@@ -29,7 +29,9 @@ DATA_DIR = str(pathlib.Path.home()) + '/.local/share/knut/'
 class Temperature(Events):
     def __init__(self, location, unique_name, **kwargs):
         self.location = location
+        """The location where the temperature is measured."""
         self.unique_name = unique_name
+        """The unique name of the temperature service."""
         self.data_file = DATA_DIR + unique_name
         # Use -273.15 °C since this is the absolute zero temperature. If the
         # temperature is not above that value, it is invalid.

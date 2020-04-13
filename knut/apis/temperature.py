@@ -16,6 +16,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from events import Events
+import knut.services
 import logging
 
 UNIT = '°C'
@@ -240,16 +241,16 @@ class Temperature(Events):
        :value: 0x0001
 
        Requests the status of a back-end. The message *msg* must have the
-       key *uniqueName*. For example::
+       key ``'uniqueName'``. For example::
 
           {"uniqueName": "myTemperatureBackend"}
 
     .. py:data:: STATUS_RESPONSE
        :value: 0x0101
 
-       The status *response* has as key the *uniqueName* of the specific
-       back-end and value the dictionary that is returned by
-       :meth:`status()`. For example::
+       The status *response* has as key the
+       :attr:`knut.services.Temperature.unique_name` of the specific back-end
+       and as value the dictionary returned by :meth:`status()`. For example::
 
           {
               "myTemperatureBackend": {
@@ -292,7 +293,7 @@ class Temperature(Events):
     .. py:data:: TEMPERATURE_HISTORY_REQUEST
        :value: 0x0003
 
-       Request the temperature history of a back-end. The message must be in
+       Request the temperature history of a back-end. The *msg* must be in
        the same format as for a :const:`STATUS_REQUEST`.
 
     .. py:data:: TEMPERATURE_HISTORY_RESPONSE
@@ -300,9 +301,9 @@ class Temperature(Events):
 
        The *response* is a dictionary with the keys ``'uniqueName'``, ``'time'``
        and ``'temperature'``. The *time* value is an array of floats with the
-       time in seconds since the seconds since the epoch January 1, 1970,
-       00:00:00 (UTC). The *temperature* value is also an array with the
-       corresponding temperature values as float. For example::
+       time in seconds since the epoch January 1, 1970, 00:00:00 (UTC). The
+       *temperature* value is also an array with the corresponding temperature
+       values as float. For example::
 
           {
               "uniqueName": "myTemperatureBackend",
@@ -330,9 +331,9 @@ class Temperature(Events):
 
     def __init__(self):
         self.backends = dict()
-        """A dictionary with all back-ends where the keys are the ``unique_name`` and
-        the values are the corresponding temperature objects
-        :class:`knut.services.Temperature`
+        """A dictionary with all back-ends where the keys are the
+        :attr:`knut.services.Temperature.unique_name` and the values are the
+        corresponding temperature objects :class:`knut.services.Temperature`
         """
         self.unit = UNIT
         self.__events__ = ('on_push')
@@ -361,7 +362,8 @@ class Temperature(Events):
     def request_handler(self, msg_id, msg):
         """Returns the tuple (*response_id*, *response*) upon a request.
 
-        The following messages can be send by a client and will be handled:
+        The following messages *msg* with their *msg_id* can be send by a client
+        and will be handled:
 
         - :const:`STATUS_REQUEST`
         - :const:`TEMPERATURE_LIST_REQUEST`
@@ -395,11 +397,11 @@ class Temperature(Events):
 
         The returned dictionary has the keys:
 
-        - ``location`` as string where the temperature is measured
-        - ``unit`` as string with the value ``°C``
-        - ``condition`` is a string with the code point for the `Weather Icon
+        - ``'location'`` as string where the temperature is measured
+        - ``'unit'`` as string with the value ``°C``
+        - ``'condition'`` is a string with the code point for the `Weather Icon
           <https://erikflowers.github.io/weather-icons/>`_ font
-        - ``temperature`` as a float
+        - ``'temperature'`` as a float
         """
         location = str()
         unit = str()

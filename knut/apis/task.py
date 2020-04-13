@@ -134,7 +134,8 @@ class Task(Events):
     def request_handler(self, msg_id, msg):
         """Returns the tuple (*response_id*, *response*) upon a request.
 
-        The following messages can be send by a client and will be handled:
+        The following messages *msg* with their *msg_id* can be send by a client
+        and will be handled:
 
         - :const:`TASK_REQUEST`
         - :const:`TASK_RESPONSE`

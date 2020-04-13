@@ -119,7 +119,8 @@ class KnutTcpSocket():
         """Add a service to the server socket.
 
         The parsed *service* is added to the dictionary of services and it's
-        ``on_push`` event is connected to the sockets ``send`` method.
+        :meth:`on_push()` event is connected to the sockets :meth:`send()`
+        method.
         """
         if not all([hasattr(service, 'serviceid'),
                     hasattr(service, 'on_push')]):
@@ -289,11 +290,11 @@ class KnutTcpSocket():
         clientsocket.close()
 
     def request_handler(self, service_id, msg_id, msg):
-        """Handles the data of a valid request.
+        """Handles the requested message *msg* of type *msg_id*.
 
-        This method calls the :meth:`request_handler` method of the
-        corresponding service. The services returned response is then return by
-        this method.
+        This method calls the :meth:`request_handler()` of a service with the
+        corresponding *service_id*. The response returned by the service is then
+        return by this method.
         """
         if service_id not in self.services.keys():
             logging.warning(str('No known service \'%s\'.' % hex(service_id)))
@@ -302,7 +303,9 @@ class KnutTcpSocket():
         return self.services[service_id].request_handler(msg_id, msg)
 
     def send(self, service_id, msg_id, msg):
-        """Sends the message *msg* to all open sockets."""
+        """Sends the message *msg* of type *msg_id* from the service
+        *service_id* to all connected clients.
+        """
         byte_msg = msg_builder(service_id, msg_id, msg)
 
         for client in self._known_clients:

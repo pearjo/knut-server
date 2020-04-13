@@ -16,15 +16,28 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from events import Events
+import knut.services
 import logging
 
 
 class Room(Events):
+    """Bundles :class:`knut.services.Light` objects in a room.
+
+    Using the room object, all lights within one *room* can be controlled at
+    once.
+    """
     serviceid = 0x02
+    """The room service id. The id is the same as the light service id since
+    this service is part of the light service."""
 
     def __init__(self, room):
         self.backends = list()
+        """A dictionary with all back-ends in the room where the keys are the
+        :attr:`knut.services.Light.unique_name` and the values are the
+        corresponding light objects :class:`knut.services.Light`.
+        """
         self.room = room
+        """The room name."""
         self.state = float()
         """The state of the room where 0 is all lights are off, 1 all lights on
         and 0.5 when neither all lights are on nor off."""
@@ -33,7 +46,7 @@ class Room(Events):
         logging.debug('Added room \'%s\' to bundle lights' % self.room)
 
     def add_backend(self, backend):
-        """Add a light backend."""
+        """Add a light back-end to the room."""
         if backend.room != self.room:
             logging.warning('Data backend \'%s\' is not in room \'%s\''
                             % (backend.unique_name, self.room))
@@ -44,7 +57,7 @@ class Room(Events):
             self.fetch()
 
     def switch(self, state):
-        """Switch all lights of the room on or off by setting the *state*."""
+        """Switch all lights in :attr:`backends` on or off."""
         for light in self.backends:
             if state == 1:
                 light.status_setter({'state': True})
@@ -56,10 +69,7 @@ class Room(Events):
     def status(self):
         """Returns the room state.
 
-        Returns a dictionary with the following keys:
-
-        * room
-        * state
+        Returns a dictionary with the keys ``'room'`` and ``'state'``.
 
         The state is 0 if all lights are off, 1 if all lights are on and
         0.5 if neither all lights are on nor off.
@@ -71,9 +81,9 @@ class Room(Events):
         """Fetch light states of all backends.
 
         Fetch the light states of all backends in the room and sets the
-        *state* accordingly to 0 if all off, to 1 if all on or to 0.5
-        if neither all are on nor off. If the *state* changed, a
-        ``ROOM_RESPONSE`` will be pushed.
+        :attr:`state` accordingly to 0 if all off, to 1 if all on or to 0.5
+        if neither all are on nor off. If the :attr:`state` changed, a
+        :const:`knut.apis.Light.ROOM_RESPONSE` will be pushed.
         """
         state_set = set((light.state) for light in self.backends)
 
@@ -181,7 +191,7 @@ class Light(Events):
     .. py:data:: ALL_LIGHTS_RESPONSE
        :value: 0x0103
 
-       The all lights *response* is a dictionary with one key *state*, where
+       The all lights *response* is a dictionary with the key ``'state'``, where
        *0* is all lights off, *1* all lights on and *0.5* where neither all
        lights are on nor off. A client can send this response to switch all
        lights on or off. For example::
@@ -208,9 +218,9 @@ class Light(Events):
     .. py:data:: ROOM_REQUEST
        :value: 0x0005
 
-       Requests to set the :attr:`knut.apis.light.Room.state` for a room.
-       The keys *room* and *state* are required, where only the states
-       *0* and *1* are applied. A request should look like::
+       Requests to set the :attr:`knut.apis.light.Room.state` for a room.  The
+       keys ``'room'`` and ``'state'`` are required, where only the states *0*
+       and *1* are applied. A request should look like::
 
           {
               "room": "myRoom1",
@@ -221,7 +231,7 @@ class Light(Events):
        :value: 0x0105
 
        The *response* dictionary is the dictionary returned by
-       :meth:`knut.apis.light.Room.status`
+       :meth:`knut.apis.light.Room.status()`
 
     """
     NULL = 0x0000
@@ -241,9 +251,9 @@ class Light(Events):
 
     def __init__(self):
         self.backends = dict()
-        """A dictionary with all back-ends where the keys are the ``unique_name`` and
-        the values are the corresponding light objects
-        :class:`knut.services.Light`
+        """A dictionary with all back-ends where the keys are the
+        :attr:`knut.services.Temperature.unique_name` and the values are the
+        corresponding light objects :class:`knut.services.Light`
         """
         self.rooms = dict()
         self.light_state_all = float()
@@ -300,8 +310,15 @@ class Light(Events):
         """Returns the tuple (*response_id*, *response*) upon a request.
 
         Handles the requested *msg* of type *msg_id* and returns a *response* of
-        type *response_id*. See :py:class:`Light` for a list of all supported
-        messages.
+        type *response_id*. The following *msg_id* are handled:
+
+        - :const:`STATUS_REQUEST`
+        - :const:`STATUS_RESPONSE`
+        - :const:`LIGHTS_REQUEST`
+        - :const:`ALL_LIGHTS_REQUEST`
+        - :const:`ALL_LIGHTS_RESPONSE`
+        - :const:`ROOMS_LIST_REQUEST`
+        - :const:`ROOM_REQUEST`
         """
         response = dict()
         response_id = Light.NULL
@@ -331,7 +348,7 @@ class Light(Events):
 
     def notifier(self, unique_name):
         """Pushes the :meth:`status()` of *unique_name* to all listeners of the
-        :meth:`on_push` event."""
+        :meth:`on_push()` event."""
         # update room in which the light is located
         light = self.backends[unique_name]
         self.rooms[light.room].fetch()
@@ -344,21 +361,12 @@ class Light(Events):
     def status(self, unique_name):
         """Returns the status information of the light *unique_name*.
 
-        The status dictionary has the keys
-
-        - *color*
-        - *colorCold*
-        - *colorWarm*
-        - *dimlevel*
-        - *hasColor*
-        - *hasDimlevel*
-        - *hasTemperature*
-        - *location*
-        - *room*
-        - *state*
-        - *temperature*
-        - *uniqueName*
-
+        The status dictionary has the following keys ``'color'``,
+        ``'colorCold'``, ``'colorWarm'``, ``'dimlevel'``, ``'hasColor'``,
+        ``'hasDimlevel'``, ``'hasTemperature'``, ``'location'``, ``'room'``,
+        ``'state'``, ``'temperature'`` and ``'uniqueName'``. Each of the keys is
+        an attribute of the :class:`knut.services.Light` class. All attributes
+        are documented further in the light service itself.
         """
         light = self.backends[unique_name]
         return {
