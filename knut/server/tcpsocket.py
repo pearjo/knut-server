@@ -77,10 +77,10 @@ class KnutTcpSocket():
     incoming request by the client and to send a proper response.
 
     .. warning::
-       The response returned by each an API's ``request_handler()`` method is
-       only send to the client who send a request in the first place. If a
-       message if from interest for all clients, e.g. a light state change,
-       the API should use its ``on_push()`` method for a response.
+       The response returned by an API's :meth:`request_handler()` is only send
+       to the client who has send the request in the first place. If a message
+       is from interest for all clients, e.g. a light state change, the API
+       should use its :meth:`on_push()` method for a response.
 
     .. note::
        A :meth:`heartbeat()` is send to all connected clients every 4 seconds,
