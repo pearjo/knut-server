@@ -25,6 +25,7 @@ import queue
 ENCODING = 'utf-8'
 HEARTBEAT_FREQUENCY = 0.25  # send a heartbeat every 4 seconds
 
+
 class KnutTcpSocket():
     """The Knut TCP socket.
 
@@ -86,6 +87,7 @@ class KnutTcpSocket():
        value ``0x00000000``.
 
     """
+
     def __init__(self, host='localhost', port=8080):
         logging.info(str('Open server on socket %s:%i...' % (host, port)))
         self.services = dict()
@@ -284,7 +286,7 @@ class KnutTcpSocket():
 
         clientsocket.close()
 
-    def request_handler(self, service_id, msg_id, payload):
+    def request_handler(self, service_id, msg_id, msg):
         """Handles the data of a valid request.
 
         This method calls the :meth:`request_handler` method of the
@@ -293,9 +295,9 @@ class KnutTcpSocket():
         """
         if service_id not in self.services.keys():
             logging.warning(str('No known service \'%s\'.' % hex(service_id)))
-            return msg_id, payload
+            return msg_id, msg
 
-        return self.services[service_id].request_handler(msg_id, payload)
+        return self.services[service_id].request_handler(msg_id, msg)
 
     def send(self, service_id, msg_id, msg):
         """Sends the message *msg* to all open sockets."""
