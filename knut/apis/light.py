@@ -102,7 +102,7 @@ class Light(Events):
     The following message types *msg_id* are supported with the required
     message *msg* and their *response* with its *response_id*:
 
-    .. data:: STATUS_REQUEST
+    .. py:data:: STATUS_REQUEST
        :value: 0x0001
 
        Requests the status of a back-end. The message *msg* must have the
@@ -110,7 +110,7 @@ class Light(Events):
 
           {"uniqueName": "myLightBackend"}
 
-    .. data:: STATUS_RESPONSE
+    .. py:data:: STATUS_RESPONSE
        :value: 0x0101
 
        The status *response* is the dictionary returned by :meth:`status()`.
@@ -131,16 +131,16 @@ class Light(Events):
               "color": ""
           }
 
-    .. data:: LIGHTS_REQUEST
+    .. py:data:: LIGHTS_REQUEST
        :value: 0x0002
 
        Requests the status of all back-ends. The message *msg* can be emtpy.
 
-    .. data:: LIGHTS_RESPONSE
+    .. py:data:: LIGHTS_RESPONSE
        :value: 0x0102
 
-       The *response* of the lights response is similar to
-       the ``STATUS_RESPONSE``, only with all known back-ends that are in
+       The *response* of the lights response is similar to the
+       :const:`STATUS_RESPONSE`, only with all known back-ends that are in
        :attr:`backends`. For example::
 
           {
@@ -172,13 +172,13 @@ class Light(Events):
               }
           }
 
-    .. data:: ALL_LIGHTS_REQUEST
+    .. py:data:: ALL_LIGHTS_REQUEST
        :value: 0x0003
 
        Requests the combined state of all lights. The message *msg* can be
        emtpy.
 
-    .. data:: ALL_LIGHTS_RESPONSE
+    .. py:data:: ALL_LIGHTS_RESPONSE
        :value: 0x0103
 
        The all lights *response* is a dictionary with one key *state*, where
@@ -188,13 +188,13 @@ class Light(Events):
 
           {"state": 1.0}
 
-    .. data:: ROOMS_LIST_REQUEST
+    .. py:data:: ROOMS_LIST_REQUEST
        :value: 0x0004
 
        Requests a list of all rooms with their state. The message *msg* can
        be emtpy.
 
-    .. data:: ROOMS_LIST_RESPONSE
+    .. py:data:: ROOMS_LIST_RESPONSE
        :value: 0x0104
 
        The rooms list *response* is a dictionary with the unique names of
@@ -205,7 +205,7 @@ class Light(Events):
               "myRoom2": 0.0
           }
 
-    .. data:: ROOM_REQUEST
+    .. py:data:: ROOM_REQUEST
        :value: 0x0005
 
        Requests to set the :attr:`knut.apis.light.Room.state` for a room.
@@ -217,7 +217,7 @@ class Light(Events):
               "state": 0
           }
 
-    .. data:: ROOM_RESPONSE
+    .. py:data:: ROOM_RESPONSE
        :value: 0x0105
 
        The *response* dictionary is the dictionary returned by

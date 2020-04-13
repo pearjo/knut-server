@@ -236,7 +236,7 @@ class Temperature(Events):
     The following message types *msg_id* are supported with the required
     message *msg* and their *response* with its *response_id*:
 
-    .. data:: STATUS_REQUEST
+    .. py:data:: STATUS_REQUEST
        :value: 0x0001
 
        Requests the status of a back-end. The message *msg* must have the
@@ -244,7 +244,7 @@ class Temperature(Events):
 
           {"uniqueName": "myTemperatureBackend"}
 
-    .. data:: STATUS_RESPONSE
+    .. py:data:: STATUS_RESPONSE
        :value: 0x0101
 
        The status *response* has as key the *uniqueName* of the specific
@@ -260,13 +260,13 @@ class Temperature(Events):
               }
           }
 
-    .. data:: TEMPERATURE_LIST_REQUEST
+    .. py:data:: TEMPERATURE_LIST_REQUEST
        :value: 0x0002
 
        Requests a list of all temperature back-ends with their status. The
        message *msg* for this request can be an empty dictionary.
 
-    .. data:: TEMPERATURE_LIST_RESPONSE
+    .. py:data:: TEMPERATURE_LIST_RESPONSE
        :value: 0x0102
 
        The *response* of the temperature list response is similar to
@@ -289,13 +289,13 @@ class Temperature(Events):
               }
           }
 
-    .. data:: TEMPERATURE_HISTORY_REQUEST
+    .. py:data:: TEMPERATURE_HISTORY_REQUEST
        :value: 0x0003
 
        Request the temperature history of a back-end. The message must be in
        the same format as for a :const:`STATUS_REQUEST`.
 
-    .. data:: TEMPERATURE_HISTORY_RESPONSE
+    .. py:data:: TEMPERATURE_HISTORY_RESPONSE
        :value: 0x0103
 
        The *response* is a dictionary with the keys ``'uniqueName'``, ``'time'``

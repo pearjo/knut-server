@@ -34,31 +34,31 @@ class Task(Events):
     The following message types *msg_id* are supported with the required
     message *msg* and their *response* with its *response_id*:
 
-    .. data:: REMINDER
+    .. py:data:: REMINDER
        :value: 0x0101
 
        The reminder *response* is a dictionary with the keys ``'uid'`` and
        ``'reminder'``. The corresponding values are
        :attr:`knut.services.Task.uid` and :attr:`knut.services.Task.reminder`.
 
-    .. data:: TASK_REQUEST
+    .. py:data:: TASK_REQUEST
        :value: 0x0002
 
        Requests a task. The *msg* must have the key ``'uid'``.
 
-    .. data:: TASK_RESPONSE
+    .. py:data:: TASK_RESPONSE
        :value: 0x0102
 
        The task response is the dictionary returned by
        :meth:`knut.services.Task.task()`. If the task response is send from a
        client with an empty ``'uid'``, a new task will be created.
 
-    .. data:: ALL_TASKS_REQUEST
+    .. py:data:: ALL_TASKS_REQUEST
        :value: 0x0003
 
        Requests a list of all tasks. A *msg* is not required and can be empty.
 
-    .. data:: ALL_TASKS_RESPONSE
+    .. py:data:: ALL_TASKS_RESPONSE
        :value: 0x0103
 
     Here's a small example on how to create a new task::
