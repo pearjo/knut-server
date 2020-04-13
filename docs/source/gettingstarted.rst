@@ -64,3 +64,37 @@ for the individual messages. The information flows as following:
 
       "Back-End";
    }
+
+.. _howtoservice:
+
+How to Write a Knut Service
+---------------------------
+
+As described in :ref:`howknutworks`, a service is called by an API to do some
+stuff. This stuff can be switching a light or returning the current temperature
+at some location. A service should therefore represent and implement the
+functionality of an object. If something changes in the service, it can notify
+it's controlling API by an event.
+
+.. _howtoapi:
+
+How to Write a Knut API
+-----------------------
+
+To control a Knut service, we use a Knut API. Each API **must have the following
+three things implemented**:
+
+1. An attribute called :py:attr:`serviceid` which is an integer value and
+   representing the ID of the service.
+2. A callable :py:meth:`on_push()` which needs to be called from within the API
+   with a message ID *msg_id* and a message *msg* as following::
+
+      self.on_push(self.serviceid, msg_id, msg)
+
+3. A callable :py:meth:`request_handler()` which is called by the server to
+   handle a request. It must take the positional arguments *msg_id* and *msg*
+   and returns the tuple (*response_id*, *response*)::
+
+      def request_handler(self, msg_id, msg):
+          ...
+          return response_id, response
