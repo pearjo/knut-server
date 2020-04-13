@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from knut.apis import Light
+from knut.apis import Task
 from knut.apis import Temperature
 from knut.server import KnutTcpSocket
 import argparse
@@ -106,6 +107,10 @@ def main():
 
     try:
         # load all service modules
+        # load task module
+        task = Task(socket)
+        socket.add_service(task)
+
         # load temperature module
         temp = Temperature(socket)
         socket.add_service(temp)
@@ -113,6 +118,10 @@ def main():
         # load light module
         light = Light(socket)
         socket.add_service(light)
+
+        # load tasks from file
+        task.dir = config['task']['dir']
+        task.load_tasks()
 
         # iterate over all sections, where each section name is a backend ID
         temp_service_backends = load_service_backend(config, 'temperature')

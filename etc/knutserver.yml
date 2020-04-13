@@ -2,6 +2,9 @@ socket:
   ip: 127.0.0.1
   port: 8080
 
+task:
+  dir: "~/.local/share/knut/tasks"
+
 temperature:
   localWeather:
     serviceid: 0x01

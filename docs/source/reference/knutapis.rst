@@ -3,6 +3,12 @@
 Knut APIs
 =========
 
+Task API
+--------
+
+.. autoclass:: knut.apis.Task
+   :members:
+
 Temperature API
 ---------------
 
