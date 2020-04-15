@@ -108,31 +108,34 @@ def main():
     socket = KnutTcpSocket(config['socket']['ip'], config['socket']['port'])
 
     try:
-        # load all service modules
-        # load task module
-        task = Task()
-        socket.add_service(task)
+        if 'task' in config.keys():
+            # load task module
+            task = Task()
+            socket.add_service(task)
 
-        # load temperature module
-        temp = Temperature()
-        socket.add_service(temp)
+            if 'dir' in config['task'].keys():
+                # load tasks from file
+                task.dir = config['task']['dir']
+                task.load_tasks()
 
-        # load light module
-        light = Light()
-        socket.add_service(light)
+        if 'temperature' in config.keys():
+            # load temperature module
+            temp = Temperature()
+            socket.add_service(temp)
 
-        # load tasks from file
-        task.dir = config['task']['dir']
-        task.load_tasks()
+            # iterate over all sections, where each section name is a backend ID
+            temp_service_backends = load_service_backend(config, 'temperature')
+            for temp_service_backend in temp_service_backends:
+                temp.add_backend(temp_service_backend)
 
-        # iterate over all sections, where each section name is a backend ID
-        temp_service_backends = load_service_backend(config, 'temperature')
-        for temp_service_backend in temp_service_backends:
-            temp.add_backend(temp_service_backend)
+        if 'light' in config.keys():
+            # load light module
+            light = Light()
+            socket.add_service(light)
 
-        light_service_backends = load_service_backend(config, 'light')
-        for light_service_backend in light_service_backends:
-            light.add_backend(light_service_backend)
+            light_service_backends = load_service_backend(config, 'light')
+            for light_service_backend in light_service_backends:
+                light.add_backend(light_service_backend)
 
         while True:
             time.sleep(1)
