@@ -69,7 +69,7 @@ class KnutTcpSocket():
     ``myTempSensor`` and we want to request the current status, we would need
     to send the following request from the client side::
 
-       {"seviceId": 1, "msgId": 1, "msg": {"uniqueName": "myTempSensor"}}
+       {"serviceId": 1, "msgId": 1, "msg": {"uniqueName": "myTempSensor"}}
 
     The message length of the example message is ``0x0000003e``.
 
