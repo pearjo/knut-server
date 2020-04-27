@@ -37,9 +37,19 @@ class Task(Events):
     .. py:data:: REMINDER
        :value: 0x0101
 
-       The reminder *response* is a dictionary with the keys ``'uid'`` and
-       ``'reminder'``. The corresponding values are
-       :attr:`knut.services.Task.uid` and :attr:`knut.services.Task.reminder`.
+       A message that is send as reminder. The seconds before due when the
+       reminder is send are defined by :attr:`knut.services.Task.reminder`.
+       The message has the following keys:
+
+       - ``'uid'`` unique identifier of the task :attr:`knut.services.Task.uid`
+       - ``'reminder'`` the seconds before due at which the reminder is send
+
+       Example of a reminder message::
+
+          {
+              'uid': 'f3b14c5e-8458-11ea-9daa-b88a60bd7559',
+              'reminder': 3600
+          }
 
     .. py:data:: TASK_REQUEST
        :value: 0x0002
@@ -61,6 +71,10 @@ class Task(Events):
     .. py:data:: ALL_TASKS_RESPONSE
        :value: 0x0103
 
+       The all tasks response is a dictionary with the uids of the tasks as keys
+       and the dictionary returned by :meth:`knut.services.Task.task()` as
+       values.
+
     Here's a small example on how to create a new task::
 
        from knut.apis import Task
@@ -80,6 +94,7 @@ class Task(Events):
 
     Note that there is no directory specified in the example. Therefore, the
     task would not be saved by the :class:`knut.services.Task` service.
+
     """
     NULL = 0x0000
     REMINDER = 0x0101
