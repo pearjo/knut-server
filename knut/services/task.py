@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import signal
+import threading
 import time
 import uuid
 
@@ -58,7 +59,9 @@ class Task(Events):
         """The task title."""
 
         if not self.uid:
-            self.uid = uuid.uuid1()
+            self.uid = str(uuid.uuid1())
+
+        self.__reminder_timer = None
 
         # Call on_remind as method with the uid as argument to notify
         # listening methods.
@@ -67,7 +70,7 @@ class Task(Events):
     def update_task(self, task):
         """Updates the task to the parsed *task* dictionary."""
 
-        logging.debug('Update task \'%s\'...' % str(self.uid))
+        logging.debug('Update task \'%s\'...' % self.uid)
 
         if 'assignee' in task.keys():
             self.assignee = task['assignee']
@@ -94,7 +97,12 @@ class Task(Events):
         self._save_task()
 
     def task(self):
-        """Returns the task as dictionary."""
+        """Returns the task as dictionary.
+
+        The returned dictionary has the keys ``'assignee'``, ``'author'``,
+        ``'body'``, ``'done'``, ``'due'``, ``'reminder'``, ``'title'`` and
+        ``'uid'``
+        """
         return {
             'assignee': self.assignee,
             'author': self.author,
@@ -125,10 +133,11 @@ class Task(Events):
             json.dump(self.task(), f)
 
     def _set_reminder(self):
-        def reminder_alarm(signum, frame):
+        def reminder_alarm():
             self.on_remind(self.uid)
 
-        signal.alarm(0)  # disable the alarm
+        if self.__reminder_timer:
+            self.__reminder_timer.cancel()
 
         # the time in seconds until the reminder is due
         time_from_now = int(round(self.due - self.reminder - time.time(), 0))
@@ -138,5 +147,5 @@ class Task(Events):
 
         logging.debug('Set a reminder for \'%s\' which is due in %i seconds...'
                       % (str(self.uid), time_from_now))
-        signal.signal(signal.SIGALRM, reminder_alarm)
-        signal.alarm(time_from_now)
+        self.__reminder_timer = threading.Timer(time_from_now, reminder_alarm)
+        self.__reminder_timer.start()
