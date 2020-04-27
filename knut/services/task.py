@@ -35,10 +35,10 @@ class Task(Events):
     to clients.
     """
 
-    def __init__(self, uid=None, dir=None):
+    def __init__(self, uid=None, task_dir=None):
         self.uid = uid
         """The unique id of the task."""
-        self.dir = dir
+        self.task_dir = task_dir
         """The directory where the task can be saved."""
 
         self.assignee = str()
@@ -115,17 +115,17 @@ class Task(Events):
         }
 
     def _save_task(self):
-        if not self.dir:
+        if not self.task_dir:
             logging.warning(
                 'No save directory for task \'%s\' set.' % self.uid
             )
             return
 
-        dir = os.path.expanduser(self.dir)
-        task = os.path.join(dir, '%s.json' % self.uid)
+        task_dir = os.path.expanduser(self.task_dir)
+        task = os.path.join(task_dir, '%s.json' % self.uid)
 
         try:
-            os.makedirs(dir)
+            os.makedirs(task_dir)
         except FileExistsError:
             pass
 

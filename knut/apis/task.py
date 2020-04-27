@@ -107,7 +107,7 @@ class Task(Events):
     """The task service id."""
 
     def __init__(self):
-        self.dir = str()
+        self.task_dir = str()
         """The directory where the tasks a saved."""
         self.tasks = dict()
         """A dictionary with all back-ends where the keys are the
@@ -117,19 +117,19 @@ class Task(Events):
 
         self.__events__ = ('on_push')
 
-    def load_tasks(self, dir=None):
-        """Load all tasks saved in the directory *dir*.
+    def load_tasks(self, task_dir=None):
+        """Load all tasks saved in the directory *task_dir*.
 
-        If *dir* is not provided, the tasks from the directory :attr:`dir` are
-        loaded instead.
+        If *task_dir* is not provided, the tasks from the directory
+        :attr:`task_dir` are loaded instead.
         """
-        if not dir:
-            dir = self.dir
+        if not task_dir:
+            task_dir = self.task_dir
 
-        dir = os.path.expanduser(dir)
-        tasks = glob.glob(os.path.join(dir, '*.json'))
+        task_dir = os.path.expanduser(task_dir)
+        tasks = glob.glob(os.path.join(task_dir, '*.json'))
 
-        logging.debug('Load tasks from \'%s\'...' % dir)
+        logging.debug('Load tasks from \'%s\'...' % task_dir)
 
         for task in tasks:
             with open(task) as f:
@@ -141,7 +141,7 @@ class Task(Events):
                 else:
                     logging.debug('Loading task from file \'%s\'...' % task)
                     uid = data['uid']
-                    loaded_task = knut.services.Task(uid, dir)
+                    loaded_task = knut.services.Task(uid, task_dir)
                     loaded_task.update_task(data)
                     loaded_task.on_remind += self._reminder
                     self.tasks[uid] = loaded_task
@@ -209,7 +209,7 @@ class Task(Events):
 
             if uid not in self.tasks.keys():
                 if uid == '' or uid is None:
-                    new_task = knut.services.Task(dir=self.dir)
+                    new_task = knut.services.Task(task_dir=self.task_dir)
                     new_task.update_task(msg)
                     self.tasks[new_task.uid] = new_task
 
