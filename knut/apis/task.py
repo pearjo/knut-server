@@ -184,6 +184,9 @@ class Task(Events):
 
         The *msg* must be a :const:`TASK_RESPONSE` message.
         """
+        response = dict()
+        response_id = Task.NULL
+
         if 'uid' not in msg.keys():
             logging.warning('Invalid TASK_RESPONSE received...')
         else:
@@ -194,12 +197,15 @@ class Task(Events):
                     new_task = knut.services.Task(dir=self.dir)
                     new_task.update_task(msg)
                     self.tasks[new_task.uid] = new_task
+
+                    # send a ALL_TASKS_RESPONSE after adding the new task
+                    response_id, response = self._handle_all_task_request()
                 else:
                     logging.warning('No task with the uid \'%s\' known.' % uid)
             else:
                 self.tasks[uid].update_task(msg)
 
-        return Task.NULL, dict()
+        return response_id, response
 
     def _handle_all_task_request(self):
         """Returns the tuple (ALL_TASKS_RESPONSE, *response*).
