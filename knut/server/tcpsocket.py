@@ -281,6 +281,8 @@ class KnutTcpSocket():
             logging.debug(str('Remove %s from in- and outgoing sockets...'
                               % peername))
 
+        if clientsocket == self.serversocket:
+            return
         if clientsocket in self._in_sockets:
             self._in_sockets.remove(clientsocket)
         if clientsocket in self._out_sockets:
