@@ -115,7 +115,7 @@ def main():
 
             if 'dir' in config['task'].keys():
                 # load tasks from file
-                task.dir = config['task']['dir']
+                task.task_dir = config['task']['dir']
                 task.load_tasks()
 
         if 'temperature' in config.keys():
