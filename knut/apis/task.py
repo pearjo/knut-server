@@ -233,7 +233,7 @@ class Task(Events):
         if response_id > 0:
             self.on_push(Task.serviceid, response_id, response)
 
-        return response_id, response
+        return Task.NULL, dict()
 
     def _handle_all_task_request(self):
         """Returns the tuple (ALL_TASKS_RESPONSE, *response*).
