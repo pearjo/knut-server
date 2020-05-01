@@ -75,6 +75,12 @@ class Task(Events):
        and the dictionary returned by :meth:`knut.services.Task.task()` as
        values.
 
+    .. py:data:: DELETE_TASK_REQUEST
+       :value: 0x0004
+
+       Requests to delete a task. The *msg* requires the key ``'uid'`` of the
+       task which should be deleted.
+
     Here's a small example on how to create a new task::
 
        from knut.apis import Task
@@ -102,6 +108,7 @@ class Task(Events):
     TASK_RESPONSE = 0x0102
     ALL_TASKS_REQUEST = 0x0003
     ALL_TASKS_RESPONSE = 0x0103
+    DELETE_TASK_REQUEST = 0x0004
 
     serviceid = 0x03
     """The task service id."""
@@ -166,6 +173,8 @@ class Task(Events):
             response_id, response = self._handle_task_response(msg)
         elif msg_id == Task.ALL_TASKS_REQUEST:
             response_id, response = self._handle_all_task_request()
+        elif msg_id == Task.DELETE_TASK_REQUEST:
+            response_id, response = self._handle_delete_task_request(msg)
 
         # check if the response is valid
         response_id = response_id if len(response) > 0 else Task.NULL
@@ -234,6 +243,27 @@ class Task(Events):
             response[uid] = task.task()
 
         return Task.ALL_TASKS_RESPONSE, response
+
+    def _handle_delete_task_request(self, msg):
+        """Updates deletes a task and returns the tuple (NULL, dict()).
+
+        The *msg* must be a :const:`DELETE_TASK_REQUEST` message. After deleting
+        the task, a :const:`ALL_TASKS_RESPONSE` is send with an updated list of
+        tasks.
+        """
+        if 'uid' not in msg.keys():
+            logging.warning('Invalid DELETE_TASK_REQUEST received...')
+        elif msg['uid'] in self.tasks:
+            uid = msg['uid']
+            self.tasks[uid].delete_task()
+            del self.tasks[uid]
+            # notify all clients about the changes
+            response_id, response = self._handle_all_task_request()
+            self.on_push(Task.serviceid, response_id, response)
+        else:
+            logging.warning('Can\'t delete unknown task \'%s\'...' % msg['uid'])
+
+        return Task.NULL, dict()
 
     def _reminder(self, uid):
         msg = {'uid': uid, 'reminder': self.tasks[uid].reminder}

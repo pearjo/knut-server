@@ -67,6 +67,21 @@ class Task(Events):
         # listening methods.
         self.__events__ = ('on_remind')
 
+    def delete_task(self):
+        """Deletes the task."""
+        logging.debug('Delete task \'%s\'...' % self.uid)
+
+        if not self._check_save_dir():
+            return
+
+        task_dir = os.path.expanduser(self.task_dir)
+        task = os.path.join(task_dir, '%s.json' % self.uid)
+
+        os.remove(task)
+
+        if self.__reminder_timer:
+            self.__reminder_timer.cancel()
+
     def update_task(self, task):
         """Updates the task to the parsed *task* dictionary."""
 
@@ -114,11 +129,18 @@ class Task(Events):
             'uid': self.uid
         }
 
-    def _save_task(self):
+    def _check_save_dir(self):
+        """Checks if a save directory is defined."""
         if not self.task_dir:
             logging.warning(
                 'No save directory for task \'%s\' set.' % self.uid
             )
+            return False
+        else:
+            return True
+
+    def _save_task(self):
+        if not self._check_save_dir():
             return
 
         task_dir = os.path.expanduser(self.task_dir)
