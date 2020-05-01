@@ -23,7 +23,7 @@ import threading
 import queue
 
 ENCODING = 'utf-8'
-HEARTBEAT_FREQUENCY = 0.25  # send a heartbeat every 4 seconds
+HEARTBEAT_FREQUENCY = 1  # send a heartbeat every second
 
 
 class KnutTcpSocket():
@@ -83,7 +83,7 @@ class KnutTcpSocket():
        should use its :meth:`on_push()` method for a response.
 
     .. note::
-       A :meth:`heartbeat()` is send to all connected clients every 4 seconds,
+       A :meth:`heartbeat()` is send to all connected clients every second,
        so that the client can check if it is still connected to Knut. The
        heartbeat is a message with only the message length header which has the
        value ``0x00000000``.
@@ -96,6 +96,7 @@ class KnutTcpSocket():
         self.addr = (host, port)
         self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serversocket.setblocking(0)
+        self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.serversocket.bind(self.addr)
         self.serversocket.listen(5)
 
