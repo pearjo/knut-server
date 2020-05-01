@@ -132,12 +132,10 @@ class Task(Events):
     def _check_save_dir(self):
         """Checks if a save directory is defined."""
         if not self.task_dir:
-            logging.warning(
-                'No save directory for task \'%s\' set.' % self.uid
-            )
+            logging.warning('No save directory for task \'%s\' set.' % self.uid)
             return False
-        else:
-            return True
+
+        return True
 
     def _save_task(self):
         if not self._check_save_dir():

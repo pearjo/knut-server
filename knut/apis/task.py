@@ -143,8 +143,7 @@ class Task(Events):
                 data = json.load(f)
 
                 if 'uid' not in data.keys():
-                    logging.warning(
-                        'Tried to load invalid task \'%s\'.' % task)
+                    logging.warning('Tried to load invalid task \'%s\'.' % task)
                 else:
                     logging.debug('Loading task from file \'%s\'...' % task)
                     uid = data['uid']
@@ -228,6 +227,11 @@ class Task(Events):
                     logging.warning('No task with the uid \'%s\' known.' % uid)
             else:
                 self.tasks[uid].update_task(msg)
+                response_id, response = (Task.TASK_RESPONSE,
+                                         self.tasks[uid].task())
+
+        if response_id > 0:
+            self.on_push(Task.serviceid, response_id, response)
 
         return response_id, response
 
