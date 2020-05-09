@@ -154,6 +154,7 @@ class Task(Events):
 
     def _set_reminder(self):
         def reminder_alarm():
+            logging.debug('Reminder alarm for \'%s\' triggered...' % self.uid)
             self.on_remind(self.uid)
 
         if self.__reminder_timer:

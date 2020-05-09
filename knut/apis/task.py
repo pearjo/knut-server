@@ -219,6 +219,7 @@ class Task(Events):
                 if uid == '' or uid is None:
                     new_task = knut.services.Task(task_dir=self.task_dir)
                     new_task.update_task(msg)
+                    new_task.on_remind += self._reminder
                     self.tasks[new_task.uid] = new_task
 
                     # send a ALL_TASKS_RESPONSE after adding the new task
@@ -270,5 +271,6 @@ class Task(Events):
         return Task.NULL, dict()
 
     def _reminder(self, uid):
+        logging.debug('Push reminder for \'%s\'...' % uid)
         msg = {'uid': uid, 'reminder': self.tasks[uid].reminder}
         self.on_push(Task.serviceid, Task.REMINDER, msg)
