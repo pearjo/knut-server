@@ -197,9 +197,13 @@ class KnutTcpSocket():
 
                 # add socket to output sockets
                 if in_socket not in self._out_sockets:
-                    logging.debug(str('Add %s to outgoing sockets...'
-                                      % str(in_socket.getpeername())))
-                    self._out_sockets.append(in_socket)
+                    try:
+                        logging.debug(str('Add %s to outgoing sockets...'
+                                          % str(in_socket.getpeername())))
+                        self._out_sockets.append(in_socket)
+                    except OSError as e:
+                        logging.warning('Failed to add socket to input sockets: %s'
+                                        % str(e))
 
     def _output_socket_handler(self, out_socket):
         """Handles an *out_socket* and sends message via the socket."""
