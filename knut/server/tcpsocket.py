@@ -154,25 +154,33 @@ class KnutTcpSocket():
 
     def listener(self):
         """Listen for connections and manages in- and outgoing messages."""
-        while self._in_sockets:
-            logging.info('Server is waiting for events...')
-            ready_in_sockets, ready_out_sockets, error_sockets = \
-                select.select(self._in_sockets,
-                              self._out_sockets,
-                              self._in_sockets)
+        try:
+            while self._in_sockets:
+                logging.info('Server is waiting for events...')
+                ready_in_sockets, ready_out_sockets, error_sockets = \
+                    select.select(self._in_sockets,
+                                  self._out_sockets,
+                                  self._in_sockets)
 
-            # input handler
-            for in_socket in ready_in_sockets:
-                self._input_socket_handler(in_socket)
+                # input handler
+                for in_socket in ready_in_sockets:
+                    self._input_socket_handler(in_socket)
 
-            # output handler
-            for out_socket in ready_out_sockets:
-                self._output_socket_handler(out_socket)
+                # output handler
+                for out_socket in ready_out_sockets:
+                    self._output_socket_handler(out_socket)
 
-            # error handler
-            for in_error in error_sockets:
-                logging.debug('Cleanup socket with error...')
-                self.remove_socket(in_error)
+                # error handler
+                for in_error in error_sockets:
+                    logging.debug('Cleanup socket with error...')
+                    self.remove_socket(in_error)
+        except OSError as err:
+            logging.error('OSError %s' % str(err))
+            logging.warning('Restarting listener...')
+            listener_thread = threading.Thread(target=self.listener,
+                                               name='listener_thread')
+            listener_thread.daemon = True
+            listener_thread.start()
 
     def _input_socket_handler(self, in_socket):
         """Handles an input socket *in_socket*."""
