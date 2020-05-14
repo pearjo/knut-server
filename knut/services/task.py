@@ -71,7 +71,7 @@ class Task(Events):
         """Deletes the task."""
         logging.debug('Delete task \'%s\'...' % self.uid)
 
-        if not self._check_save_dir():
+        if not self.__check_save_dir():
             return
 
         task_dir = os.path.expanduser(self.task_dir)
@@ -104,12 +104,12 @@ class Task(Events):
 
         if 'reminder' in task.keys():
             self.reminder = task['reminder']
-            self._set_reminder()
+            self.__set_reminder()
 
         if 'title' in task.keys():
             self.title = task['title']
 
-        self._save_task()
+        self.__save_task()
 
     def task(self):
         """Returns the task as dictionary.
@@ -129,7 +129,7 @@ class Task(Events):
             'uid': self.uid
         }
 
-    def _check_save_dir(self):
+    def __check_save_dir(self):
         """Checks if a save directory is defined."""
         if not self.task_dir:
             logging.warning('No save directory for task \'%s\' set.' % self.uid)
@@ -137,8 +137,8 @@ class Task(Events):
 
         return True
 
-    def _save_task(self):
-        if not self._check_save_dir():
+    def __save_task(self):
+        if not self.__check_save_dir():
             return
 
         task_dir = os.path.expanduser(self.task_dir)
@@ -152,7 +152,7 @@ class Task(Events):
         with open(task, 'w') as f:
             json.dump(self.task(), f)
 
-    def _set_reminder(self):
+    def __set_reminder(self):
         def reminder_alarm():
             logging.debug('Reminder alarm for \'%s\' triggered...' % self.uid)
             self.on_remind(self.uid)
