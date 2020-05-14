@@ -1,3 +1,4 @@
+astroplan
 coloredlogs
 events
 pytradfri[async]

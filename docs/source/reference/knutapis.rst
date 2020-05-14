@@ -23,3 +23,9 @@ Light API
 
 .. autoclass:: knut.apis.light.Room
    :members:
+
+Local API
+---------
+
+.. autoclass:: knut.apis.local.Local
+   :members:

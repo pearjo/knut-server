@@ -45,3 +45,14 @@ light:
       dimlevel: false
       color: false
       temperature: false
+
+local:
+  myHome:
+    serviceid: 0x04
+    location: Hamburg
+    module: knut.services.local
+    object: Local
+    kwargs:
+      latitude: 53.57532
+      longitude: 10.01534
+      elevation: 15

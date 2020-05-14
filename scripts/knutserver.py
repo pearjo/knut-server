@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from knut.apis import Light
+from knut.apis import Local
 from knut.apis import Task
 from knut.apis import Temperature
 from knut.server import KnutTcpSocket
@@ -88,7 +89,7 @@ def main():
         description='Runs the Knut server and all configured services.'
     )
     parser.add_argument('--log', dest='logLevel', choices=LOGLEVELS,
-                        default=LOGLEVELS[0],
+                        default=LOGLEVELS[2],
                         help='Set the logging level')
     parser.add_argument('--conf', dest='configFile',
                         default='/etc/knut/knutserver.yml',
@@ -136,6 +137,15 @@ def main():
             light_service_backends = load_service_backend(config, 'light')
             for light_service_backend in light_service_backends:
                 light.add_backend(light_service_backend)
+
+        if 'local' in config.keys():
+            # load local module
+            local = Local()
+            socket.add_service(local)
+
+            local_service_locations = load_service_backend(config, 'local')
+            for local_service_location in local_service_locations:
+                local.set_local(local_service_location)
 
         while True:
             time.sleep(1)

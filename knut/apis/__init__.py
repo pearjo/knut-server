@@ -16,5 +16,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from knut.apis.light import Light
+from knut.apis.local import Local
 from knut.apis.task import Task
 from knut.apis.temperature import Temperature
