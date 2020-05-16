@@ -50,6 +50,17 @@ master_doc = 'index'
 
 needs_sphinx = '2.4'
 
+# -- Options for autodoc -----------------------------------------------------
+
+# This value contains a list of modules to be mocked up.
+autodoc_mock_imports = [
+    'astroplan',
+    'astropy',
+    'events',
+    'pytradfri',
+    'rpi-rf'
+]
+
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
