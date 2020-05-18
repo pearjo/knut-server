@@ -23,8 +23,8 @@ copyright = '2020, Joe Pearson'
 author = 'Joe Pearson'
 
 # The full version, including alpha/beta/rc tags
-release = knut.__version__
-
+version = knut.__version__
+release = version
 
 # -- General configuration ---------------------------------------------------
 
@@ -57,8 +57,9 @@ autodoc_mock_imports = [
     'astroplan',
     'astropy',
     'events',
+    'numpy',
     'pytradfri',
-    'rpi-rf'
+    'rpi_rf'
 ]
 
 # -- Options for HTML output -------------------------------------------------
@@ -71,7 +72,7 @@ html_theme_options = {
     'canonical_url': '',
     'analytics_id': '',  #  Provided by Google in your dashboard
     'logo_only': True,
-    'display_version': False,
+    'display_version': True,
     'prev_next_buttons_location': 'bottom',
     'style_external_links': False,
     'style_nav_header_background': '#efefef',

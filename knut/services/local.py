@@ -16,9 +16,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from astroplan import Observer
+from astropy.time import Time
 from events import Events
 import astropy
 import logging
+import numpy
 import threading
 import time
 
@@ -108,7 +110,7 @@ class Local(Events):
 
     def __get_sun_rise_and_set(self):
         """Gets the next sun rise and set time."""
-        astro_time = astropy.time.Time(time.time(), format='unix')
+        astro_time = Time(time.time(), format='unix')
         sun_rise_time = self.observer.sun_rise_time(astro_time, 'next')
         sun_set_time = self.observer.sun_set_time(astro_time, 'next')
 
@@ -150,6 +152,10 @@ class Local(Events):
 
     def __update_daylight(self):
         """Updates the :attr:`is_daylight` attribute."""
+        if (self.sunset or self.sunrise) is numpy.nan:
+            logging.warning("Invalid sun set or rise...")
+            return
+
         # if the next sun set is before the next sun rise and the current time
         # is before the sun set, it must be day light at the moment
         if self.sunset < self.sunrise and time.time() < self.sunset:
