@@ -85,7 +85,7 @@ class Local(Events):
 
         logging.debug('Received local request.')
 
-        if msg_id == LOCAL.LOCAL_REQUEST:
+        if msg_id == Local.LOCAL_REQUEST:
             response_id, response = Local.LOCAL_RESPONSE, self.local.local()
 
         return response_id, response
