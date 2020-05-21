@@ -8,6 +8,7 @@ os:
 
 # command to install dependencies
 install:
+  - pip install numpy>=1.16.0
   - pip install -r requirements.txt
   - pip install .
 
