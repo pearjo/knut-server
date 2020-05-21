@@ -110,12 +110,17 @@ class Local(Events):
 
     def __get_sun_rise_and_set(self):
         """Gets the next sun rise and set time."""
-        astro_time = Time(time.time(), format='unix')
+        # Try to get for now and in one hour the next sun rise and set. In
+        # spring the next sun set can takes more than on day when trying to get
+        # the next sun set when currently the sun is setting. This would lead to
+        # an NaN value and therefore the second check in one hour needs to be
+        # done.
+        astro_time = Time([time.time(), time.time() + 3600], format='unix')
         sun_rise_time = self.observer.sun_rise_time(astro_time, 'next')
         sun_set_time = self.observer.sun_set_time(astro_time, 'next')
 
-        self.sunrise = sun_rise_time.unix
-        self.sunset = sun_set_time.unix
+        self.sunrise = sun_rise_time.min().unix
+        self.sunset = sun_set_time.min().unix
 
         logging.debug('Next sun rise is at %f and the next sun set at %f...'
                       % (self.sunrise, self.sunset))
@@ -152,10 +157,6 @@ class Local(Events):
 
     def __update_daylight(self):
         """Updates the :attr:`is_daylight` attribute."""
-        if (self.sunset or self.sunrise) is numpy.nan:
-            logging.warning("Invalid sun set or rise...")
-            return
-
         # if the next sun set is before the next sun rise and the current time
         # is before the sun set, it must be day light at the moment
         if self.sunset < self.sunrise and time.time() < self.sunset:
