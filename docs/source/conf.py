@@ -77,6 +77,7 @@ html_theme_options = {
     'github_user': 'pearjo',
     'logo': 'knut.png',
     'logo_name': True,
+    'note_bg': '#FFF8E1',
     'page_width': 'max-content',
     'show_powered_by': False,
     'travis_button': True
