@@ -1,6 +1,7 @@
 # build directories
-build/
+.pytype/
 __pycache__/
+build/
 
 # user environments
 *env
