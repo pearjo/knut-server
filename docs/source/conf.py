@@ -33,7 +33,8 @@ release = version
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.graphviz'
+    'sphinx.ext.graphviz',
+    'sphinx_copybutton'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -49,6 +50,9 @@ exclude_patterns = []
 master_doc = 'index'
 
 needs_sphinx = '2.4'
+
+# Strip and configure input prompts for code cells
+copybutton_prompt_text = ">>> "
 
 # -- Options for autodoc -----------------------------------------------------
 
@@ -77,7 +81,7 @@ html_theme_options = {
     'github_user': 'pearjo',
     'logo': 'knut.png',
     'logo_name': True,
-    'note_bg': '#FFF8E1',
+    'note_bg': '#fff3cd',
     'page_width': 'max-content',
     'show_powered_by': False,
     'travis_button': True
