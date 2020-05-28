@@ -15,6 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
+from astroplan import download_IERS_A
 from astroplan import Observer
 from astropy.time import Time
 from events import Events
@@ -68,7 +69,9 @@ class Local(Events):
         self.unique_name = unique_name
         """The unique name of the location service."""
 
-        self.__daylight_timer = None  # used to update the is_daylight attribute
+        self.__daylight_timer = None  # used to update is_daylight
+
+        download_IERS_A()  # update IERS Bulletin A table
 
         self.update_observer()
         self.__events__ = ('on_change')
@@ -153,6 +156,7 @@ class Local(Events):
                       % (self.unique_name, time_from_now))
 
         self.__daylight_timer = threading.Timer(time_from_now, update_alarm)
+        self.__daylight_timer.daemon = True
         self.__daylight_timer.start()
 
     def __update_daylight(self):
