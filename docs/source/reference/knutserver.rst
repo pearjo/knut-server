@@ -3,5 +3,10 @@
 Knut Server
 ===========
 
-.. autoclass:: knut.server.KnutTcpSocket
+.. autoclass:: knut.server.KnutTCPServer
    :members:
+
+.. autoclass:: knut.server.tcpserver.KnutTCPRequestHandler
+   :members:
+
+.. autofunction:: knut.server.tcpserver.knutmsg_builder

@@ -20,12 +20,12 @@ from knut.apis import Light
 from knut.apis import Local
 from knut.apis import Task
 from knut.apis import Temperature
-from knut.server import KnutTcpSocket
+from knut.server import KnutTCPServer
 import argparse
 import coloredlogs
 import logging
 import sys
-import time
+import threading
 import yaml
 
 # global constants
@@ -105,14 +105,14 @@ def main():
     # load config
     config = load_config(args.configFile)
 
-    # initialize the Knut TCP server socket
-    socket = KnutTcpSocket(config['socket']['ip'], config['socket']['port'])
+    # initialize the Knut server
+    server = KnutTCPServer((config['socket']['ip'], config['socket']['port']))
 
     try:
         if 'task' in config.keys():
             # load task module
             task = Task()
-            socket.add_service(task)
+            server.add_api(task)
 
             if 'dir' in config['task'].keys():
                 # load tasks from file
@@ -122,7 +122,7 @@ def main():
         if 'temperature' in config.keys():
             # load temperature module
             temp = Temperature()
-            socket.add_service(temp)
+            server.add_api(temp)
 
             # iterate over all sections, where each section name is a backend ID
             temp_service_backends = load_service_backend(config, 'temperature')
@@ -132,7 +132,7 @@ def main():
         if 'light' in config.keys():
             # load light module
             light = Light()
-            socket.add_service(light)
+            server.add_api(light)
 
             light_service_backends = load_service_backend(config, 'light')
             for light_service_backend in light_service_backends:
@@ -141,17 +141,22 @@ def main():
         if 'local' in config.keys():
             # load local module
             local = Local()
-            socket.add_service(local)
+            server.add_api(local)
 
             local_service_locations = load_service_backend(config, 'local')
             for local_service_location in local_service_locations:
                 local.set_local(local_service_location)
 
-        while True:
-            time.sleep(1)
+        with server:
+            logging.debug('Start server on: {}'.format(server.server_address))
+            server_thread = threading.Thread(target=server.serve_forever)
+            server_thread.daemon = True
+            server_thread.start()
+            server_thread.join()
     except KeyboardInterrupt:
-        logging.debug('Close open server sockets.')
-        socket.exit()
+        logging.debug('Shutting down server...')
+        server.shutdown()
+        logging.debug('Cheerio!')
         sys.exit(0)
 
 
