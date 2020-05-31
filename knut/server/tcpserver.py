@@ -37,8 +37,7 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
     :meth:`heartbeat()` for more about the heartbeat."""
 
     def __init__(self, request, client_address, server):
-        self.msg_queue = queue.Queue()
-        """The message queue for outgoing messages."""
+        self.__msg_queue = queue.Queue()
 
         self.send_heartbeat = True
         """If true, :meth:`heartbeat()` is called with a frequency of
@@ -152,15 +151,15 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
         Puts the *msg* to the :attr:`msg_queue` and sends all messages form the
         queue until its empty.
         """
-        self.msg_queue.put(msg)
+        self.__msg_queue.put(msg)
 
-        while not self.msg_queue.empty():
+        while not self.__msg_queue.empty():
             try:
                 # get next message from the queue
-                next_msg = self.msg_queue.get_nowait()
+                next_msg = self.__msg_queue.get_nowait()
 
                 # don't log heartbeats
-                if next_msg != b'\00':
+                if next_msg != b'\x00':
                     logging.debug('Send message from queue to client: {}'
                                   .format(self.client_address))
 
