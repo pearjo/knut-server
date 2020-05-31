@@ -148,7 +148,7 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
     def send_queued(self, msg: bytearray) -> None:
         """Sends a queued message.
 
-        Puts the *msg* to the :attr:`msg_queue` and sends all messages form the
+        Puts the *msg* to the message queue and sends all messages form the
         queue until its empty.
         """
         self.__msg_queue.put(msg)
