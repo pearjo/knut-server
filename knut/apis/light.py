@@ -16,6 +16,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from events import Events
+from knut.apis import KnutAPI
 import knut.services
 import logging
 
@@ -100,141 +101,145 @@ class Room(Events):
             self.on_push(Room.serviceid, Light.ROOM_RESPONSE, self.status())
 
 
-class Light(Events):
-    """Knut light API.
+class Light(KnutAPI):
+    """This class allows interaction with the light service. The following message
+    types are handled by the ``request_handler()``:
 
-    The light object has a dictionary :attr:`backends` of all available
-    back-ends. A back-end can be added using :meth:`add_backend()`.  To interact
-    with the back-ends, this API has as request handler method
-    :meth:`request_handler()`. Using this method, requests can be send to the
-    back-ends to get e.g. the status of all lights.
+    - :const:`STATUS_REQUEST`
+    - :const:`STATUS_RESPONSE`
+    - :const:`LIGHTS_REQUEST`
+    - :const:`ALL_LIGHTS_REQUEST`
+    - :const:`ALL_LIGHTS_RESPONSE`
+    - :const:`ROOMS_LIST_REQUEST`
+    - :const:`ROOM_REQUEST`
 
-    The following message types *msg_id* are supported with the required
-    message *msg* and their *response* with its *response_id*:
+    This class can interact with all service back-ends that are registered in
+    the dictionary :attr:`backends`. Those are add using the
+    :meth:`add_backend()` method. Each light service back-end add to the
+    dictionary should subclass the :class:`knut.services.Light` class.
 
     .. py:data:: STATUS_REQUEST
        :value: 0x0001
 
-       Requests the status of a back-end. The message *msg* must have the
-       key *uniqueName*. For example::
+       Requests the status of a back-end. The message must have the key
+       ``'uniqueName'`` with the unique name of the requested back-end as
+       value. For example::
 
-          {"uniqueName": "myLightBackend"}
+          {'uniqueName': 'myLightBackend'}
 
     .. py:data:: STATUS_RESPONSE
        :value: 0x0101
 
-       The status *response* is the dictionary returned by :meth:`status()`.
-       For example::
+       The status of a back-end. Content of the dictionary is the return value
+       of the ``status()`` method. See :meth:`status()` for details .
+       Following an example response::
 
           {
-              "uniqueName": "myLightBackend",
-              "location": "Somewhere in a room...",
-              "room": "Some room",
-              "state": false,
-              "hasTemperature": true,
-              "hasDimlevel": true,
-              "hasColor": false,
-              "temperature": 100,
-              "colorCold": "#f5faf6",
-              "colorWarm": "#efd275",
-              "dimlevel": 50,
-              "color": ""
+              'uniqueName': 'myLightBackend',
+              'location': 'Somewhere in a room...',
+              'room': 'Some room',
+              'state': False,
+              'hasTemperature': True,
+              'hasDimlevel': True,
+              'hasColor': False,
+              'temperature': 100,
+              'colorCold': '#f5faf6',
+              'colorWarm': '#efd275',
+              'dimlevel': 50,
+              'color': ''
           }
 
     .. py:data:: LIGHTS_REQUEST
        :value: 0x0002
 
-       Requests the status of all back-ends. The message *msg* can be emtpy.
+       Requests the status of all back-ends. No message is required.
 
     .. py:data:: LIGHTS_RESPONSE
        :value: 0x0102
 
-       The *response* of the lights response is similar to the
-       :const:`STATUS_RESPONSE`, only with all known back-ends that are in
-       :attr:`backends`. For example::
+       This response is similar to the :const:`STATUS_RESPONSE`, only with all
+       known back-ends that are in :attr:`backends`. For example::
 
           {
-              "myLightBackend1": {
-                  "location": "Somewhere in a room...",
-                  "room": "Some room",
-                  "state": false,
-                  "hasTemperature": true,
-                  "hasDimlevel": true,
-                  "hasColor": false,
-                  "temperature": 100,
-                  "colorCold": "#f5faf6",
-                  "colorWarm": "#efd275",
-                  "dimlevel": 50,
-                  "color": ""
+              'myLightBackend1': {
+                  'location': 'Somewhere in a room...',
+                  'room': 'Some room',
+                  'state': False,
+                  'hasTemperature': True,
+                  'hasDimlevel': True,
+                  'hasColor': False,
+                  'temperature': 100,
+                  'colorCold': '#f5faf6',
+                  'colorWarm': '#efd275',
+                  'dimlevel': 50,
+                  'color': ''
               },
-              "myLightBackend1": {
-                  "location": "Somewhere else in a room...",
-                  "room": "Some other room",
-                  "state": true,
-                  "hasTemperature": true,
-                  "hasDimlevel": true,
-                  "hasColor": false,
-                  "temperature": 100,
-                  "colorCold": "#f5faf6",
-                  "colorWarm": "#efd275",
-                  "dimlevel": 50,
-                  "color": ""
+              'myLightBackend1': {
+                  'location': 'Somewhere else in a room...',
+                  'room': 'Some other room',
+                  'state': True,
+                  'hasTemperature': True,
+                  'hasDimlevel': True,
+                  'hasColor': False,
+                  'temperature': 100,
+                  'colorCold': '#f5faf6',
+                  'colorWarm': '#efd275',
+                  'dimlevel': 50,
+                  'color': ''
               }
           }
 
     .. py:data:: ALL_LIGHTS_REQUEST
        :value: 0x0003
 
-       Requests the combined state of all lights. The message *msg* can be
-       emtpy.
+       Requests the combined state of all lights. No message is required.
 
     .. py:data:: ALL_LIGHTS_RESPONSE
        :value: 0x0103
 
-       The all lights *response* is a dictionary with the key ``'state'``, where
-       *0* is all lights off, *1* all lights on and *0.5* where neither all
-       lights are on nor off. A client can send this response to switch all
-       lights on or off. For example::
+       The response is a dictionary with the key ``'state'``, where the value
+       *0* is all lights off and *1* all lights on. If the value is *0.5*,
+       neither all lights are on nor off. If this message is incoming, the
+       values *0* and *1* can only be set. For example::
 
-          {"state": 1.0}
+          {'state': 1.0}
 
     .. py:data:: ROOMS_LIST_REQUEST
        :value: 0x0004
 
-       Requests a list of all rooms with their state. The message *msg* can
-       be emtpy.
+       Requests a list of all rooms with their state. No message is required.
 
     .. py:data:: ROOMS_LIST_RESPONSE
        :value: 0x0104
 
-       The rooms list *response* is a dictionary with the unique names of
-       the rooms as keys and the :attr:`knut.apis.light.Room.state` as values::
+       This response is a dictionary with the unique names of the rooms as keys
+       and their state as values. The possible states are analog to the
+       :const:`ALL_LIGHTS_RESPONSE` values::
 
           {
-              "myRoom1": 0.5,
-              "myRoom2": 0.0
+              'myRoom1': 0.5,
+              'myRoom2': 0.0
           }
 
     .. py:data:: ROOM_REQUEST
        :value: 0x0005
 
-       Requests to set the :attr:`knut.apis.light.Room.state` for a room.  The
-       keys ``'room'`` and ``'state'`` are required, where only the states *0*
-       and *1* are applied. A request should look like::
+       Requests to set the state for a room. The keys ``'room'`` and ``'state'``
+       are required, where only the states *0* and *1* are applied. For
+       example::
 
           {
-              "room": "myRoom1",
-              "state": 0
+              'room': 'myRoom1',
+              'state': 0
           }
 
     .. py:data:: ROOM_RESPONSE
        :value: 0x0105
 
-       The *response* dictionary is the dictionary returned by
-       :meth:`knut.apis.light.Room.status()`
+       The response dictionary has the same entries as the message of the
+       :const:`ROOM_REQUEST`.
 
     """
-    NULL = 0x0000
     STATUS_REQUEST = 0x0001
     STATUS_RESPONSE = 0x0101
     LIGHTS_REQUEST = 0x0002
@@ -247,20 +252,30 @@ class Light(Events):
     ROOM_RESPONSE = 0x0105
 
     serviceid = 0x02
-    """The light service id."""
+    """The light service identifier."""
 
     def __init__(self):
+        super(Light, self).__init__()
+        self.supported = {
+            Light.STATUS_REQUEST: self.__handle_status_request,
+            Light.STATUS_RESPONSE: self.__handle_status_response,
+            Light.LIGHTS_REQUEST: self.__handle_lights_request,
+            Light.ALL_LIGHTS_REQUEST: self.__handle_all_lights_request,
+            Light.ALL_LIGHTS_RESPONSE: self.__handle_all_lights_response,
+            Light.ROOMS_LIST_REQUEST: self.__handle_rooms_list_request,
+            Light.ROOM_REQUEST: self.__handle_room_request
+        }
+
         self.backends = dict()
         """A dictionary with all back-ends where the keys are the
-        :attr:`knut.services.Temperature.unique_name` and the values are the
-        corresponding light objects :class:`knut.services.Light`
+        unique names of the back-ends and the values are the
+        corresponding light objects :class:`knut.services.Light`.
         """
         self.rooms = dict()
         self.light_state_all = float()
-        self.__events__ = ('on_push')
 
     def add_backend(self, backend):
-        """Adds the *backend* to :attr:`backends`."""
+        """Adds the *backend* to the :attr:`backends` dictionary."""
         if not all([hasattr(backend, 'has_temperature'),
                     hasattr(backend, 'has_color'),
                     hasattr(backend, 'has_dimlevel'),
@@ -307,37 +322,8 @@ class Light(Events):
                          {'state': self.light_state_all})
 
     def request_handler(self, msg_id, msg):
-        """Returns the tuple (*response_id*, *response*) upon a request.
-
-        Handles the requested *msg* of type *msg_id* and returns a *response* of
-        type *response_id*. The following *msg_id* are handled:
-
-        - :const:`STATUS_REQUEST`
-        - :const:`STATUS_RESPONSE`
-        - :const:`LIGHTS_REQUEST`
-        - :const:`ALL_LIGHTS_REQUEST`
-        - :const:`ALL_LIGHTS_RESPONSE`
-        - :const:`ROOMS_LIST_REQUEST`
-        - :const:`ROOM_REQUEST`
-        """
-        response = dict()
-        response_id = Light.NULL
-        logging.debug('Received light request.')
-
-        if msg_id == Light.STATUS_REQUEST:
-            response_id, response = self._handle_status_request(msg)
-        elif msg_id == Light.LIGHTS_REQUEST:
-            response_id, response = self._handle_lights_request(msg)
-        elif msg_id == Light.STATUS_RESPONSE:
-            response_id, response = self._handle_status_response(msg)
-        elif msg_id == Light.ALL_LIGHTS_REQUEST:
-            response_id, response = self._handle_all_lights_request(msg)
-        elif msg_id == Light.ALL_LIGHTS_RESPONSE:
-            response_id, response = self._handle_all_lights_response(msg)
-        elif msg_id == Light.ROOMS_LIST_REQUEST:
-            response_id, response = self._handle_rooms_list_request(msg)
-        elif msg_id == Light.ROOM_REQUEST:
-            response_id, response = self._handle_room_request(msg)
+        # override of the request_handler
+        response_id, response = super(Light, self).request_handler(msg_id, msg)
 
         self.fetch()  # update light_state_all
 
@@ -347,8 +333,9 @@ class Light(Events):
         return response_id, response
 
     def notifier(self, unique_name):
-        """Pushes the :meth:`status()` of *unique_name* to all listeners of the
-        :meth:`on_push()` event."""
+        """Pushes the :meth:`status()` of the back-end with the *unique_name* to all
+        listeners of the ``on_push()`` event.
+        """
         # update room in which the light is located
         light = self.backends[unique_name]
         self.rooms[light.room].fetch()
@@ -361,12 +348,24 @@ class Light(Events):
     def status(self, unique_name):
         """Returns the status information of the light *unique_name*.
 
-        The status dictionary has the following keys ``'color'``,
-        ``'colorCold'``, ``'colorWarm'``, ``'dimlevel'``, ``'hasColor'``,
-        ``'hasDimlevel'``, ``'hasTemperature'``, ``'location'``, ``'room'``,
-        ``'state'``, ``'temperature'`` and ``'uniqueName'``. Each of the keys is
-        an attribute of the :class:`knut.services.Light` class. All attributes
-        are documented further in the light service itself.
+        The status dictionary has the following keys:
+
+        - ``'color'``
+        - ``'colorCold'``
+        - ``'colorWarm'``
+        - ``'dimlevel'``
+        - ``'hasColor'``
+        - ``'hasDimlevel'``
+        - ``'hasTemperature'``
+        - ``'location'``
+        - ``'room'``
+        - ``'state'``
+        - ``'temperature'``
+        - ``'uniqueName'``
+
+        See the documentation of the :class:`knut.services.Light` class for more
+        information the value of each key.
+
         """
         light = self.backends[unique_name]
         return {
@@ -384,7 +383,7 @@ class Light(Events):
             'color': light.color if light.has_color else str()
         }
 
-    def _handle_status_request(self, msg):
+    def __handle_status_request(self, msg):
         response = dict()
         response_id = Light.NULL
 
@@ -397,7 +396,7 @@ class Light(Events):
 
         return response_id, response
 
-    def _handle_lights_request(self, msg):
+    def __handle_lights_request(self, _):
         response = dict()
         response_id = Light.LIGHTS_RESPONSE
 
@@ -406,7 +405,7 @@ class Light(Events):
 
         return response_id, response
 
-    def _handle_status_response(self, msg):
+    def __handle_status_response(self, msg):
         response = dict()
         response_id = Light.NULL
 
@@ -424,10 +423,10 @@ class Light(Events):
 
         return response_id, response
 
-    def _handle_all_lights_request(self, msg):
+    def __handle_all_lights_request(self, _):
         return Light.ALL_LIGHTS_RESPONSE, {'state': self.light_state_all}
 
-    def _handle_all_lights_response(self, msg):
+    def __handle_all_lights_response(self, msg):
         try:
             state = msg['state']
 
@@ -444,7 +443,7 @@ class Light(Events):
         # no response will be send since fetch() sends one
         return Light.NULL, dict()
 
-    def _handle_room_request(self, msg):
+    def __handle_room_request(self, msg):
         room = msg['room']
         state = msg['state']
         self.rooms[room].switch(state)
@@ -455,7 +454,7 @@ class Light(Events):
 
         return Light.ROOM_RESPONSE, self.rooms[room].status()
 
-    def _handle_rooms_list_request(self, msg):
+    def __handle_rooms_list_request(self, _):
         response = dict()
         for room_name, room in self.rooms.items():
             response[room_name] = room.state
