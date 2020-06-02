@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from events import Events
+from knut.apis import KnutAPI
 import glob
 import json
 import knut.services
@@ -23,16 +23,18 @@ import logging
 import os
 
 
-class Task(Events):
-    """Knut task API.
+class Task(KnutAPI):
+    """This class allows interaction with the task service. The following message
+    types are handled by the ``request_handler()`` of the superclass:
 
-    The task API has the dictionary :attr:`task` as attribute where all tasks
-    are stored in. Using :meth:`load_tasks()`, the :attr:`tasks` dictionary can
-    be filled with tasks that are stored in a directory :attr:`dir`. Using the
-    :meth:`request_handler()`, tasks can be e.g. read or created.
+    - :const:`TASK_REQUEST`
+    - :const:`TASK_RESPONSE`
+    - :const:`ALL_TASKS_REQUEST`
+    - :const:`DELETE_TASK_REQUEST`
 
-    The following message types *msg_id* are supported with the required
-    message *msg* and their *response* with its *response_id*:
+    The dictionary :attr:`task` stores all tasks. Using :meth:`load_tasks()`,
+    the dictionary can be filled with tasks that are stored in a local directory
+    :attr:`task_dir`.
 
     .. py:data:: REMINDER
        :value: 0x0101
@@ -54,32 +56,37 @@ class Task(Events):
     .. py:data:: TASK_REQUEST
        :value: 0x0002
 
-       Requests a task. The *msg* must have the key ``'uid'``.
+       Requests the task matching an identifier passed by the message. The key
+       ``'uid'`` is required.
 
     .. py:data:: TASK_RESPONSE
        :value: 0x0102
 
        The task response is the dictionary returned by
-       :meth:`knut.services.Task.task()`. If the task response is send from a
-       client with an empty ``'uid'``, a new task will be created.
+       :meth:`knut.services.Task.task()`. If the task response is received by
+       the request handler with an empty ``'uid'``, a new task will be created.
 
     .. py:data:: ALL_TASKS_REQUEST
        :value: 0x0003
 
-       Requests a list of all tasks. A *msg* is not required and can be empty.
+       Requests a list of all tasks. No message is required.
 
     .. py:data:: ALL_TASKS_RESPONSE
        :value: 0x0103
 
-       The all tasks response is a dictionary with the uids of the tasks as keys
+       The response is a dictionary with the uids of all tasks as keys
        and the dictionary returned by :meth:`knut.services.Task.task()` as
        values.
 
     .. py:data:: DELETE_TASK_REQUEST
        :value: 0x0004
 
-       Requests to delete a task. The *msg* requires the key ``'uid'`` of the
-       task which should be deleted.
+       Requests to delete a task. The message requires the key ``'uid'`` with
+       the identifier of the task which should be deleted. For example, to
+       delete the task of the :const:`REMINDER` example, the message should like
+       the following::
+
+          {'uid': 'f3b14c5e-8458-11ea-9daa-b88a60bd7559'}
 
     Here's a small example on how to create a new task::
 
@@ -99,10 +106,9 @@ class Task(Events):
        task_api.request_handler(Task.TASK_RESPONSE, my_task)
 
     Note that there is no directory specified in the example. Therefore, the
-    task would not be saved by the :class:`knut.services.Task` service.
+    task would not be saved by the task service.
 
     """
-    NULL = 0x0000
     REMINDER = 0x0101
     TASK_REQUEST = 0x0002
     TASK_RESPONSE = 0x0102
@@ -111,18 +117,26 @@ class Task(Events):
     DELETE_TASK_REQUEST = 0x0004
 
     serviceid = 0x03
-    """The task service id."""
+    """The task service identifier."""
 
     def __init__(self):
+        super(Task, self).__init__()
+
+        self.supported = {
+            Task.TASK_REQUEST: self.__handle_task_request,
+            Task.TASK_RESPONSE: self.__handle_task_response,
+            Task.ALL_TASKS_REQUEST: self.__handle_all_task_request,
+            Task.DELETE_TASK_REQUEST: self.__handle_delete_task_request
+        }
+
         self.task_dir = str()
         """The directory where the tasks a saved."""
+
         self.tasks = dict()
         """A dictionary with all back-ends where the keys are the
         :attr:`knut.services.Task.uid` and the values are the corresponding task
         objects :class:`knut.services.Task`
         """
-
-        self.__events__ = ('on_push')
 
     def load_tasks(self, task_dir=None):
         """Load all tasks saved in the directory *task_dir*.
@@ -149,43 +163,10 @@ class Task(Events):
                     uid = data['uid']
                     loaded_task = knut.services.Task(uid, task_dir)
                     loaded_task.update_task(data)
-                    loaded_task.on_remind += self._reminder
+                    loaded_task.on_remind += self.__reminder
                     self.tasks[uid] = loaded_task
 
-    def request_handler(self, msg_id, msg):
-        """Returns the tuple (*response_id*, *response*) upon a request.
-
-        The following messages *msg* with their *msg_id* can be send by a client
-        and will be handled:
-
-        - :const:`TASK_REQUEST`
-        - :const:`TASK_RESPONSE`
-        - :const:`ALL_TASKS_REQUEST`
-        """
-        response = dict()
-        response_id = Task.NULL
-        logging.debug('Received a task request.')
-
-        if msg_id == Task.TASK_REQUEST:
-            response_id, response = self._handle_task_request(msg)
-        elif msg_id == Task.TASK_RESPONSE:
-            response_id, response = self._handle_task_response(msg)
-        elif msg_id == Task.ALL_TASKS_REQUEST:
-            response_id, response = self._handle_all_task_request()
-        elif msg_id == Task.DELETE_TASK_REQUEST:
-            response_id, response = self._handle_delete_task_request(msg)
-
-        # check if the response is valid
-        response_id = response_id if len(response) > 0 else Task.NULL
-
-        return response_id, response
-
-    def _handle_task_request(self, msg):
-        """Returns the tuple (TASK_RESPONSE, *response*).
-
-        Handles a TASK_RESPONSE. The *response* is the dictionary returned by
-        :meth:`knut.services.Task.task()`.
-        """
+    def __handle_task_request(self, msg):
         response = dict()
         response_id = Task.NULL
 
@@ -202,11 +183,7 @@ class Task(Events):
 
         return response_id, response
 
-    def _handle_task_response(self, msg):
-        """Updates a task and returns the tuple (NULL, dict()).
-
-        The *msg* must be a :const:`TASK_RESPONSE` message.
-        """
+    def __handle_task_response(self, msg):
         response = dict()
         response_id = Task.NULL
 
@@ -219,11 +196,11 @@ class Task(Events):
                 if uid == '' or uid is None:
                     new_task = knut.services.Task(task_dir=self.task_dir)
                     new_task.update_task(msg)
-                    new_task.on_remind += self._reminder
+                    new_task.on_remind += self.__reminder
                     self.tasks[new_task.uid] = new_task
 
                     # send a ALL_TASKS_RESPONSE after adding the new task
-                    response_id, response = self._handle_all_task_request()
+                    response_id, response = self.__handle_all_task_request(msg)
                 else:
                     logging.warning('No task with the uid \'%s\' known.' % uid)
             else:
@@ -236,7 +213,7 @@ class Task(Events):
 
         return Task.NULL, dict()
 
-    def _handle_all_task_request(self):
+    def __handle_all_task_request(self, _msg):
         """Returns the tuple (ALL_TASKS_RESPONSE, *response*).
 
         The *response* is a dictionary with the :attr:`tasks` keys as keys
@@ -249,13 +226,7 @@ class Task(Events):
 
         return Task.ALL_TASKS_RESPONSE, response
 
-    def _handle_delete_task_request(self, msg):
-        """Updates deletes a task and returns the tuple (NULL, dict()).
-
-        The *msg* must be a :const:`DELETE_TASK_REQUEST` message. After deleting
-        the task, a :const:`ALL_TASKS_RESPONSE` is send with an updated list of
-        tasks.
-        """
+    def __handle_delete_task_request(self, msg):
         if 'uid' not in msg.keys():
             logging.warning('Invalid DELETE_TASK_REQUEST received...')
         elif msg['uid'] in self.tasks:
@@ -263,14 +234,14 @@ class Task(Events):
             self.tasks[uid].delete_task()
             del self.tasks[uid]
             # notify all clients about the changes
-            response_id, response = self._handle_all_task_request()
+            response_id, response = self.__handle_all_task_request(msg)
             self.on_push(Task.serviceid, response_id, response)
         else:
             logging.warning('Can\'t delete unknown task \'%s\'...' % msg['uid'])
 
         return Task.NULL, dict()
 
-    def _reminder(self, uid):
+    def __reminder(self, uid):
         logging.debug('Push reminder for \'%s\'...' % uid)
         msg = {'uid': uid, 'reminder': self.tasks[uid].reminder}
         self.on_push(Task.serviceid, Task.REMINDER, msg)
