@@ -16,19 +16,22 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from events import Events
+from knut.apis import KnutAPI
 import knut.services
 import logging
 
 
-class Local(Events):
-    """Knut local API.
+class Local(KnutAPI):
+    """This class allows interaction with the local service. The following message
+    types are handled by the ``request_handler()`` method of the superclass:
 
-    To interact with the local service, this API has as request handler method
-    :meth:`request_handler()`. Using this method, requests can be send to the
-    service to get e.g. information about the next sun rise.
+    - ``LOCAL_REQUEST``
+    - ``LOCAL_RESPONSE``
 
-    The following message types *msg_id* are supported with the required
-    message *msg* and their *response* with its *response_id*:
+    This class can only be connected to one :attr:`local` service by setting it
+    using the :meth:`set_local()` method. The ``on_change()`` event of the
+    service is connected to the :meth:`notifier()` method, which triggers the
+    ``on_push()`` event with a ``LOCAL_RESPONSE``.
 
     .. py:data:: LOCAL_REQUEST
        :value: 0x0001
@@ -38,9 +41,10 @@ class Local(Events):
     .. py:data:: LOCAL_RESPONSE
        :value: 0x0101
 
-       The local information *response* has the keys the keys ``'isDaylight'``,
-       ``'location'``, ``'sunrise'``, ``'sunset'`` and ``'uniqueName'``. For
-       example::
+       The local information *response* has the keys ``'isDaylight'``,
+       ``'location'``, ``'sunrise'``, ``'sunset'`` and ``'uniqueName'``. See
+       :meth:`knut.services.Local.local()` for more information about the keys
+       and their values. Following an example response::
 
           {
               'isDaylight': True,
@@ -51,18 +55,22 @@ class Local(Events):
           }
 
     """
-    NULL = 0x0000
     LOCAL_REQUEST = 0x0001
     LOCAL_RESPONSE = 0x0101
 
     serviceid = 0x04
-    """The local service id."""
+    """The local service identifier."""
 
     def __init__(self):
+        super(Local, self).__init__()
+
         self.local = None
         """The :class:`knut.services.Local` object."""
 
-        self.__events__ = ('on_push')
+        self.supported = {Local.LOCAL_REQUEST: self.__handle_local_request}
+
+    def __handle_local_request(self, _msg):
+        return Local.LOCAL_RESPONSE, self.local.local()
 
     def set_local(self, local):
         """Sets :attr:`local` to the *local* object."""
@@ -71,24 +79,6 @@ class Local(Events):
         # add the notifier method to the local's on_change event
         if callable(self.local.on_change):
             self.local.on_change += self.notifier
-
-    def request_handler(self, msg_id, msg):
-        """Returns the tuple (*response_id*, *response*) upon a request.
-
-        The following messages *msg* with their *msg_id* can be send by a client
-        and will be handled:
-
-        - :const:`LOCAL_REQUEST`
-        """
-        response = dict()
-        response_id = Local.NULL
-
-        logging.debug('Received local request.')
-
-        if msg_id == Local.LOCAL_REQUEST:
-            response_id, response = Local.LOCAL_RESPONSE, self.local.local()
-
-        return response_id, response
 
     def notifier(self, local):
         self.on_push(Local.serviceid, Local.LOCAL_RESPONSE, local)
