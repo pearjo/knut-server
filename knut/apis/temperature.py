@@ -238,7 +238,7 @@ class Temperature(KnutAPI):
     The temperature back-ends accessed by this class are registered in the
     :attr:`backends` dictionary. They can be add using the :meth:`add_backend()`
     which also connects the back-end's ``on_change()`` event to the
-    :meth:`notify()` method.
+    :meth:`notifier()` method.
 
     .. py:data:: STATUS_REQUEST
        :value: 0x0001
