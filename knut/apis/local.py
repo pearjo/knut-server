@@ -25,8 +25,8 @@ class Local(KnutAPI):
     """This class allows interaction with the local service. The following message
     types are handled by the ``request_handler()`` method of the superclass:
 
-    - ``LOCAL_REQUEST``
-    - ``LOCAL_RESPONSE``
+    - :const:`LOCAL_REQUEST`
+    - :const:`LOCAL_RESPONSE`
 
     This class can only be connected to one :attr:`local` service by setting it
     using the :meth:`set_local()` method. The ``on_change()`` event of the

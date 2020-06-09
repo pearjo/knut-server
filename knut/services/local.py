@@ -31,7 +31,7 @@ class Local(Events):
 
     This service represents a *location* and can mainly be used to get the sun
     rise and set. Furthermore, it runs a daemon task which updates the
-    :attr:`is_daylight` attribute and pushes a notification :meth:`on_change()`
+    :attr:`is_daylight` attribute and pushes a notification ``on_change()``
     to listening objects whether the sun has set or not.
 
     The sun's position is calculated according to the *latitude*, *longitude*

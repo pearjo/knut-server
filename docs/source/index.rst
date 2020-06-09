@@ -21,8 +21,8 @@ with the example configuration::
    knutserver.py --conf=etc/knutserver.yml
 
 To learn more about Knut and how it works, have a look at the
-:ref:`gettingstarted` chapter. For the code documentation see :ref:`knutserver`,
-:ref:`knutapis` and :ref:`knutservices`.
+:ref:`gettingstarted` chapter. For the code documentation see :ref:`knutserver`
+and :ref:`apisandservices`.
 
 .. note::
 
@@ -35,5 +35,4 @@ To learn more about Knut and how it works, have a look at the
 
    gettingstarted
    reference/knutserver
-   reference/knutapis
-   reference/knutservices
+   reference/apisandservices

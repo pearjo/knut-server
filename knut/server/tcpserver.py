@@ -15,6 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
+from knut.apis import KnutAPI
 from typing import Tuple
 import socketserver
 import json
@@ -160,8 +161,8 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
 
                 # don't log heartbeats
                 if next_msg != b'\x00':
-                    logging.debug('Send message from queue to client: {}'
-                                  .format(self.client_address))
+                    logging.debug('Send message from queue to client {}: {}'
+                                  .format(self.client_address, next_msg))
 
                 self.request.sendall(next_msg)
             except (BrokenPipeError, OSError):
@@ -263,7 +264,7 @@ class KnutTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         super(KnutTCPServer, self).__init__(server_address,
                                             KnutTCPRequestHandler)
 
-    def add_api(self, api):
+    def add_api(self, api: KnutAPI) -> None:
         """Adds a *api* to the server.
 
         The *api* is added to the dictionary of APIs and it's ``on_push()``

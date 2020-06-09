@@ -38,28 +38,28 @@ class KnutAPI(Events):
     callback function ``handle_foo()``. The example message handler should
     print a *text* that is passed by the message and return a ``NULL`` message.
     Therefore, the message of type ``FOO_PRINT`` in this example shall contain
-    the key ``'text'``. Lets first define a :class:`DummyAPI` object which
+    the key ``'text'``. Lets first define a :class:`Foo` object which
     inherits the :class:`KnutAPI`::
 
        from knut.apis import KnutAPI
 
 
-       class DummyAPI(KnutAPI):
+       class Foo(KnutAPI):
            serviceid = 0x01
            FOO_PRINT = 0x0001
 
            def __init__(self):
-               super(DummyAPI, self).__init__(self)
-               self.supported = {DummyAPI.FOO_PRINT: self.handle_foo}
+               super(Foo, self).__init__()
+               self.supported = {Foo.FOO_PRINT: self.handle_foo}
 
            def handle_foo(self, msg):
                print(msg['text'])
-               return DummyAPI.NULL, {}
+               return Foo.NULL, {}
 
     With that class defined, our example message would be handled as following::
 
-       >>> dummy_api = DummyAPI()
-       >>> dummy_api.request_handler(0x0001, {'text': 'bar'})
+       >>> foo = Foo()
+       >>> foo.request_handler(0x0001, {'text': 'bar'})
        bar
        (0, {})
 
@@ -100,5 +100,7 @@ class KnutAPI(Events):
                 logging.error('Invalid callback function for '
                               'msg_id \'{}\' and service \'{}\': {}'
                               .format(msg_id, self.serviceid, e))
+
+        response_id = response_id if len(response) > 0 else KnutAPI.NULL
 
         return response_id, response
