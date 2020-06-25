@@ -16,16 +16,18 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from knut.services import Light
-import logging
 
 
 class DummyLight(Light):
     """A dummy light."""
-    def __init__(self, location, unique_name, room, **kwargs):
+
+    def __init__(self, location, unique_name, room, dimlevel=False,
+                 color=False, temperature=False, color_cold='#f5faf6',
+                 color_warm='#efd275'):
         super(DummyLight, self).__init__(location, unique_name, room)
-        self.has_dimlevel = kwargs['dimlevel']
-        self.has_color = kwargs['color']
-        self.has_temperature = kwargs['temperature']
+        self.has_dimlevel = dimlevel
+        self.has_color = color
+        self.has_temperature = temperature
 
         self.temperature = 80
         self.dimlevel = 0
@@ -34,12 +36,5 @@ class DummyLight(Light):
 
         # set color temperature limits if provided
         if self.has_temperature:
-            try:
-                self.color_cold = kwargs['color_warm']
-                self.color_warm = kwargs['color_cold']
-            except KeyError:
-                # TODO: set better fallback values
-                self.color_cold = '#ffffff'
-                self.color_warm = '#ffffff'
-                logging.warning('Unknown color temperature rang for'
-                                '\'%s\'' % self.unique_name)
+            self.color_cold = color_warm
+            self.color_warm = color_cold

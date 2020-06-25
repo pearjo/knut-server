@@ -119,7 +119,7 @@ class Task(KnutAPI):
     serviceid = 0x03
     """The task service identifier."""
 
-    def __init__(self):
+    def __init__(self, task_dir="~/.local/share/knut/tasks"):
         super(Task, self).__init__()
 
         self.supported = {
@@ -129,7 +129,7 @@ class Task(KnutAPI):
             Task.DELETE_TASK_REQUEST: self.__handle_delete_task_request
         }
 
-        self.task_dir = str()
+        self.task_dir = task_dir
         """The directory where the tasks a saved."""
 
         self.tasks = dict()
@@ -157,7 +157,8 @@ class Task(KnutAPI):
                 data = json.load(f)
 
                 if 'uid' not in data.keys():
-                    logging.warning('Tried to load invalid task \'%s\'.' % task)
+                    logging.warning(
+                        'Tried to load invalid task \'%s\'.' % task)
                 else:
                     logging.debug('Loading task from file \'%s\'...' % task)
                     uid = data['uid']
@@ -237,7 +238,8 @@ class Task(KnutAPI):
             response_id, response = self.__handle_all_task_request(msg)
             self.on_push(Task.serviceid, response_id, response)
         else:
-            logging.warning('Can\'t delete unknown task \'%s\'...' % msg['uid'])
+            logging.warning(
+                'Can\'t delete unknown task \'%s\'...' % msg['uid'])
 
         return Task.NULL, dict()
 

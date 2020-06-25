@@ -20,16 +20,17 @@ import logging
 
 
 class Light(Events):
-    """A Knut light service.
-
-    This class represents a Knut light service. The light has a *unique_name*
-    and has a *location* within a *room*.
-
-    If the state of the light changes, e.g. when calling
-    :meth:`status_setter()`, the method :meth:`on_change()` is called with the
-    *unique_name* as argument. Any listener can register upon this event.
-    """
     def __init__(self, location, unique_name, room):
+        """A Knut light service.
+
+        This class represents a Knut light service. The light has a
+        *unique_name* and has a *location* within a *room*.
+
+        If the state of the light changes, e.g. when calling
+        :meth:`status_setter()`, the method :meth:`on_change()` is called with
+        the *unique_name* as argument. Any listener can register upon this
+        event.
+        """
         self.has_color = bool()
         self.has_dimlevel = bool()
         self.has_temperature = bool()

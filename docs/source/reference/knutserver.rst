@@ -1,7 +1,8 @@
 .. _knutserver:
 
-Knut Server
-===========
+*****************************************
+``KnutTCPServer`` --- The Knut TCP server
+*****************************************
 
 .. autoclass:: knut.server.KnutTCPServer
    :members:

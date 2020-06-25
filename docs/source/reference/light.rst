@@ -12,11 +12,10 @@ API
 Services
 --------
 
-.. autoclass:: knut.services.Light
-   :members:
+The following light services are available:
 
-.. autoclass:: knut.services.pytradfri.PyTradfriLight
-   :members:
+.. toctree::
 
-.. autoclass:: knut.services.rflight.RFLight
-   :members:
+   services/light
+   services/pytradfri
+   services/rflight

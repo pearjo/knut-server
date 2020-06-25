@@ -44,12 +44,12 @@ OWM_TO_WEATHER_ICON = {
 
 
 class OpenWeatherMap(Temperature):
-    def __init__(self, location, unique_name, **kwargs):
+    def __init__(self, location, unique_name, appid):
         super(OpenWeatherMap, self).__init__(location, unique_name)
         self.data = dict()  # stores data received from OpenWeatherMap
         self.url = str('http://api.openweathermap.org/data/2.5/weather?'
                        + 'q=' + location
-                       + '&APPID=' + kwargs['appid'])
+                       + '&APPID=' + appid)
 
         # start the data poller daemon
         daemon_thread = threading.Thread(target=self.daemon,

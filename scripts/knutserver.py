@@ -20,61 +20,17 @@ from knut.apis import Light
 from knut.apis import Local
 from knut.apis import Task
 from knut.apis import Temperature
+from knut.core import KnutConfig
 from knut.server import KnutTCPServer
 import argparse
 import coloredlogs
+import knut.services.pytradfri
 import logging
 import sys
 import threading
-import yaml
 
 # global constants
 LOGLEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-
-
-def load_config(config_file):
-    with open(config_file, 'r') as f:
-        return yaml.load(f, Loader=yaml.SafeLoader)
-
-
-def load_service_backend(config, service):
-    objects = list()
-
-    for unique_name in config[service].keys():
-        module = __import__(config[service][unique_name]['module'],
-                            fromlist=[config[service][unique_name]['object']])
-        service_object = getattr(module,
-                                 config[service][unique_name]['object'])
-
-        logging.info(('Adding service backend \'%s\' with unique name \'%s\' to'
-                      + ' service %s.') % (
-                          config[service][unique_name]['object'],
-                          unique_name,
-                          hex(config[service][unique_name]['serviceid'])
-        ))
-        location = config[service][unique_name]['location']
-
-        try:
-            args = config[service][unique_name]['args']
-        except KeyError:
-            args = None
-
-        try:
-            kwargs = config[service][unique_name]['kwargs']
-        except KeyError:
-            kwargs = None
-
-        if args and not kwargs:
-            objects.append(service_object(location, unique_name, *args))
-        elif kwargs and not args:
-            objects.append(service_object(location, unique_name, **kwargs))
-        elif args and kwargs:
-            objects.append(service_object(
-                location, unique_name, *args, **kwargs))
-        else:
-            objects.append(service_object(location, unique_name))
-
-    return objects
 
 
 def main():
@@ -103,52 +59,47 @@ def main():
     coloredlogs.install(level=args.logLevel, logger=logger)
 
     # load config
-    config = load_config(args.configFile)
+    config = KnutConfig(args.configFile).config
 
     # initialize the Knut server
-    server = KnutTCPServer((config['socket']['ip'], config['socket']['port']))
+    server = config['server']
+    # server = KnutTCPServer()
+
+    # load task module
+    task = config['task']
+    server.add_api(task)
+    task.load_tasks()
+
+    # load temperature module
+    try:
+        temp = Temperature()
+        server.add_api(temp)
+
+        # iterate over all sections, where each section name is a backend ID
+        for backend in config['temperature']:
+            temp.add_backend(backend)
+    except KeyError:
+        pass
+
+    # load light module
+    try:
+        light = Light()
+        server.add_api(light)
+
+        for backend in config['lights']:
+            light.add_backend(backend)
+    except KeyError:
+        pass
+
+    # load local module
+    if config['local']:
+        local = Local()
+        server.add_api(local)
+        local.set_local(config['local'])
 
     try:
-        if 'task' in config.keys():
-            # load task module
-            task = Task()
-            server.add_api(task)
-
-            if 'dir' in config['task'].keys():
-                # load tasks from file
-                task.task_dir = config['task']['dir']
-                task.load_tasks()
-
-        if 'temperature' in config.keys():
-            # load temperature module
-            temp = Temperature()
-            server.add_api(temp)
-
-            # iterate over all sections, where each section name is a backend ID
-            temp_service_backends = load_service_backend(config, 'temperature')
-            for temp_service_backend in temp_service_backends:
-                temp.add_backend(temp_service_backend)
-
-        if 'light' in config.keys():
-            # load light module
-            light = Light()
-            server.add_api(light)
-
-            light_service_backends = load_service_backend(config, 'light')
-            for light_service_backend in light_service_backends:
-                light.add_backend(light_service_backend)
-
-        if 'local' in config.keys():
-            # load local module
-            local = Local()
-            server.add_api(local)
-
-            local_service_locations = load_service_backend(config, 'local')
-            for local_service_location in local_service_locations:
-                local.set_local(local_service_location)
-
         with server:
-            logging.debug('Start server on: {}'.format(server.server_address))
+            # logging.debug('Start server on: {}'.format(server.server_address))
             server_thread = threading.Thread(target=server.serve_forever)
             server_thread.daemon = True
             server_thread.start()

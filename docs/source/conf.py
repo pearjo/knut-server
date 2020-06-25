@@ -14,7 +14,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../../'))
 
-import knut
+import knut  # noqa: ignore=E402
 
 # -- Project information -----------------------------------------------------
 
@@ -65,6 +65,10 @@ autodoc_mock_imports = [
     'pytradfri',
     'rpi_rf'
 ]
+
+# Both the class’ and the __init__ method’s docstring are concatenated and
+# inserted.
+autoclass_content = 'both'
 
 # -- Options for HTML output -------------------------------------------------
 

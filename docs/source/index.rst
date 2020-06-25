@@ -1,8 +1,9 @@
+*************************
 Knut: your humble server!
-=========================
+*************************
 
 What is Knut?
--------------
+#############
 
 Knut is a happy penguin to help organize your home. 🐧🥰
 
@@ -29,5 +30,5 @@ and :ref:`apisandservices`.
    :maxdepth: 2
 
    gettingstarted
-   reference/knutserver
-   reference/apisandservices
+   config
+   reference/reference.rst

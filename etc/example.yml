@@ -1,0 +1,156 @@
+#   _  __            _
+#  | |/ /_ __  _   _| |_
+#  | ' /| '_ \| | | | __|
+#  | . \| | | | |_| | |_
+#  |_|\_\_| |_|\__,_|\__|
+#
+# Default values are commented. Uncomment and edit to change them.
+#
+# Most apis or services are configured by constructing a corresponding
+# object from this configuration file. Therefore, the !knutobject tag
+# is used with a mapping following it. The mapping has the two
+# mandatory keys module and class. Those define the module of the
+# class to be loaded. For example, the class Bar of the module foo is
+# configured as following:
+#
+#   !knutobject
+#     module: foo
+#     class: Bar
+#
+---
+# Knut's TCP server
+# The TCP server is bound to the address on the specified port.
+server:
+  !knutobject
+    module: knut.server.tcpserver
+    class: KnutTCPServer
+    #address: 127.0.0.1
+    #port: 8080
+
+# Light back-ends
+# To add a back-end service, the back-end object needs to be add to
+# the lights sequence. For example, a TRADFRI light is add as
+# following:
+#
+#   lights:
+#     - !knutobject
+#       module: knut.services.pytradfri
+#       class: PyTradfriLight
+#       location: Sideboard
+#       unique_name: table_living_room
+#       room: Living Room
+#       device_id: 65536
+#       host: 192.168.0.2
+#       psk_id:
+#       psk:
+#
+lights:
+  - !knutobject
+    module: knut.services.dummylight
+    class: DummyLight
+    location: Sideboard
+    unique_name: sideboard_light
+    room: Dinning Room
+    dimlevel: true
+    color: false
+    temperature: true
+  - !knutobject
+    module: knut.services.dummylight
+    class: DummyLight
+    location: Table
+    unique_name: dinningtable_light
+    room: Dinning Room
+    dimlevel: true
+    color: false
+    temperature: true
+  - !knutobject
+    module: knut.services.dummylight
+    class: DummyLight
+    location: Pool
+    unique_name: pool_light
+    room: Pool House
+    dimlevel: false
+    color: false
+    temperature: false
+  - !knutobject
+    module: knut.services.dummylight
+    class: DummyLight
+    location: Pool House
+    unique_name: pool_house_light
+    room: Pool House
+    dimlevel: true
+    color: true
+    temperature: false
+  - !knutobject
+    module: knut.services.dummylight
+    class: DummyLight
+    location: Windowsill
+    unique_name: windowsill_light
+    room: Bedroom
+    dimlevel: true
+    color: false
+    temperature: true
+  - !knutobject
+    module: knut.services.dummylight
+    class: DummyLight
+    location: Chandelier
+    unique_name: entry_hall_light
+    room: Entry Hall
+    dimlevel: true
+    color: false
+    temperature: false
+
+# The Local service
+local:
+  !knutobject
+    module: knut.services
+    class: Local
+    location: Beverly Hills
+    unique_name: home
+    latitude: 34.091944
+    longitude: -118.401667
+    elevation: 209
+
+# Tasks
+# Each task is written to a file in the task_dir.
+task:
+  !knutobject
+    module: knut.apis
+    class: Task
+    #task_dir: "~/.local/share/knut/tasks"
+
+# Temperature back-ends
+# Analog to the lights back-ends, a temperature back-end is configured
+# by adding a back-end object to the temperature sequence. For
+# example, to configure an OpenWeatherMap back-end, add the following
+# to temperature:
+#
+#   temperature:
+#     - !knutobject
+#       module: knut.services.openweathermap
+#       class: OpenWeatherMap
+#       location: Hamburg
+#       unique_name: localWeather
+#       appid:
+#
+temperature:
+  - !knutobject
+    module: knut.services.dummytemperature
+    class: DummyTemperature
+    location: Pool House
+    unique_name: poolHouse
+  - !knutobject
+    module: knut.services.dummytemperature
+    class: DummyTemperature
+    location: Pool
+    unique_name: pool
+  - !knutobject
+    module: knut.services.dummytemperature
+    class: DummyTemperature
+    location: Entry Hall
+    unique_name: entryHall
+  - !knutobject
+    module: knut.services.dummytemperature
+    class: DummyTemperature
+    location: Beverly Hills
+    unique_name: localWeather

@@ -17,11 +17,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 from knut.apis import KnutAPI
 from typing import Tuple
-import socketserver
 import json
 import logging
-import threading
 import queue
+import socketserver
+import threading
 
 
 class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
@@ -90,7 +90,8 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
                         logging.debug('Message of type {} for service {} '
                                       'received...'.format(msgid, serviceid))
 
-                        msgid, msg = self.request_service(serviceid, msgid, msg)
+                        msgid, msg = self.request_service(
+                            serviceid, msgid, msg)
                     except KeyError:
                         logging.warning('Received message is missing at least '
                                         'one of the following keys: '
@@ -176,7 +177,8 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
             service.on_push += self.send_queued_knutmsg
 
 
-class KnutTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+class KnutTCPServer(socketserver.ThreadingMixIn,
+                    socketserver.TCPServer):
     """The Knut TCP server class.
 
     It is bound to *server_address* where it handles all communication from
@@ -248,12 +250,14 @@ class KnutTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     From the client, a ``TEMPERATURE_LIST_REQUEST`` is send to the API::
 
        $ echo -ne '{"serviceid": 1, "msgid": 2, "msg": {}}\\0' | netcat localhost 8080
-       {"serviceid": 1, "msgid": 258, "msg": {"dummy": {"location": "Somewhere", "unit": "\\u00b0C", "condition": "\\uf002", "temperature": 10.2}}}
+       {"serviceid": 1, "msgid": 258, "msg": {"dummy": {"location": "Somewhere",
+           "unit": "\\u00b0C", "condition": "\\uf002", "temperature": 10.2}}}
 
     The server finally responses with the API's ``TEMPERATURE_LIST_RESPONSE``.
 
     """
-    def __init__(self, server_address: Tuple[str, int]) -> None:
+
+    def __init__(self, address: str = "127.0.0.1", port: int = 8080) -> None:
         self.allow_reuse_address = True
 
         self.apis = dict()
@@ -261,7 +265,7 @@ class KnutTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         ids as keys. See :meth:`add_api()` for more about adding an API.
         """
 
-        super(KnutTCPServer, self).__init__(server_address,
+        super(KnutTCPServer, self).__init__((address, port),
                                             KnutTCPRequestHandler)
 
     def add_api(self, api: KnutAPI) -> None:

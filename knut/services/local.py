@@ -38,8 +38,8 @@ class Local(Events):
     and *elevation* of the *location*.
     """
 
-    def __init__(self, location, unique_name, latitude=0, longitude=0,
-                 elevation=0):
+    def __init__(self, location=None, unique_name='local',
+                 latitude=0, longitude=0, elevation=0):
         self.elevation = elevation
         """The elevation of the location in meters."""
 
@@ -72,8 +72,8 @@ class Local(Events):
         self.__daylight_timer = None  # used to update is_daylight
 
         download_IERS_A()  # update IERS Bulletin A table
-
         self.update_observer()
+
         self.__events__ = ('on_change')
 
     def local(self):
@@ -151,7 +151,7 @@ class Local(Events):
         else:
             time_from_now = int(round(self.sunrise - time.time(), 0))
 
-        logging.debug('Set a timer for the next sun rise or set at \'%s\' which ' \
+        logging.debug('Set a timer for the next sun rise or set at \'%s\' which '
                       'is due in %i seconds...'
                       % (self.unique_name, time_from_now))
 
