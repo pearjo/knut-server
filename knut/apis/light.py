@@ -17,7 +17,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 from events import Events
 from knut.apis import KnutAPI
-import knut.services
 import logging
 
 
