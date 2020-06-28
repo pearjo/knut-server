@@ -15,9 +15,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knut.apis import KnutAPI
+from .knutapi import KnutAPI
 from typing import Tuple
-import knut.services
+import knut.services.temperature
 import logging
 
 UNIT = '°C'
@@ -342,12 +342,12 @@ class Temperature(KnutAPI):
         self.backends = dict()
         """A dictionary with all back-ends where the keys are the unique names
         and the values are the corresponding temperature objects
-        :class:`knut.services.Temperature`.
+        :class:`knut.services.temperature.Temperature`.
         """
 
         self.unit = UNIT
 
-    def add_backend(self, backend: knut.services.Temperature) -> None:
+    def add_backend(self, backend: knut.services.temperature.Temperature) -> None:
         """Adds the *backend* to the :attr:`backends` dictionary."""
         if not all([hasattr(backend, 'temperature'),
                     hasattr(backend, 'condition'),

@@ -4,8 +4,12 @@
 Configuration
 *************
 
+File Structure
+==============
+
 Knut is configured by a YAML configuration file. Knut objects are defined
-directly in the configuration and are initialize from the file. To define a Knut
+directly in the configuration and are initialize from the file (see
+:py:class:`~knut.core.config.KnutConfig` for more details). To define a Knut
 object in the configuration, the tag ``!knutobject`` is used:
 
 .. code-block:: yaml
@@ -17,8 +21,8 @@ object in the configuration, the tag ``!knutobject`` is used:
      ...
 
 The keys ``module`` and ``class`` are mandatory and specify the Class and the
-module containing it to load. The following keys are the arguments of the
-classes ``__init__()`` method. For example, the
+module containing it to load. The keys after the two mandatory are the arguments
+of the classes ``__init__()`` method. For example, the
 :class:`knut.server.KnutTCPServer` would be configured as following:
 
 .. code-block:: yaml
@@ -33,10 +37,13 @@ classes ``__init__()`` method. For example, the
 If no configuration is found, default values are used which are documented in
 the following sections.
 
-.. _serverconfig:
+For more details, see the :ref:`exampleconfig`.
+
+Knut Configuration Reference
+============================
 
 server
-######
+------
 
 Configuration options to setup the :py:class:`~knut.server.KnutTCPServer`. The
 TCP server is bound to the ``address`` on the specified ``port``. The default
@@ -51,14 +58,12 @@ values are for the address ``127.0.0.1`` and for the port ``8080``:
        address: 127.0.0.1
        port: 8080
 
-.. _lightconfig:
-
 lights
-######
+------
 
 Configures all light back-ends which are subclassed from the
-:py:class:`~knut.services.Light` superclass. To add a back-end service, the
-back-end object needs to be add to the lights sequence. For example, a
+:py:class:`~knut.services.light.Light` superclass. To add a back-end service,
+the back-end object needs to be add to the lights sequence. For example, a
 :py:class:`~knut.services.pytradfri.PyTradfriLight` light is add as following:
 
 .. code-block:: yaml
@@ -78,7 +83,7 @@ back-end object needs to be add to the lights sequence. For example, a
 On default, no light is configured.
 
 local
-#####
+-----
 
 Configures the :py:class:`~knut.services.Local` service. The local service has
 the configuration keys ``location``, ``longitude``, ``latitude`` and
@@ -98,10 +103,8 @@ configured. For example, Hamburg in Germany would be defined as following:
        longitude: 9.9917872
        elevation: 18
 
-.. _taskconfig:
-
 task
-####
+----
 
 Configuration options for the :py:class:`~knut.services.Task` service. Each task
 is written to a file in the directory ``task_dir``. The default directory is
@@ -115,17 +118,14 @@ is written to a file in the directory ``task_dir``. The default directory is
        class: Task
        task_dir: "~/.local/share/knut/tasks"
 
-
-.. _temperatureconfig:
-
 temperature
-###########
+-----------
 
 Configures all temperature back-ends which are subclassed from the
-:py:class:`~knut.services.Temperature` superclass. Each back-end must have a
-``unique_name`` which is used as identifier in the Knut system. The key
-``location`` defines the location name where the temperature is measured e.g. a
-room or city name. The temperature back-ends are added analog to the
+:py:class:`~knut.services.temperature.Temperature` superclass. Each back-end
+must have a ``unique_name`` which is used as identifier in the Knut system. The
+key ``location`` defines the location name where the temperature is measured
+e.g. a room or city name. The temperature back-ends are added analog to the
 ``temperature`` sequence as light back-ends are add to the ``lights`` sequence.
 
 For example, a temperature back-end with the unique name ``localWeather`` using
@@ -141,3 +141,13 @@ additional argument ``appid`` is add to the temperature sequence:
        location: Hamburg
        unique_name: localWeather
        appid:
+
+.. _exampleconfig:
+
+Example Configuration
+=====================
+
+Example configuration ``etc/example.yml``:
+
+.. literalinclude:: ../../etc/example.yml
+   :language: yaml

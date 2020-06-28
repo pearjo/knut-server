@@ -17,7 +17,7 @@ to install all needed packages.
 .. note::
 
    Some services may require additional installation steps. Please follow
-   the instructions of the :ref:`apisandservices` if an error occurs.
+   the instructions of the :ref:`services` if an error occurs.
 
 To finally install the Knut server run::
 
@@ -28,14 +28,13 @@ To finally install the Knut server run::
 How Knut Works
 --------------
 
-Knut has various :ref:`apisandservices` to control e.g. lights or supply
-temperature data from various sources. Each API can be connected to multiple
-service back-ends which are implementing the actions needed to execute a
-command.
+Knut has various :ref:`apis` to control e.g. lights or supply temperature data
+from various sources. Each API can be connected to multiple service back-ends
+which are implementing the actions needed to execute a command.
 
 For example, lets switch a light which is plugged into a RF controllable socket.
-The light API :py:class:`knut.apis.Light` class calls a method of the light
-service :py:class:`knut.services.rflight.RFLight`, which switches the socket
+The light API :py:class:`~knut.apis.Light` class calls a method of the light
+service :py:class:`~knut.services.rflight.RFLight`, which switches the socket
 according to a parsed status in a back-end.
 
 .. code-block::
@@ -61,7 +60,7 @@ according to a parsed status in a back-end.
                              {'uniqueName': 'side_board_lamp', 'state': True})
 
 Now to interact with all APIs from another client program, Knut has a TCP
-interface, the :py:class:`knut.server.KnutTCPServer`. Lets extend the code of
+interface, the :py:class:`~knut.server.KnutTCPServer`. Lets extend the code of
 the previous example by the following lines to get working Knut server:
 
 .. code-block::

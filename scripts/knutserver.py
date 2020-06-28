@@ -16,15 +16,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knut.apis import Light
-from knut.apis import Local
-from knut.apis import Task
-from knut.apis import Temperature
+from knut.apis import *
 from knut.core import KnutConfig
 from knut.server import KnutTCPServer
 import argparse
 import coloredlogs
-import knut.services.pytradfri
 import logging
 import sys
 import threading

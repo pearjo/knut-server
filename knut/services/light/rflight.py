@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knut.services import Light
+from . import light
 import logging
 
 try:
@@ -25,7 +25,7 @@ except RuntimeError:
     rpi_rf = None
 
 
-class RFLight(Light):
+class RFLight(light.Light):
     """RF 433 mHz light service.
 
     This light service is used for lights behind a RF 433 mHz socket.  To work,
@@ -33,6 +33,7 @@ class RFLight(Light):
     *code_on* and *code_off* to switch the socket is needed.
     For more details have a look at `rpi-rf <https://github.com/milaq/rpi-rf>`_.
     """
+
     def __init__(self, location, unique_name, room, gpio, code_on, code_off):
         super(RFLight, self).__init__(location, unique_name, room)
         self._gpio = gpio

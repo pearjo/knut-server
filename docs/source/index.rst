@@ -7,24 +7,31 @@ What is Knut?
 
 Knut is a happy penguin to help organize your home. 🐧🥰
 
-Ok... More precise, the Knut server provides APIs for various purposes such as
-switching smart lights, providing climate date or a task service. The server is
-written in Python and services for the various APIs can be extended modular.
+Ok... What is Knut again? It's a smart home assistant with an server at it's
+core which is connected to various :ref:`apis`. Via a JSON formatted message and
+the TCP server, clients can interact with the various APIs. They are designed in
+such way, that they can be extended modular. Each API is then connected with
+:ref:`services` which do some work like switching a light or providing data to
+the API.
+
+Run Knut
+########
 
 With Knut and it's requirements installed, you can take the server for a test
-run with the example configuration::
+run by running the ``knutserver.py`` script with the example configuration::
 
-   knutserver.py --conf=etc/knutserver.yml
+   knutserver.py --conf=etc/example.yml
 
-Now you should be ready to write your own configuration and have fun using Knut.
+Now you should be ready to write your own :ref:`config` and have fun using Knut.
+
+More
+####
+
 To learn more about Knut and how it works, have a look at the
-:ref:`gettingstarted` chapter. For the code documentation see :ref:`knutserver`
-and :ref:`apisandservices`.
+:ref:`gettingstarted` chapter. For the code documentation see :ref:`reference`.
 
-.. note::
-
-   Checkout the `Knut cross-platform app <https://github.com/pearjo/knut-app>`_
-   which provides a user front-end to the Knut server.
+Checkout the `Knut cross-platform app <https://github.com/pearjo/knut-app>`_
+which provides a user front-end to the Knut server.
 
 .. toctree::
    :maxdepth: 2

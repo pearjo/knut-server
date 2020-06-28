@@ -1,35 +1,32 @@
-"""
-Copyright (C) 2020  Joe Pearson
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from events import Events
 import logging
 
 
 class Light(Events):
-    def __init__(self, location, unique_name, room):
-        """A Knut light service.
+    """Base class for light services."""
 
-        This class represents a Knut light service. The light has a
-        *unique_name* and has a *location* within a *room*.
+    def __init__(self, location, unique_name, room):
+        """The light has a *unique_name* and has a *location* within a *room*.
 
         If the state of the light changes, e.g. when calling
         :meth:`status_setter()`, the method :meth:`on_change()` is called with
         the *unique_name* as argument. Any listener can register upon this
         event.
+
         """
         self.has_color = bool()
         self.has_dimlevel = bool()

@@ -33,6 +33,7 @@ release = version
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
     'sphinx.ext.graphviz',
     'sphinx_copybutton'
 ]
@@ -70,26 +71,39 @@ autodoc_mock_imports = [
 # inserted.
 autoclass_content = 'both'
 
+# -- Options for autosummary -------------------------------------------------
+
+autosummary_generate = True
+autosummary_imported_members = True
+
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-# html_theme = 'sphinx_rtd_theme'
-html_theme = 'alabaster'
-
+html_theme = 'pydata_sphinx_theme'
+html_logo = '_static/knut.png'
 html_theme_options = {
-    'badge_branch': 'devel',
-    'github_button': True,
-    'github_repo': 'knut-server',
-    'github_user': 'pearjo',
-    'logo': 'knut.png',
-    'logo_name': True,
-    'note_bg': '#fff3cd',
-    'page_width': 'max-content',
-    'show_powered_by': False,
-    'travis_button': True
+    'github_url': 'https://github.com/pearjo/knut-server'
 }
+html_context = {
+    'github_repo': 'knut-server',
+    'github_user': 'pearjo'
+}
+
+# html_theme = 'alabaster'
+# html_theme_options = {
+#     'badge_branch': 'devel',
+#     'github_button': True,
+#     'github_repo': 'knut-server',
+#     'github_user': 'pearjo',
+#     'logo': 'knut.png',
+#     'logo_name': True,
+#     'note_bg': '#fff3cd',
+#     'page_width': 'max-content',
+#     'show_powered_by': False,
+#     'travis_button': True
+# }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

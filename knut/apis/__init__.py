@@ -15,9 +15,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knut.apis.knutapi import KnutAPI
-
-from knut.apis.light import Light
-from knut.apis.local import Local
-from knut.apis.task import Task
-from knut.apis.temperature import Temperature
+from .knutapi import *
+from .light import *
+from .local import *
+from .task import *
+from .temperature import *

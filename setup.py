@@ -26,4 +26,6 @@ setup(name='Knut Server',
       packages=['knut.apis',
                 'knut.core',
                 'knut.server',
-                'knut.services'])
+                'knut.services',
+                'knut.services.light',
+                'knut.services.temperature'])

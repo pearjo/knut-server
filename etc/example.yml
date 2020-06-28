@@ -46,7 +46,7 @@ server:
 #
 lights:
   - !knutobject
-    module: knut.services.dummylight
+    module: knut.services.light
     class: DummyLight
     location: Sideboard
     unique_name: sideboard_light
@@ -55,7 +55,7 @@ lights:
     color: false
     temperature: true
   - !knutobject
-    module: knut.services.dummylight
+    module: knut.services.light
     class: DummyLight
     location: Table
     unique_name: dinningtable_light
@@ -64,7 +64,7 @@ lights:
     color: false
     temperature: true
   - !knutobject
-    module: knut.services.dummylight
+    module: knut.services.light
     class: DummyLight
     location: Pool
     unique_name: pool_light
@@ -73,7 +73,7 @@ lights:
     color: false
     temperature: false
   - !knutobject
-    module: knut.services.dummylight
+    module: knut.services.light
     class: DummyLight
     location: Pool House
     unique_name: pool_house_light
@@ -82,7 +82,7 @@ lights:
     color: true
     temperature: false
   - !knutobject
-    module: knut.services.dummylight
+    module: knut.services.light
     class: DummyLight
     location: Windowsill
     unique_name: windowsill_light
@@ -91,7 +91,7 @@ lights:
     color: false
     temperature: true
   - !knutobject
-    module: knut.services.dummylight
+    module: knut.services.light
     class: DummyLight
     location: Chandelier
     unique_name: entry_hall_light
@@ -135,22 +135,22 @@ task:
 #
 temperature:
   - !knutobject
-    module: knut.services.dummytemperature
+    module: knut.services.temperature
     class: DummyTemperature
     location: Pool House
     unique_name: poolHouse
   - !knutobject
-    module: knut.services.dummytemperature
+    module: knut.services.temperature
     class: DummyTemperature
     location: Pool
     unique_name: pool
   - !knutobject
-    module: knut.services.dummytemperature
+    module: knut.services.temperature
     class: DummyTemperature
     location: Entry Hall
     unique_name: entryHall
   - !knutobject
-    module: knut.services.dummytemperature
+    module: knut.services.temperature
     class: DummyTemperature
     location: Beverly Hills
     unique_name: localWeather

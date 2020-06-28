@@ -12,11 +12,17 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Knut temperature services.
 
-"""Knut services.
+This module provides Knut temperature services to be used with the
+:class:`~knut.apis.Temperature` API.
 
-This module provides all Knut services.
+.. note::
+
+   All temperature services must subclass the superclass
+   :class:`knut.services.temperature.Temperature`.
 
 """
-from .local import *
-from .task import *
+from .dummytemperature import *
+from .openweathermap import *
+from .temperature import *

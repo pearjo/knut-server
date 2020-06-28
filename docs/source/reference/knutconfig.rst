@@ -1,8 +1,8 @@
 .. _knutconfig:
 
-************************************************
-``KnutConfig`` --- The Knut configuration object
-************************************************
+*************
+Configuration
+*************
 
 .. autoclass:: knut.core.config.KnutConfig
    :members:

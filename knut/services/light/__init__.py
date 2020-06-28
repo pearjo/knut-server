@@ -13,10 +13,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Knut services.
+"""Knut light services.
 
-This module provides all Knut services.
+This module provides the Knut light services to be used with the
+:class:`~knut.apis.Light` API.
+
+.. note::
+
+   All light services must subclass the base class
+   :class:`knut.services.light.Light`.
 
 """
-from .local import *
-from .task import *
+from .light import *  # base class
+
+from .dummylight import *
+from .pytradfri import *
+from .rflight import *

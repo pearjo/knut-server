@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knut.services import Light
+from . import light
 from pytradfri import Gateway
 from pytradfri.api.libcoap_api import APIFactory
 import logging
@@ -24,7 +24,7 @@ import threading
 import time
 
 
-class PyTradfriLight(Light):
+class PyTradfriLight(light.Light):
     """PyTradfriLight light service.
 
     This class uses the `pytradfri <https://github.com/ggravlingen/pytradfri>`_
@@ -63,6 +63,7 @@ class PyTradfriLight(Light):
                  % (device.name, device.id))
 
     """
+
     def __init__(self, location, unique_name, room, device_id, host, psk_id, psk):
         super(PyTradfriLight, self).__init__(location, unique_name, room)
 
@@ -244,4 +245,5 @@ class PyTradfriLight(Light):
         lock.release()
 
         # TODO: add color handling
-        self.on_change(self.unique_name)  # trigger on_change to notify listener
+        # trigger on_change to notify listener
+        self.on_change(self.unique_name)

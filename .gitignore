@@ -1,7 +1,8 @@
 # build directories
-.pytype/
-__pycache__/
-build/
+.pytype
+__pycache__
+build
+docs/source/reference/generated
 
 # user environments
 *env

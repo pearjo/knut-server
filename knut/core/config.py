@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knut.core.base import KnutObject
+from .base import KnutObject
 import knut
 import knut.server.tcpserver
 import logging

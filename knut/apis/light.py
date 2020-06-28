@@ -16,7 +16,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from events import Events
-from knut.apis import KnutAPI
+from .knutapi import KnutAPI
 import logging
 
 
@@ -114,8 +114,12 @@ class Light(KnutAPI):
 
     This class can interact with all service back-ends that are registered in
     the dictionary :attr:`backends`. Those are add using the
-    :meth:`add_backend()` method. Each light service back-end add to the
-    dictionary should subclass the :class:`knut.services.Light` class.
+    :meth:`add_backend()` method.
+
+    .. note::
+
+       Each light service back-end add to the dictionary must subclass the
+       :class:`~knut.services.light.Light` class.
 
     .. py:data:: STATUS_REQUEST
        :value: 0x0001
