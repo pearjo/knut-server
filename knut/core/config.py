@@ -16,7 +16,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 from .base import KnutObject
-import knut
 import knut.server.tcpserver
 import logging
 import yaml

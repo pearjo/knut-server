@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 from events import Events
 from .knutapi import KnutAPI
+import knut.services.light
 import logging
 
 
@@ -30,7 +31,7 @@ class Room(Events):
     """The room service id. The id is the same as the light service id since
     this service is part of the light service."""
 
-    def __init__(self, room):
+    def __init__(self, room: str) -> None:
         self.backends = list()
         """A dictionary with all back-ends in the room where the keys are the
         :attr:`knut.services.Light.unique_name` and the values are the
@@ -45,8 +46,8 @@ class Room(Events):
         self.__events__ = ('on_push')
         logging.debug('Added room \'%s\' to bundle lights' % self.room)
 
-    def add_backend(self, backend):
-        """Add a light back-end to the room."""
+    def add_backend(self, backend: knut.services.light.Light) -> None:
+        """Add a light *backend* to the room."""
         if backend.room != self.room:
             logging.warning('Data backend \'%s\' is not in room \'%s\''
                             % (backend.unique_name, self.room))
@@ -56,7 +57,7 @@ class Room(Events):
             self.backends.append(backend)
             self.fetch()
 
-    def switch(self, state):
+    def switch(self, state: float) -> None:
         """Switch all lights in :attr:`backends` on or off."""
         for light in self.backends:
             if state == 1:
@@ -66,7 +67,7 @@ class Room(Events):
 
         self.state = state
 
-    def status(self):
+    def status(self) -> dict:
         """Returns the room state.
 
         Returns a dictionary with the keys ``'room'`` and ``'state'``.
@@ -77,7 +78,7 @@ class Room(Events):
         return {'room': self.room,
                 'state': self.state}
 
-    def fetch(self):
+    def fetch(self) -> None:
         """Fetch light states of all backends.
 
         Fetch the light states of all backends in the room and sets the

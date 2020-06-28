@@ -50,7 +50,7 @@ exclude_patterns = []
 # contains the root toctree directive. Default is 'index'.
 master_doc = 'index'
 
-needs_sphinx = '2.4'
+needs_sphinx = '3.0.3'
 
 # Strip and configure input prompts for code cells
 copybutton_prompt_text = ">>> "
