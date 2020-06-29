@@ -34,7 +34,7 @@ which are implementing the actions needed to execute a command.
 
 For example, lets switch a light which is plugged into a RF controllable socket.
 The light API :py:class:`~knut.apis.Light` class calls a method of the light
-service :py:class:`~knut.services.rflight.RFLight`, which switches the socket
+service :py:class:`~knut.services.light.RFLight`, which switches the socket
 according to a parsed status in a back-end.
 
 .. code-block::

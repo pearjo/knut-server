@@ -4,4 +4,5 @@ events
 numpy>=1.16  # required by astroplan
 pytradfri[async]
 pyyaml
+requests  # required by openweathermap
 rpi-rf
