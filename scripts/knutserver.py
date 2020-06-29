@@ -16,11 +16,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from knut.apis import *
 from knut.core import KnutConfig
-from knut.server import KnutTCPServer
 import argparse
 import coloredlogs
+import knut.apis
 import logging
 import sys
 import threading
@@ -59,7 +58,6 @@ def main():
 
     # initialize the Knut server
     server = config['server']
-    # server = KnutTCPServer()
 
     # load task module
     task = config['task']
@@ -68,7 +66,7 @@ def main():
 
     # load temperature module
     try:
-        temp = Temperature()
+        temp = knut.apis.Temperature()
         server.add_api(temp)
 
         # iterate over all sections, where each section name is a backend ID
@@ -79,7 +77,7 @@ def main():
 
     # load light module
     try:
-        light = Light()
+        light = knut.apis.Light()
         server.add_api(light)
 
         for backend in config['lights']:
@@ -89,7 +87,7 @@ def main():
 
     # load local module
     if config['local']:
-        local = Local()
+        local = knut.apis.Local()
         server.add_api(local)
         local.set_local(config['local'])
 
