@@ -64,7 +64,8 @@ autodoc_mock_imports = [
     'events',
     'numpy',
     'pytradfri',
-    'rpi_rf'
+    'rpi_rf',
+    'yaml'
 ]
 
 # Both the class’ and the __init__ method’s docstring are concatenated and
