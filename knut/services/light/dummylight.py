@@ -21,10 +21,10 @@ from .light import Light
 class DummyLight(Light):
     """A dummy light."""
 
-    def __init__(self, location, unique_name, room, dimlevel=False,
+    def __init__(self, location, id, room, dimlevel=False,
                  color=False, temperature=False, color_cold='#f5faf6',
                  color_warm='#efd275'):
-        super(DummyLight, self).__init__(location, unique_name, room)
+        super(DummyLight, self).__init__(location, id, room)
         self.has_dimlevel = dimlevel
         self.has_color = color
         self.has_temperature = temperature

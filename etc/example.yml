@@ -37,7 +37,7 @@ server:
 #       module: knut.services.pytradfri
 #       class: PyTradfriLight
 #       location: Sideboard
-#       unique_name: table_living_room
+#       id: table_living_room
 #       room: Living Room
 #       device_id: 65536
 #       host: 192.168.0.2
@@ -49,7 +49,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Sideboard
-    unique_name: sideboard_light
+    id: sideboard_light
     room: Dinning Room
     dimlevel: true
     color: false
@@ -58,7 +58,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Table
-    unique_name: dinningtable_light
+    id: dinningtable_light
     room: Dinning Room
     dimlevel: true
     color: false
@@ -67,7 +67,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Pool
-    unique_name: pool_light
+    id: pool_light
     room: Pool House
     dimlevel: false
     color: false
@@ -76,7 +76,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Pool House
-    unique_name: pool_house_light
+    id: pool_house_light
     room: Pool House
     dimlevel: true
     color: true
@@ -85,7 +85,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Windowsill
-    unique_name: windowsill_light
+    id: windowsill_light
     room: Bedroom
     dimlevel: true
     color: false
@@ -94,7 +94,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Chandelier
-    unique_name: entry_hall_light
+    id: entry_hall_light
     room: Entry Hall
     dimlevel: true
     color: false

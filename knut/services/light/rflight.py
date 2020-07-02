@@ -34,21 +34,21 @@ class RFLight(light.Light):
     For more details have a look at `rpi-rf <https://github.com/milaq/rpi-rf>`_.
     """
 
-    def __init__(self, location, unique_name, room, gpio, code_on, code_off):
-        super(RFLight, self).__init__(location, unique_name, room)
+    def __init__(self, location, id, room, gpio, code_on, code_off):
+        super(RFLight, self).__init__(location, id, room)
         self._gpio = gpio
         self._code_on = code_on
         self._code_off = code_off
 
     def status_setter(self, status):
         if rpi_rf:
-            logging.debug('Enable TX for device \'%s\'...' % self.unique_name)
+            logging.debug('Enable TX for device \'%s\'...' % self.id)
             device = rpi_rf.RFDevice(self._gpio)
             enabled = device.enable_tx()
 
             if not enabled:
                 logging.error('Failed to enable TX for \'%s\''
-                              % self.unique_name)
+                              % self.id)
 
             if status['state']:
                 device.tx_code(self._code_on)
@@ -59,6 +59,6 @@ class RFLight(light.Light):
             del(device)
         else:
             logging.error('\'%s\' needs to run on a Raspberry Pi.'
-                          % self.unique_name)
+                          % self.id)
 
         super(RFLight, self).status_setter(status)

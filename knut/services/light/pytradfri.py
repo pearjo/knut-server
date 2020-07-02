@@ -29,7 +29,7 @@ class PyTradfriLight(light.Light):
 
     This class uses the `pytradfri <https://github.com/ggravlingen/pytradfri>`_
     package to control an IKEA TRÅDFRI light. A light is located at a
-    *location* inside a *room*. It has a *unique_name* for the Knut system and
+    *location* inside a *room*. It has a *id* for the Knut system and
     a *device_id* inside the TRÅDFRI system. To connect to the TRÅDFRI gateway
     with the known *host* address, a pre-shared key *psk* with its id
     *psk_id* is used. Those are generated as following::
@@ -64,8 +64,8 @@ class PyTradfriLight(light.Light):
 
     """
 
-    def __init__(self, location, unique_name, room, device_id, host, psk_id, psk):
-        super(PyTradfriLight, self).__init__(location, unique_name, room)
+    def __init__(self, location, id, room, device_id, host, psk_id, psk):
+        super(PyTradfriLight, self).__init__(location, id, room)
 
         self.device_id = device_id
         """The TRÅDFRI device id."""
@@ -79,14 +79,14 @@ class PyTradfriLight(light.Light):
         gateway = Gateway()
 
         while not self.device:
-            logging.debug('Try to get device \'%s\'...' % unique_name)
+            logging.debug('Try to get device \'%s\'...' % id)
             try:
                 self.device = self.api(gateway.get_device(self.device_id))
             except pytradfri.error.RequestTimeout:
                 pass
             except FileNotFoundError:
                 logging.critical('Failed to load pytradfri service \'%s\'.'
-                                 % self.unique_name)
+                                 % self.id)
                 return
 
         # get device information
@@ -116,10 +116,10 @@ class PyTradfriLight(light.Light):
 
         # start the TRÅDFRI observation
         observation_thread = threading.Thread(target=self.observation,
-                                              name='%s-thread' % unique_name)
+                                              name='%s-thread' % id)
         observation_thread.daemon = True
         observation_thread.start()
-        logging.info('Initialized TRADFRI device \'%s\'.' % self.unique_name)
+        logging.info('Initialized TRADFRI device \'%s\'.' % self.id)
 
     def percent_to_mired(self, value):
         """Return the mired value of *value*.
@@ -129,7 +129,7 @@ class PyTradfriLight(light.Light):
         """
         if not self.has_temperature:
             raise AttributeError('Light \'%s\' has no temperature'
-                                 % self.unique_name)
+                                 % self.id)
 
         diff = (self.device.light_control.max_mireds
                 - self.device.light_control.min_mireds)
@@ -144,7 +144,7 @@ class PyTradfriLight(light.Light):
         """
         if not self.has_temperature:
             raise AttributeError('Light \'%s\' has no temperature'
-                                 % self.unique_name)
+                                 % self.id)
 
         diff = (self.device.light_control.max_mireds
                 - self.device.light_control.min_mireds)
@@ -175,7 +175,7 @@ class PyTradfriLight(light.Light):
                 if (device_state.color_temp != temperature_mired):
                     self.api(light_control.set_color_temp(temperature_mired))
         except pytradfri.error.RequestTimeout:
-            logging.error('\'%s\' has a request timeout.' % self.unique_name)
+            logging.error('\'%s\' has a request timeout.' % self.id)
             self.update_device()
 
     def observation(self):
@@ -187,19 +187,19 @@ class PyTradfriLight(light.Light):
 
         def err_callback(err):
             logging.error('Error in TRADFRI observation \'%s\'.'
-                          % self.unique_name)
+                          % self.id)
 
         while True:
             # check if the observation is alive and restart it if not
             if thread and not thread.is_alive():
                 logging.debug('Observation of \'%s\' terminated.'
-                              % self.unique_name)
+                              % self.id)
                 thread = None
 
             if not thread:
                 thread = threading.Thread(
                     target=self.api,
-                    name='%s-observation' % self.unique_name,
+                    name='%s-observation' % self.id,
                     args=(self.device.observe(self.update_backend,
                                               err_callback,
                                               duration=90),)
@@ -207,7 +207,7 @@ class PyTradfriLight(light.Light):
                 thread.daemon = True
                 thread.start()
                 logging.debug('Started observation of \'%s\'.'
-                              % self.unique_name)
+                              % self.id)
 
             time.sleep(1)
 
@@ -224,7 +224,7 @@ class PyTradfriLight(light.Light):
         lock.acquire()
 
         logging.debug('Update light \'%s\' in the back-end.'
-                      % self.unique_name)
+                      % self.id)
         device_state = device.light_control.lights[0]
 
         # apply new states to back-end
@@ -246,4 +246,4 @@ class PyTradfriLight(light.Light):
 
         # TODO: add color handling
         # trigger on_change to notify listener
-        self.on_change(self.unique_name)
+        self.on_change(self.id)

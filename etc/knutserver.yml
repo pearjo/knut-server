@@ -37,7 +37,7 @@ server:
 #       module: knut.services.pytradfri
 #       class: PyTradfriLight
 #       location: Sideboard
-#       unique_name: table_living_room
+#       id: table_living_room
 #       room: Living Room
 #       device_id: 65536
 #       host: 192.168.0.2
