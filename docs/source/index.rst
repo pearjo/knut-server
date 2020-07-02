@@ -38,4 +38,5 @@ which provides a user front-end to the Knut server.
 
    gettingstarted
    config
+   apis
    reference/reference.rst

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft/2019-09/schema",
+  "title": "Knut Message",
+  "type": "object",
+  "required": ["apiId", "msgId", "msg"],
+  "properties": {
+    "apiId": {
+      "type": "integer",
+      "description": "API identifier"
+    },
+    "msgId": {
+      "type": "integer",
+      "description": "Message identifier"
+    },
+    "msg": {
+      "type": "object",
+      "description": "API specific message",
+      "default": {}
+    }
+  }
+}
