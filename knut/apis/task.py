@@ -32,81 +32,29 @@ class Task(KnutAPI):
     - :const:`ALL_TASKS_REQUEST`
     - :const:`DELETE_TASK_REQUEST`
 
-    The dictionary :attr:`task` stores all tasks. Using :meth:`load_tasks()`,
+    The dictionary :attr:`tasks` stores all tasks. Using :meth:`load_tasks()`,
     the dictionary can be filled with tasks that are stored in a local directory
     :attr:`task_dir`.
 
-    .. py:data:: REMINDER
-       :value: 0x0101
-
-       A message that is send as reminder. The seconds before due when the
-       reminder is send are defined by :attr:`knut.services.Task.reminder`.
-       The message has the following keys:
-
-       - ``'uid'`` unique identifier of the task :attr:`knut.services.Task.uid`
-       - ``'reminder'`` the seconds before due at which the reminder is send
-
-       Example of a reminder message::
-
-          {
-              'uid': 'f3b14c5e-8458-11ea-9daa-b88a60bd7559',
-              'reminder': 3600
-          }
-
-    .. py:data:: TASK_REQUEST
-       :value: 0x0002
-
-       Requests the task matching an identifier passed by the message. The key
-       ``'uid'`` is required.
-
-    .. py:data:: TASK_RESPONSE
-       :value: 0x0102
-
-       The task response is the dictionary returned by
-       :meth:`knut.services.Task.task()`. If the task response is received by
-       the request handler with an empty ``'uid'``, a new task will be created.
-
-    .. py:data:: ALL_TASKS_REQUEST
-       :value: 0x0003
-
-       Requests a list of all tasks. No message is required.
-
-    .. py:data:: ALL_TASKS_RESPONSE
-       :value: 0x0103
-
-       The response is a dictionary with the uids of all tasks as keys
-       and the dictionary returned by :meth:`knut.services.Task.task()` as
-       values.
-
-    .. py:data:: DELETE_TASK_REQUEST
-       :value: 0x0004
-
-       Requests to delete a task. The message requires the key ``'uid'`` with
-       the identifier of the task which should be deleted. For example, to
-       delete the task of the :const:`REMINDER` example, the message should like
-       the following::
-
-          {'uid': 'f3b14c5e-8458-11ea-9daa-b88a60bd7559'}
-
     Here's a small example on how to create a new task::
 
-       from knut.apis import Task
+       >>> from knut.apis import Task
 
-       task_api = Task()
+       >>> task_api = Task()
 
-       # since no uid is an emtpy string, my_task will be as a new task
-       my_task = {
-           'assignee': 'John',
-           'author': 'Bob',
-           'body': 'Can you please get some cheese at the supermarket.',
-           'title': 'Buy cheese',
-           'uid': ''
-       }
+       >>> # since no id is an emtpy string, my_task will be as a new task
+       >>> my_task = {
+       >>>     'assignee': 'John',
+       >>>     'author': 'Bob',
+       >>>     'body': 'Can you please get some cheese at the supermarket.',
+       >>>     'title': 'Buy cheese',
+       >>>     'id': ''
+       >>> }
 
-       task_api.request_handler(Task.TASK_RESPONSE, my_task)
+       >>> task_api.request_handler(Task.TASK_RESPONSE, my_task)
 
-    Note that there is no directory specified in the example. Therefore, the
-    task would not be saved by the task service.
+    In the example is no directory specified. Therefore, the task would not be
+    saved by the task service.
 
     """
     REMINDER = 0x0101
@@ -116,8 +64,7 @@ class Task(KnutAPI):
     ALL_TASKS_RESPONSE = 0x0103
     DELETE_TASK_REQUEST = 0x0004
 
-    serviceid = 0x03
-    """The task service identifier."""
+    apiId = 0x03
 
     def __init__(self, task_dir="~/.local/share/knut/tasks"):
         super(Task, self).__init__()
@@ -130,12 +77,13 @@ class Task(KnutAPI):
         }
 
         self.task_dir = task_dir
-        """The directory where the tasks a saved."""
+        """The directory where the tasks are saved."""
 
         self.tasks = dict()
-        """A dictionary with all back-ends where the keys are the
-        :attr:`knut.services.Task.uid` and the values are the corresponding task
-        objects :class:`knut.services.Task`
+        """A dictionary with all back-ends.
+
+        The keys are the task identifier and the values are the corresponding
+        :class:`~knut.services.Task` objects.
         """
 
     def load_tasks(self, task_dir=None):
@@ -156,30 +104,30 @@ class Task(KnutAPI):
             with open(task) as f:
                 data = json.load(f)
 
-                if 'uid' not in data.keys():
+                if 'id' not in data.keys():
                     logging.warning(
                         'Tried to load invalid task \'%s\'.' % task)
                 else:
                     logging.debug('Loading task from file \'%s\'...' % task)
-                    uid = data['uid']
-                    loaded_task = knut.services.Task(uid, task_dir)
+                    id = data['id']
+                    loaded_task = knut.services.Task(id, task_dir)
                     loaded_task.update_task(data)
                     loaded_task.on_remind += self.__reminder
-                    self.tasks[uid] = loaded_task
+                    self.tasks[id] = loaded_task
 
     def __handle_task_request(self, msg):
         response = dict()
         response_id = Task.NULL
 
-        if 'uid' not in msg.keys:
+        if 'id' not in msg.keys():
             logging.warning('Invalid TASK_REQUEST received...')
         else:
-            uid = msg['uid']
+            id = msg['id']
 
-            if uid not in self.tasks.keys():
-                logging.warning('No task with the uid \'%s\' known.' % uid)
+            if id not in self.tasks.keys():
+                logging.warning('No task with the id \'%s\' known.' % id)
             else:
-                response = self.tasks[uid].task()
+                response = self.tasks[id].task()
                 response_id = Task.TASK_RESPONSE
 
         return response_id, response
@@ -188,62 +136,64 @@ class Task(KnutAPI):
         response = dict()
         response_id = Task.NULL
 
-        if 'uid' not in msg.keys():
+        if 'id' not in msg.keys():
             logging.warning('Invalid TASK_RESPONSE received...')
         else:
-            uid = msg['uid']
+            id = msg['id']
 
-            if uid not in self.tasks.keys():
-                if uid == '' or uid is None:
+            if id not in self.tasks.keys():
+                if id == '' or id is None:
                     new_task = knut.services.Task(task_dir=self.task_dir)
                     new_task.update_task(msg)
                     new_task.on_remind += self.__reminder
-                    self.tasks[new_task.uid] = new_task
+                    self.tasks[new_task.id] = new_task
 
                     # send a ALL_TASKS_RESPONSE after adding the new task
                     response_id, response = self.__handle_all_task_request(msg)
                 else:
-                    logging.warning('No task with the uid \'%s\' known.' % uid)
+                    logging.warning('No task with the id \'%s\' known.' % id)
             else:
-                self.tasks[uid].update_task(msg)
+                self.tasks[id].update_task(msg)
                 response_id, response = (Task.TASK_RESPONSE,
-                                         self.tasks[uid].task())
+                                         self.tasks[id].task())
 
         if response_id > 0:
-            self.on_push(Task.serviceid, response_id, response)
+            self.on_push(Task.apiId, response_id, response)
 
         return Task.NULL, dict()
 
     def __handle_all_task_request(self, _msg):
         """Returns the tuple (ALL_TASKS_RESPONSE, *response*).
 
-        The *response* is a dictionary with the :attr:`tasks` keys as keys
-        and :meth:`knut.services.Task.task()` as values.
+        The *response* dictionary has the keys of :ref:`ALL_TASKS_RESPONSE`.
         """
-        response = dict()
+        tasks = list()
 
-        for uid, task in self.tasks.items():
-            response[uid] = task.task()
+        for id, task in self.tasks.items():
+            tasks.append(task.task())
+
+        response = {'tasks': tasks}
 
         return Task.ALL_TASKS_RESPONSE, response
 
     def __handle_delete_task_request(self, msg):
-        if 'uid' not in msg.keys():
+        if 'id' not in msg.keys():
             logging.warning('Invalid DELETE_TASK_REQUEST received...')
-        elif msg['uid'] in self.tasks:
-            uid = msg['uid']
-            self.tasks[uid].delete_task()
-            del self.tasks[uid]
+        elif msg['id'] in self.tasks:
+            id = msg['id']
+            self.tasks[id].delete_task()
+            del self.tasks[id]
             # notify all clients about the changes
             response_id, response = self.__handle_all_task_request(msg)
-            self.on_push(Task.serviceid, response_id, response)
+            self.on_push(Task.apiId, response_id, response)
         else:
             logging.warning(
-                'Can\'t delete unknown task \'%s\'...' % msg['uid'])
+                'Can\'t delete unknown task \'%s\'...' % msg['id'])
 
         return Task.NULL, dict()
 
-    def __reminder(self, uid):
-        logging.debug('Push reminder for \'%s\'...' % uid)
-        msg = {'uid': uid, 'reminder': self.tasks[uid].reminder}
-        self.on_push(Task.serviceid, Task.REMINDER, msg)
+    def __reminder(self, id):
+        # TODO: Update to API changes
+        logging.debug('Push reminder for \'%s\'...' % id)
+        msg = {'id': id, 'reminder': self.tasks[id].reminder}
+        self.on_push(Task.apiId, Task.REMINDER, msg)

@@ -1,20 +1,17 @@
-"""
-Copyright (C) 2020  Joe Pearson
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from events import Events
 import json
 import logging
@@ -35,8 +32,8 @@ class Task(Events):
     to clients.
     """
 
-    def __init__(self, uid=None, task_dir=None):
-        self.uid = uid
+    def __init__(self, id=None, task_dir=None):
+        self.id = id
         """The unique id of the task."""
         self.task_dir = task_dir
         """The directory where the task can be saved."""
@@ -45,8 +42,8 @@ class Task(Events):
         """The user to which the task is assigned."""
         self.author = str()
         """The name of the task author."""
-        self.body = str()
-        """The body text of the task."""
+        self.description = str()
+        """The description text of the task."""
         self.done = False
         """Whether the task is done or not."""
         self.due = int()
@@ -58,24 +55,24 @@ class Task(Events):
         self.title = str()
         """The task title."""
 
-        if not self.uid:
-            self.uid = str(uuid.uuid1())
+        if not self.id:
+            self.id = str(uuid.uuid1())
 
         self.__reminder_timer = None
 
-        # Call on_remind as method with the uid as argument to notify
+        # Call on_remind as method with the id as argument to notify
         # listening methods.
         self.__events__ = ('on_remind')
 
     def delete_task(self):
         """Deletes the task."""
-        logging.debug('Delete task \'%s\'...' % self.uid)
+        logging.debug('Delete task \'%s\'...' % self.id)
 
         if not self.__check_save_dir():
             return
 
         task_dir = os.path.expanduser(self.task_dir)
-        task = os.path.join(task_dir, '%s.json' % self.uid)
+        task = os.path.join(task_dir, '%s.json' % self.id)
 
         os.remove(task)
 
@@ -85,7 +82,7 @@ class Task(Events):
     def update_task(self, task):
         """Updates the task to the parsed *task* dictionary."""
 
-        logging.debug('Update task \'%s\'...' % self.uid)
+        logging.debug('Update task \'%s\'...' % self.id)
 
         if 'assignee' in task.keys():
             self.assignee = task['assignee']
@@ -93,8 +90,8 @@ class Task(Events):
         if 'author' in task.keys():
             self.author = task['author']
 
-        if 'body' in task.keys():
-            self.body = task['body']
+        if 'description' in task.keys():
+            self.description = task['description']
 
         if 'done' in task.keys():
             self.done = task['done']
@@ -115,25 +112,25 @@ class Task(Events):
         """Returns the task as dictionary.
 
         The returned dictionary has the keys ``'assignee'``, ``'author'``,
-        ``'body'``, ``'done'``, ``'due'``, ``'reminder'``, ``'title'`` and
-        ``'uid'``
+        ``'description'``, ``'done'``, ``'due'``, ``'reminder'``, ``'title'`` and
+        ``'id'``
         """
         return {
             'assignee': self.assignee,
             'author': self.author,
-            'body': self.body,
+            'description': self.description,
             'done': self.done,
             'due': self.due,
             'reminder': self.reminder,
             'title': self.title,
-            'uid': self.uid
+            'id': self.id
         }
 
     def __check_save_dir(self):
         """Checks if a save directory is defined."""
         if not self.task_dir:
             logging.warning(
-                'No save directory for task \'%s\' set.' % self.uid)
+                'No save directory for task \'%s\' set.' % self.id)
             return False
 
         return True
@@ -143,7 +140,7 @@ class Task(Events):
             return
 
         task_dir = os.path.expanduser(self.task_dir)
-        task = os.path.join(task_dir, '%s.json' % self.uid)
+        task = os.path.join(task_dir, '%s.json' % self.id)
 
         try:
             os.makedirs(task_dir)
@@ -155,8 +152,8 @@ class Task(Events):
 
     def __set_reminder(self):
         def reminder_alarm():
-            logging.debug('Reminder alarm for \'%s\' triggered...' % self.uid)
-            self.on_remind(self.uid)
+            logging.debug('Reminder alarm for \'%s\' triggered...' % self.id)
+            self.on_remind(self.id)
 
         if self.__reminder_timer:
             self.__reminder_timer.cancel()
@@ -168,6 +165,6 @@ class Task(Events):
             return
 
         logging.debug('Set a reminder for \'%s\' which is due in %i seconds...'
-                      % (str(self.uid), time_from_now))
+                      % (str(self.id), time_from_now))
         self.__reminder_timer = threading.Timer(time_from_now, reminder_alarm)
         self.__reminder_timer.start()

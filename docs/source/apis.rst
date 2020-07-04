@@ -374,7 +374,7 @@ Task
 .. data:: TASK_RESPONSE
    :value: 0x0102
 
-   The task response with the following keys:
+   The task response has the following keys:
 
    - The identifier ``id`` of the task.
    - The ``assignee`` who has the task assigned.
@@ -400,7 +400,7 @@ Task
         "done": false,
         "due": 1577815200,
         "reminder": 1577800800,
-        "titel": "Drinks for the party"
+        "title": "Drinks for the party"
       }
 
 .. data:: ALL_TASKS_REQUEST
@@ -411,8 +411,8 @@ Task
 .. data:: ALL_TASKS_RESPONSE
    :value: 0x0103
 
-   The response is a has the key ``tasks`` with an array as value, containing
-   the object of the :const:`TASK_RESPONSE` for each task. For example:
+   The response has the key ``tasks`` with an array as value, containing the
+   object of the :const:`TASK_RESPONSE` for each task. For example:
 
    .. code-block:: json
 
@@ -426,7 +426,7 @@ Task
             "done": false,
             "due": 1577815200,
             "reminder": 1577800800,
-            "titel": "Drinks for the party"
+            "title": "Drinks for the party"
           },
           {
             "id": "f3b14c5e-8458-11ea-9daa-va131fassd59",
@@ -436,7 +436,7 @@ Task
             "done": true,
             "due": 1577815200,
             "reminder": 1577800800,
-            "titel": "Fill up the humidor"
+            "title": "Fill up the humidor"
           }
         ]
       }
