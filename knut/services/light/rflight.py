@@ -21,7 +21,6 @@ import logging
 try:
     import rpi_rf
 except RuntimeError:
-    logging.critical('Failed to load module for RFLight.')
     rpi_rf = None
 
 
