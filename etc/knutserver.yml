@@ -52,7 +52,7 @@ local:
     module: knut.services
     class: Local
     #location:
-    #unique_name: local
+    #id: local
     #latitude: 0
     #longitude: 0
     #elevation: 0

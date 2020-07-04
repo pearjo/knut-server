@@ -106,7 +106,7 @@ local:
     module: knut.services
     class: Local
     location: Beverly Hills
-    unique_name: home
+    id: home
     latitude: 34.091944
     longitude: -118.401667
     elevation: 209

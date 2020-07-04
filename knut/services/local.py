@@ -36,7 +36,7 @@ class Local(Events):
     and *elevation* of the *location*.
     """
 
-    def __init__(self, location=None, unique_name='local',
+    def __init__(self, location=None, id='local',
                  latitude=0, longitude=0, elevation=0):
         self.elevation = elevation
         """The elevation of the location in meters."""
@@ -64,8 +64,8 @@ class Local(Events):
         """The time when the sun sets in seconds since the epoch January 1,
         1970, 00:00:00 (UTC)."""
 
-        self.unique_name = unique_name
-        """The unique name of the location service."""
+        self.id = id
+        """The identifier of the location service."""
 
         self.__daylight_timer = None  # used to update is_daylight
 
@@ -82,14 +82,14 @@ class Local(Events):
         """Returns the :class:`Local` object as dictionary.
 
         The returned dictionary has the keys ``'isDaylight'``, ``'location'``,
-        ``'sunrise'``, ``'sunset'`` and ``'uniqueName'``. For example::
+        ``'sunrise'``, ``'sunset'`` and ``'id'``. For example::
 
            {
                'isDaylight': True,
                'location': 'Hamburg',
                'sunrise': 1589513114.5880833,
                'sunset': 1589483203.418921,
-               'uniqueName': 'myLocation'
+               'id': 'myLocation'
            }
 
         """
@@ -97,7 +97,7 @@ class Local(Events):
                 'location': self.location,
                 'sunrise': self.sunrise,
                 'sunset': self.sunset,
-                'uniqueName': self.unique_name}
+                'id': self.id}
 
     def update_observer(self):
         """Updates the :attr:`observer` and :attr:`sunset` time.
@@ -106,7 +106,7 @@ class Local(Events):
         :attr:`elevation`, the :attr:`observer` should be updated using this
         method. This also updates the :attr:`sunset` time.
         """
-        logging.debug('Update observer for \'%s\'...' % self.unique_name)
+        logging.debug('Update observer for \'%s\'...' % self.id)
         self.observer = Observer(longitude=self.longitude*astropy.units.deg,
                                  latitude=self.latitude*astropy.units.deg,
                                  elevation=self.elevation*astropy.units.m)
@@ -138,7 +138,7 @@ class Local(Events):
         """
         def update_alarm():
             logging.debug('Update alarm for \'%s\' triggered...'
-                          % self.unique_name)
+                          % self.id)
             self.__get_sun_rise_and_set()
             self.__update_daylight()
             self.__set_daylight_timer()
@@ -155,7 +155,7 @@ class Local(Events):
 
         logging.debug('Set a timer for the next sun rise or set at \'%s\' which '
                       'is due in %i seconds...'
-                      % (self.unique_name, time_from_now))
+                      % (self.id, time_from_now))
 
         self.__daylight_timer = threading.Timer(time_from_now, update_alarm)
         self.__daylight_timer.daemon = True
