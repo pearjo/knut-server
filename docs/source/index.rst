@@ -7,7 +7,7 @@ What is Knut?
 
 Knut is a happy penguin to help organize your home. 🐧🥰
 
-Ok... What is Knut again? It's a smart home assistant with an server at it's
+Ok... What is Knut again? It's a smart home assistant with a server at it's
 core which is connected to various :ref:`apis`. Via a JSON formatted message and
 the TCP server, clients can interact with the various APIs. They are designed in
 such way, that they can be extended modular. Each API is then connected with

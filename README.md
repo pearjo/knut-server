@@ -9,11 +9,17 @@
 
 *Knut* is a friendly penguin to help organize your home.
 
-Knut has various APIs to control e.g. lights or supply temperature
-data from various sources. The API communicates with *services* which
-are implementing the actions needed to e.g. switch a
-[TRÅDFRI](https://www.ikea.com/de/de/product-guides/tradfri-home-smart-beleuchtung-pub61503271)
-light.
+Ok... What is Knut again? It's a smart home assistant with a server at
+it's core which is connected to various
+[APIs](https://knut-server.readthedocs.io/en/latest/apis.html). Via a
+JSON formatted message, clients can interact with the various
+APIs. They are designed in such way, that they can be extended
+modular. Each API is then connected with
+[services](https://knut-server.readthedocs.io/en/latest/reference/services.html)
+which do some work like switching
+e.g. [TRÅDFRI](https://www.ikea.com/de/de/product-guides/tradfri-home-smart-beleuchtung-pub61503271)
+lights or providing [OpenWeather](https://openweathermap.org/) data to
+the API.
 
 ## Installation
 
@@ -30,10 +36,6 @@ To install the Knut package run:
 python setup.py install
 ```
 
-Knut uses [pytradfri](https://github.com/ggravlingen/pytradfri) to
-communicate with the TRÅDFRI system. Follow the instructions of the
-pytradfri system to get it up and running.
-
 The code documentation can be build by running the following:
 
 ```bash
@@ -43,53 +45,24 @@ make html
 
 ## Usage
 
-The Knut server is looking for a configuration in
-`/etc/knutconfig.yaml` which has the following structure:
-
-```yaml
----
-# TCP socket configuration
-socket:
-  ip: 127.0.0.1
-  port: 8080
-
----
-# API configuration
-#
-# Each API can have multiple services. Each service has a name which
-# must be unique, a serviceid as hex, a location to which the service relates,
-# the module which provides the service and the object which is the service
-# class. Additional keyword arguments which are needed for an object are parsed
-# by the kwargs key.
-temperature:
-  localWeather: # localWeather is the unique name
-    serviceid: 0x01
-    location: Hamburg
-    module: knut.services.dummytemperature
-    object: DummyTemperature
-
-light:
-  advancedLight:
-    serviceid: 0x02
-    location: Sofa Light
-    module: knut.services.dummylight
-    object: DummyLight
-    # the object DummyLight requires multiple keyword arguments
-    kwargs:
-      room: Living Room
-      dimlevel: true
-      color: true
-      temperature: true
-      colorCold: "#f5faf6"
-      colorWarm: "#efd275"
-```
-
-Please [read the docs](https://knut-server.readthedocs.io) to see which APIs and services are available and
-what keyword arguments they need for their configuration. With a
-proper configuration in place, the Knut server is run by:
+The Knut server is looking for the
+[configuration](https://knut-server.readthedocs.io/en/latest/config.html)
+file `/etc/knutconfig.yaml` but will use a fail-safe configuration if
+the file is not found. The server is started by running the following:
 
 ```bash
 knutserver.py
 ```
 
 To run in debug mode, use `--log=DEBUG` as additional argument.
+
+You can also take Knut for a test run using the example configuration
+`etc/example.yml`:
+
+```bash
+knutserver.py --conf=etc/example.yml --log=DEBUG
+```
+
+For more, please [read the docs](https://knut-server.readthedocs.io)
+to see which APIs and services are available and how they are
+configuration.
