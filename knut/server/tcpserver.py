@@ -1,20 +1,17 @@
-"""
-Copyright (C) 2020  Joe Pearson
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from knut.apis import KnutAPI
 from typing import Tuple
 import json
@@ -60,7 +57,7 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
             knutmsg = dict()
             msg = dict()
             msgid = 0x0000
-            serviceid = 0x00
+            apiid = 0x00
 
             try:
                 # read until a null byte is received
@@ -83,25 +80,25 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
                     )
 
                     try:
-                        serviceid = knutmsg['serviceid']
-                        msgid = knutmsg['msgid']
+                        apiid = knutmsg['apiId']
+                        msgid = knutmsg['msgId']
                         msg = knutmsg['msg']
 
-                        logging.debug('Message of type {} for service {} '
-                                      'received...'.format(msgid, serviceid))
+                        logging.debug('Message of type {} for API {} '
+                                      'received...'.format(msgid, apiid))
 
                         msgid, msg = self.request_service(
-                            serviceid, msgid, msg)
+                            apiid, msgid, msg)
                     except KeyError:
                         logging.warning('Received message is missing at least '
                                         'one of the following keys: '
-                                        '[msgid, serviceid, msg]')
+                                        '[msgId, apiId, msg]')
 
             except json.decoder.JSONDecodeError:
                 logging.warning('Failed to decode JSON message...')
 
             if msgid > 0:
-                self.send_queued_knutmsg(serviceid, msgid, msg)
+                self.send_queued_knutmsg(apiid, msgid, msg)
 
     def heartbeat(self) -> None:
         """Sends frequently a heartbeat.
@@ -119,30 +116,30 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
             timer.start()
 
     def request_service(self,
-                        serviceid: int,
+                        apiid: int,
                         msgid: int,
                         msg: dict) -> Tuple[int, dict]:
         """Returns a service's response.
 
-        This method calls the ``request_handler()`` of the service with the
-        *serviceid*. The service's request handler handles then the *msg* of
+        This method calls the ``request_handler()`` of the API with the
+        *apiid*. The API's request handler handles then the *msg* of
         type *msgid*. The returned tuple holds the responses *msgid* and *msg*.
-        If no service for *serviceid* is found in the servers service
-        dictionary, the *msg* and *msgid*.
+        If no API for *apiid* is found in the servers API
+        dictionary, the *msg* and *msgid* is returned.
         """
-        if serviceid not in self.server.apis.keys():
-            logging.warning('Unknown service request: {}'.format(serviceid))
+        if apiid not in self.server.apis.keys():
+            logging.warning('Unknown API request: {}'.format(apiid))
             return msgid, msg
 
-        return self.server.apis[serviceid].request_handler(msgid, msg)
+        return self.server.apis[apiid].request_handler(msgid, msg)
 
-    def send_queued_knutmsg(self, serviceid: int, msgid: int, msg: dict) -> None:
+    def send_queued_knutmsg(self, apiid: int, msgid: int, msg: dict) -> None:
         """Sends a queued Knut message.
 
-        Sends the *msg* of type *msgid* from the *serviceid* as a queued Knut
+        Sends the *msg* of type *msgid* from the *apiid* as a queued Knut
         message.
         """
-        self.send_queued(knutmsg_builder(serviceid,
+        self.send_queued(knutmsg_builder(apiid,
                                          msgid,
                                          msg,
                                          KnutTCPRequestHandler.ENCODING))
@@ -173,7 +170,7 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
         logging.debug('Start heartbeat: {}'.format(self.client_address))
         threading.Thread(target=self.heartbeat, daemon=True).start()
 
-        for serviceid, service in self.server.apis.items():
+        for apiid, service in self.server.apis.items():
             service.on_push += self.send_queued_knutmsg
 
 
@@ -181,43 +178,19 @@ class KnutTCPServer(socketserver.ThreadingMixIn,
                     socketserver.TCPServer):
     """The Knut TCP server class.
 
-    It is bound to *server_address* where it handles all communication from
-    clients and redirects requests to the APIs of the corresponding
-    services. For each client, the request handler
-    :class:`knut.server.tcpserver.KnutTCPRequestHandler` is instantiated in a
+    The server handles all communication from clients and redirects requests to
+    the APIs of the corresponding services. For each client, the request handler
+    :class:`~knut.server.tcpserver.KnutTCPRequestHandler` is instantiated in a
     new thread. The connection is kept open once a request is received to allow
     sending push notifications via TCP back to the connected client. See
     :meth:`add_api()` for more about how to add an API to the server.
 
-    The :class:`KnutTCPServer` reads UTF-8 encoded JSON messages terminated by a
-    null byte ``b'\\x00'``. Each message send and received must have the
-    following JSON schema::
+    The request handler reads UTF-8 encoded JSON messages terminated by a null
+    byte ``b'\\x00'``. See :ref:`knutmsg` for more details.
 
-       {
-         "$schema": "http://json-schema.org/draft/2019-09/schema",
-         "title": "Knut Message",
-         "type": "object",
-         "required": ["serviceid", "msgid", "msg"],
-         "properties": {
-           "serviceid": {
-             "type": "integer",
-             "description": "Service identifier"
-           },
-           "msgid": {
-             "type": "integer",
-             "description": "Message identifier"
-           },
-           "msg": {
-             "type": "object",
-             "description": "API specific message",
-             "default": {}
-           }
-         }
-       }
-
-    After adding APIs, the server can be run by calling the ``serve_forever()``
-    method. The request are then handled by the request handler until the server
-    is shutdown. See the documentation for the `socketserver
+    After adding APIs, the server can be run by ``serve_forever()``. The
+    request are then handled by the request handler until the server is
+    shutdown. See the documentation for the `socketserver
     <https://docs.python.org/3/library/socketserver.html#module-socketserver>`_
     module for details.
 
@@ -247,17 +220,21 @@ class KnutTCPServer(socketserver.ThreadingMixIn,
 
        server.shutdown()
 
-    From the client, a ``TEMPERATURE_LIST_REQUEST`` is send to the API::
+    From the client, a :const:`TEMPERATURE_LIST_REQUEST` is send to the API:
 
-       $ echo -ne '{"serviceid": 1, "msgid": 2, "msg": {}}\\0' | netcat localhost 8080
-       {"serviceid": 1, "msgid": 258, "msg": {"dummy": {"location": "Somewhere",
+    .. code-block:: bash
+
+       $ echo -ne '{"apiId": 1, "msgId": 2, "msg": {}}\\0' | netcat localhost 8080
+       {"apiId": 1, "msgId": 258, "msg": {"dummy": {"location": "Somewhere",
            "unit": "\\u00b0C", "condition": "\\uf002", "temperature": 10.2}}}
 
-    The server finally responses with the API's ``TEMPERATURE_LIST_RESPONSE``.
+    The server finally responses with the API's
+    :const:`TEMPERATURE_LIST_RESPONSE`.
 
     """
 
     def __init__(self, address: str = "127.0.0.1", port: int = 8080) -> None:
+        """The server is bound to the *address* on the specified *port*."""
         self.allow_reuse_address = True
 
         self.apis = dict()
@@ -277,32 +254,32 @@ class KnutTCPServer(socketserver.ThreadingMixIn,
         The request handler will also call the APIs ``request_handler()`` method
         if the API's service matches the requested service.
         """
-        if not all([hasattr(api, 'serviceid'),
+        if not all([hasattr(api, 'apiid'),
                     hasattr(api, 'on_push')]):
-            raise AttributeError('Api is missing either a \'serviceid\' or '
+            raise AttributeError('API is missing either a \'apiid\' or '
                                  'an \'on_push\' event: {}'.format(api))
 
-        serviceid = api.serviceid
-        self.apis[serviceid] = api
+        apiid = api.apiid
+        self.apis[apiid] = api
 
 
-def knutmsg_builder(serviceid: int,
+def knutmsg_builder(apiid: int,
                     msgid: int,
                     msg: dict,
                     encoding: str) -> bytearray:
     """Returns a Knut message.
 
-    Builds a Knut message for the service *serviceid* and the message *msg* of
+    Builds a Knut message for the API *apiid* and the message *msg* of
     type *msgid*. The Knut message is terminated by an null byte ``b'\\x00'``.
 
     For example::
 
        >>> import knut.server.tcpserver
        >>> knut.server.tcpserver.knutmsg_builder(2, 2, {}, 'utf-8')
-       bytearray(b'{"serviceid": 2, "msgid": 2, "msg": {}}\\x00')
+       bytearray(b'{"apiid": 2, "msgId": 2, "msg": {}}\\x00')
 
     """
-    data = {'serviceid': serviceid, 'msgid': msgid, 'msg': msg}
+    data = {'apiId': apiid, 'msgId': msgid, 'msg': msg}
     data_str = json.dumps(data)
 
     logging.debug('Build {} byte long message: {}'

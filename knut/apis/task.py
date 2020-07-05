@@ -64,7 +64,7 @@ class Task(KnutAPI):
     ALL_TASKS_RESPONSE = 0x0103
     DELETE_TASK_REQUEST = 0x0004
 
-    apiId = 0x03
+    apiid = 0x03
 
     def __init__(self, task_dir="~/.local/share/knut/tasks"):
         super(Task, self).__init__()
@@ -158,7 +158,7 @@ class Task(KnutAPI):
                                          self.tasks[id].task())
 
         if response_id > 0:
-            self.on_push(Task.apiId, response_id, response)
+            self.on_push(Task.apiid, response_id, response)
 
         return Task.NULL, dict()
 
@@ -185,7 +185,7 @@ class Task(KnutAPI):
             del self.tasks[id]
             # notify all clients about the changes
             response_id, response = self.__handle_all_task_request(msg)
-            self.on_push(Task.apiId, response_id, response)
+            self.on_push(Task.apiid, response_id, response)
         else:
             logging.warning(
                 'Can\'t delete unknown task \'%s\'...' % msg['id'])
@@ -196,4 +196,4 @@ class Task(KnutAPI):
         # TODO: Update to API changes
         logging.debug('Push reminder for \'%s\'...' % id)
         msg = {'id': id, 'reminder': self.tasks[id].reminder}
-        self.on_push(Task.apiId, Task.REMINDER, msg)
+        self.on_push(Task.apiid, Task.REMINDER, msg)

@@ -24,7 +24,7 @@ import logging
 class Room(Events):
     """Bundles :class:`~knut.services.Light` objects in a room."""
 
-    apiId = 0x02
+    apiid = 0x02
     """The room service id. The id is the same as the light service id since
     this service is part of the light service."""
 
@@ -104,7 +104,7 @@ class Room(Events):
         if self.state != state:
             self.state = state
             # push new status to registered event listeners
-            self.on_push(Room.apiId, Light.ROOM_RESPONSE, self.status())
+            self.on_push(Room.apiid, Light.ROOM_RESPONSE, self.status())
 
 
 class Light(KnutAPI):
@@ -136,7 +136,7 @@ class Light(KnutAPI):
     ROOM_REQUEST = 0x0005
     ROOM_RESPONSE = 0x0105
 
-    apiId = 0x02
+    apiid = 0x02
 
     def __init__(self):
         super(Light, self).__init__()
@@ -204,7 +204,7 @@ class Light(KnutAPI):
         if self.light_state_all != light_state_all:
             self.light_state_all = light_state_all
             # push response to all clients
-            self.on_push(Light.apiId, Light.ALL_LIGHTS_RESPONSE,
+            self.on_push(Light.apiid, Light.ALL_LIGHTS_RESPONSE,
                          {'state': self.light_state_all})
 
     def request_handler(self, msg_id, msg):
@@ -228,7 +228,7 @@ class Light(KnutAPI):
 
         # push the message to registered objects
         logging.debug('Push status to listeners: {}'.format(id))
-        self.on_push(Light.apiId, Light.LIGHT_STATUS_RESPONSE,
+        self.on_push(Light.apiid, Light.LIGHT_STATUS_RESPONSE,
                      self.backends[id].status())
 
     def __handle_status_request(self, msg):
@@ -304,7 +304,7 @@ class Light(KnutAPI):
         self.rooms[room].switch(state)
 
         for light in self.rooms[room].backends:
-            self.on_push(Light.apiId, Light.LIGHT_STATUS_RESPONSE,
+            self.on_push(Light.apiid, Light.LIGHT_STATUS_RESPONSE,
                          light.status())
 
         return Light.ROOM_RESPONSE, self.rooms[room].status()

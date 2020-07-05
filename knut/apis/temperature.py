@@ -249,7 +249,7 @@ class Temperature(KnutAPI):
     TEMPERATURE_HISTORY_REQUEST = 0x0003
     TEMPERATURE_HISTORY_RESPONSE = 0x0103
 
-    apiId = 0x01
+    apiid = 0x01
 
     def __init__(self):
         super(Temperature, self).__init__()
@@ -292,7 +292,7 @@ class Temperature(KnutAPI):
     def notifier(self, id: str) -> None:
         """Pushes a :const:`STATUS_RESPONSE` for *id* via the
         ``on_push()`` event."""
-        self.on_push(Temperature.apiId, Temperature.STATUS_RESPONSE,
+        self.on_push(Temperature.apiid, Temperature.STATUS_RESPONSE,
                      {id: self.status(id)})
 
     def status(self, id: str) -> dict:

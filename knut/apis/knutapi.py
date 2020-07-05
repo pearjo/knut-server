@@ -45,7 +45,7 @@ class KnutAPI(Events):
 
 
        class Foo(KnutAPI):
-           apiId = 0x01
+           apiid = 0x01
            FOO_PRINT = 0x0001
 
            def __init__(self):
@@ -67,7 +67,7 @@ class KnutAPI(Events):
     NULL = 0x0000
     """The null message indicates that no further action is going to happen."""
 
-    apiId = int()
+    apiid = int()
     """The API identifier."""
 
     def __init__(self) -> None:
@@ -95,11 +95,11 @@ class KnutAPI(Events):
                 response_id, response = self.supported[msg_id](msg)
             except KeyError:
                 logging.error('Unsupported msg_id for API \'{}\': {}'
-                              .format(self.apiId, msg_id))
+                              .format(self.apiid, msg_id))
             except TypeError as e:
                 logging.error('Invalid callback function for '
                               'msg_id \'{}\' and API \'{}\': {}'
-                              .format(msg_id, self.apiId, e))
+                              .format(msg_id, self.apiid, e))
 
         response_id = response_id if len(response) > 0 else KnutAPI.NULL
 

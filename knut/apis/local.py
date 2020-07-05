@@ -31,7 +31,7 @@ class Local(KnutAPI):
     LOCAL_REQUEST = 0x0001
     LOCAL_RESPONSE = 0x0101
 
-    apiId = 0x04
+    apiid = 0x04
 
     def __init__(self):
         super(Local, self).__init__()
@@ -53,4 +53,4 @@ class Local(KnutAPI):
             self.local.on_change += self.notifier
 
     def notifier(self, local):
-        self.on_push(Local.apiId, Local.LOCAL_RESPONSE, local)
+        self.on_push(Local.apiid, Local.LOCAL_RESPONSE, local)
