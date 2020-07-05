@@ -6,3 +6,4 @@ pytradfri[async]
 pyyaml
 requests  # required by openweathermap
 rpi-rf
+websockets
