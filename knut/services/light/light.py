@@ -60,15 +60,31 @@ class Light(Events):
         # listening methods.
         self.__events__ = ('on_change')
 
+    def status(self):
+        return {
+            'id': self.id,
+            'location': self.location,
+            'room': self.room,
+            'state': self.state,
+            'hasTemperature': self.has_temperature,
+            'hasDimlevel': self.has_dimlevel,
+            'hasColor': self.has_color,
+            'temperature': self.temperature if self.has_temperature else None,
+            'colorCold': self.color_cold if self.has_temperature else None,
+            'colorWarm': self.color_warm if self.has_temperature else None,
+            'dimlevel': self.dimlevel if self.has_dimlevel else None,
+            'color': self.color if self.has_color else None
+        }
+
     def status_setter(self, status):
         """Applies the *status* to the back-end.
 
-        The *status* dictionary must have ``state`` as key and can have the
+        The *status* dictionary must have ``'state'`` as key and can have the
         following keys additional:
 
-        * ``dimlevel``
-        * ``temperature``
-        * ``color``
+        * The ``'dimlevel'`` :attr:`dimlevel`.
+        * The lights ``'temperature'`` :attr:`temperature`.
+        * The light ``'color'`` :attr:`light`.
 
         """
         state = status['state']

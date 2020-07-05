@@ -229,40 +229,19 @@ class Light(KnutAPI):
         # push the message to registered objects
         logging.debug('Push status to listeners: {}'.format(id))
         self.on_push(Light.apiId, Light.LIGHT_STATUS_RESPONSE,
-                     self.status(id))
-
-    def status(self, id):
-        """Returns the status information of the light with the identifier *id*.
-
-        The returned dictionary has all keys of the
-        :const:`LIGHT_STATUS_RESPONSE`.
-
-        """
-        light = self.backends[id]
-        return {
-            'id': light.id,
-            'location': light.location,
-            'room': light.room,
-            'state': light.state,
-            'hasTemperature': light.has_temperature,
-            'hasDimlevel': light.has_dimlevel,
-            'hasColor': light.has_color,
-            'temperature': light.temperature if light.has_temperature else int(),
-            'colorCold': light.color_cold if light.has_temperature else str(),
-            'colorWarm': light.color_warm if light.has_temperature else str(),
-            'dimlevel': light.dimlevel if light.has_dimlevel else int(),
-            'color': light.color if light.has_color else str()
-        }
+                     self.backends[id].status())
 
     def __handle_status_request(self, msg):
         response = dict()
         response_id = Light.NULL
 
-        if msg['id'] not in self.backends.keys():
+        light_id = msg['id']
+
+        if light_id not in self.backends.keys():
             logging.warning('Unknown light service requested: {}'
-                            .format(msg['id']))
+                            .format(light_id))
         else:
-            response = self.status(msg['id'])
+            response = self.backends[light_id].status()
             response_id = Light.LIGHT_STATUS_RESPONSE
 
         return response_id, response
@@ -271,8 +250,8 @@ class Light(KnutAPI):
         backends = list()
         response_id = Light.LIGHTS_RESPONSE
 
-        for light in self.backends.keys():
-            backends.append(self.status(light))
+        for light in self.backends.values():
+            backends.append(light.status())
 
         logging.debug(backends)
 
@@ -283,16 +262,18 @@ class Light(KnutAPI):
         response = dict()
         response_id = Light.NULL
 
-        if msg['id'] not in self.backends.keys():
+        light_id = msg['id']
+
+        if light_id not in self.backends.keys():
             logging.warning('Unknown light service requested: {}'
-                            .format(msg['id']))
+                            .format(light_id))
         else:
-            light = self.backends[msg['id']]
+            light = self.backends[light_id]
             light.status_setter(msg)
             self.rooms[light.room].fetch()  # update room
 
             # send new status as response
-            response = self.status(msg['id'])
+            response = light.status()
             response_id = Light.LIGHT_STATUS_RESPONSE
 
         return response_id, response
@@ -324,7 +305,7 @@ class Light(KnutAPI):
 
         for light in self.rooms[room].backends:
             self.on_push(Light.apiId, Light.LIGHT_STATUS_RESPONSE,
-                         self.status(light.id))
+                         light.status())
 
         return Light.ROOM_RESPONSE, self.rooms[room].status()
 

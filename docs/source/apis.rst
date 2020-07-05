@@ -163,7 +163,8 @@ Light
    :value: 0x0001
 
    Requests the status of a back-end. The message has the key ``id`` with the
-   identifier of the back-end as value. For example:
+   identifier of the back-end as value. The server will respond with a
+   :const:`LIGHT_STATUS_RESPONSE`. For example:
 
    .. code-block:: json
 
@@ -193,7 +194,13 @@ Light
    * The ``dimlevel`` in percentage.
    * The light's ``color`` as hex code.
 
-   For example:
+   .. note::
+
+      A client can send the status response to change the state of the light.
+      When sending from a client, only the ``id`` key is required and the key of
+      which the value should be changed.
+
+   For example a response send by the server:
 
    .. code-block:: json
 
@@ -210,6 +217,15 @@ Light
         "colorWarm": "#efd275",
         "dimlevel": 50,
         "color": ""
+      }
+
+   An example response send by a client to switch the light on:
+
+   .. code-block:: json
+
+      {
+        "id": "myLightBackend",
+        "state": true
       }
 
 .. data:: LIGHTS_REQUEST
