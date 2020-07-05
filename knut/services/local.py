@@ -165,10 +165,7 @@ class Local(Events):
         """Updates the :attr:`is_daylight` attribute."""
         # if the next sun set is before the next sun rise and the current time
         # is before the sun set, it must be day light at the moment
-        if self.sunset < self.sunrise and time.time() < self.sunset:
-            is_daylight = True
-        else:
-            is_daylight = False
+        is_daylight = self.sunset < self.sunrise and time.time() < self.sunset
 
         if is_daylight != self.is_daylight:
             logging.debug('Day light changed for location \'%s\''
