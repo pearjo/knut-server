@@ -19,12 +19,12 @@ import logging
 class Light(Events):
     """Base class for light services."""
 
-    def __init__(self, location, id, room):
-        """The light has an *id* and *location* within a *room*.
+    def __init__(self, location, uid, room):
+        """The light has an *uid* and *location* within a *room*.
 
         If the state of the light changes, e.g. when calling
         :meth:`status_setter()`, the method :meth:`on_change()` is called with
-        the *id* as argument. Any listener can register upon this
+        the *uid* as argument. Any listener can register upon this
         event.
 
         """
@@ -34,8 +34,8 @@ class Light(Events):
 
         self.location = location
         """The location inside a :attr:`room`."""
-        self.id = id
-        """The unique name used by the Knut system."""
+        self.uid = uid
+        """The unique identifier used by the Knut system."""
         self.room = room
         """The room in which the light is located."""
 
@@ -56,13 +56,13 @@ class Light(Events):
         self.color_warm = str()
         """A color that represents the light when the temperature is 100."""
 
-        # Call on_change as method with the id as argument to notify
+        # Call on_change as method with the uid as argument to notify
         # listening methods.
         self.__events__ = ('on_change')
 
     def status(self):
         return {
-            'id': self.id,
+            'id': self.uid,
             'location': self.location,
             'room': self.room,
             'state': self.state,
@@ -124,7 +124,7 @@ class Light(Events):
             else:
                 logging.error(('Tried to set dim level of %.2f for \'%s\'.'
                                + ' Dim level must be in range(0, 100).')
-                              % (dimlevel, self.id))
+                              % (dimlevel, self.uid))
         # If the back-end has a dim level, but none if provided by status,
         # switch the back-end only regarding to the status state.
         elif self.has_dimlevel and 'dimlevel' not in status.keys():
@@ -144,4 +144,4 @@ class Light(Events):
             color = status['color']
             self.color = color
 
-        self.on_change(self.id)
+        self.on_change(self.uid)

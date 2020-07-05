@@ -1,20 +1,17 @@
-"""
-Copyright (C) 2020  Joe Pearson
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from .knutapi import KnutAPI
 import glob
 import json
@@ -109,11 +106,11 @@ class Task(KnutAPI):
                         'Tried to load invalid task \'%s\'.' % task)
                 else:
                     logging.debug('Loading task from file \'%s\'...' % task)
-                    id = data['id']
-                    loaded_task = knut.services.Task(id, task_dir)
+                    uid = data['id']
+                    loaded_task = knut.services.Task(uid, task_dir)
                     loaded_task.update_task(data)
                     loaded_task.on_remind += self.__reminder
-                    self.tasks[id] = loaded_task
+                    self.tasks[uid] = loaded_task
 
     def __handle_task_request(self, msg):
         response = dict()
@@ -122,12 +119,12 @@ class Task(KnutAPI):
         if 'id' not in msg.keys():
             logging.warning('Invalid TASK_REQUEST received...')
         else:
-            id = msg['id']
+            uid = msg['id']
 
-            if id not in self.tasks.keys():
-                logging.warning('No task with the id \'%s\' known.' % id)
+            if uid not in self.tasks.keys():
+                logging.warning('No task with the uid \'%s\' known.' % uid)
             else:
-                response = self.tasks[id].task()
+                response = self.tasks[uid].task()
                 response_id = Task.TASK_RESPONSE
 
         return response_id, response
@@ -139,23 +136,23 @@ class Task(KnutAPI):
         if 'id' not in msg.keys():
             logging.warning('Invalid TASK_RESPONSE received...')
         else:
-            id = msg['id']
+            uid = msg['id']
 
-            if id not in self.tasks.keys():
-                if id == '' or id is None:
+            if uid not in self.tasks.keys():
+                if uid == '' or uid is None:
                     new_task = knut.services.Task(task_dir=self.task_dir)
                     new_task.update_task(msg)
                     new_task.on_remind += self.__reminder
-                    self.tasks[new_task.id] = new_task
+                    self.tasks[new_task.uid] = new_task
 
                     # send a ALL_TASKS_RESPONSE after adding the new task
                     response_id, response = self.__handle_all_task_request(msg)
                 else:
-                    logging.warning('No task with the id \'%s\' known.' % id)
+                    logging.warning('No task with the uid \'%s\' known.' % uid)
             else:
-                self.tasks[id].update_task(msg)
+                self.tasks[uid].update_task(msg)
                 response_id, response = (Task.TASK_RESPONSE,
-                                         self.tasks[id].task())
+                                         self.tasks[uid].task())
 
         if response_id > 0:
             self.on_push(Task.apiid, response_id, response)
@@ -169,7 +166,7 @@ class Task(KnutAPI):
         """
         tasks = list()
 
-        for id, task in self.tasks.items():
+        for uid, task in self.tasks.items():
             tasks.append(task.task())
 
         response = {'tasks': tasks}
@@ -180,9 +177,9 @@ class Task(KnutAPI):
         if 'id' not in msg.keys():
             logging.warning('Invalid DELETE_TASK_REQUEST received...')
         elif msg['id'] in self.tasks:
-            id = msg['id']
-            self.tasks[id].delete_task()
-            del self.tasks[id]
+            uid = msg['id']
+            self.tasks[uid].delete_task()
+            del self.tasks[uid]
             # notify all clients about the changes
             response_id, response = self.__handle_all_task_request(msg)
             self.on_push(Task.apiid, response_id, response)
@@ -192,8 +189,7 @@ class Task(KnutAPI):
 
         return Task.NULL, dict()
 
-    def __reminder(self, id):
-        # TODO: Update to API changes
-        logging.debug('Push reminder for \'%s\'...' % id)
-        msg = {'id': id, 'reminder': self.tasks[id].reminder}
+    def __reminder(self, uid):
+        logging.debug('Push reminder for \'%s\'...' % uid)
+        msg = {'id': uid, 'reminder': self.tasks[uid].reminder}
         self.on_push(Task.apiid, Task.REMINDER, msg)

@@ -41,8 +41,8 @@ OWM_TO_WEATHER_ICON = {
 
 
 class OpenWeatherMap(Temperature):
-    def __init__(self, location, id, appid):
-        super(OpenWeatherMap, self).__init__(location, id)
+    def __init__(self, location, uid, appid):
+        super(OpenWeatherMap, self).__init__(location, uid)
         self.data = dict()  # stores data received from OpenWeatherMap
         self.url = str('http://api.openweathermap.org/data/2.5/weather?'
                        + 'q=' + location
@@ -67,7 +67,7 @@ class OpenWeatherMap(Temperature):
             self.data = requests.get(self.url).json()
             self.location = self.data['name']
             if self.data:
-                self.temperature = self.data['main']['temp'] - 273.15
+                self.temperature = self.data['main']['temp']
                 self.condition = OWM_TO_WEATHER_ICON[self.data['weather'][0]['icon']]
         except:
             logging.warning('Can not connect to api.openweathermap.org.')
@@ -82,7 +82,7 @@ class OpenWeatherMap(Temperature):
 
             # push data only if changed
             if previus_data != self.data:
-                self.on_change(self.id)
+                self.on_change(self.uid)
 
             time.sleep(90)  # wait 1.5 minutes to not exceed the polling limit
 

@@ -24,19 +24,19 @@ class Temperature(Events):
     # location where temperature history data are stored
     DATA_DIR = str(pathlib.Path.home()) + '/.local/share/knut/'
 
-    def __init__(self, location, id, **kwargs):
+    def __init__(self, location, uid, **kwargs):
         self.location = location
         """The location where the temperature is measured."""
 
-        self.id = id
+        self.uid = uid
         """The identifier of the temperature service."""
 
-        self.data_file = Temperature.DATA_DIR + id
+        self.data_file = Temperature.DATA_DIR + uid
         # Use -273.15 °C since this is the absolute zero temperature. If the
         # temperature is not above that value, it is invalid.
 
-        self.temperature = -273.15  # TODO: use Kelvin instead of degree Celsius
-        """Temperature in degree Celsius."""
+        self.temperature = 0
+        """Temperature in Kelvin."""
 
         self.condition = str()  # TODO: move to front-end app and supply state
         """A string with the code point for the `Weather Icon
@@ -63,13 +63,13 @@ class Temperature(Events):
         try:
             with open(self.data_file, 'rb') as f:
                 logging.info('Load temperature history for \'%s\'...'
-                             % self.id)
+                             % self.uid)
                 # read the data file as binary data stream
                 self.history = pickle.load(f)
                 self.check_history()
         except FileNotFoundError:
             logging.warning('Failed to load temperature history for \'%s\'.'
-                            % self.id)
+                            % self.uid)
 
     def save_data(self):
         """Appends the current temperature to the :attr:`history` and writes the
@@ -87,7 +87,7 @@ class Temperature(Events):
         with open(self.data_file, 'wb') as f:
             # store the data as binary data stream
             logging.debug('Write temperature history of \'%s\' to file...' %
-                          self.id)
+                          self.uid)
             pickle.dump(self.history, f)
 
     def check_history(self):
@@ -103,7 +103,7 @@ class Temperature(Events):
 
         if (day_today > day_history):
             logging.info('Clearing temperature history of \'%s\'...'
-                         % self.id)
+                         % self.uid)
             self.history = [list(), list()]
 
     def make_user_dir(self):

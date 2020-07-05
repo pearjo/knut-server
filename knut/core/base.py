@@ -24,19 +24,18 @@ class KnutObject(yaml.YAMLObject):
 
     yaml_tag = u'!knutobject'
 
-    @staticmethod
     def from_yaml(loader, node):
         node_map = loader.construct_mapping(node, deep=True)
 
         try:
             module = importlib.__import__(node_map['module'],
                                           fromlist=[node_map['class']])
-            object = getattr(module, node_map['class'])
+            knut_object = getattr(module, node_map['class'])
 
             del node_map['module']
             del node_map['class']
 
-            return object(**node_map)
+            return knut_object(**node_map)
         except KeyError:
             pass
 

@@ -32,9 +32,9 @@ class Task(Events):
     to clients.
     """
 
-    def __init__(self, id=None, task_dir=None):
-        self.id = id
-        """The unique id of the task."""
+    def __init__(self, uid=None, task_dir=None):
+        self.uid = uid
+        """The unique identifier of the task."""
         self.task_dir = task_dir
         """The directory where the task can be saved."""
 
@@ -55,24 +55,24 @@ class Task(Events):
         self.title = str()
         """The task title."""
 
-        if not self.id:
-            self.id = str(uuid.uuid1())
+        if not self.uid:
+            self.uid = str(uuid.uuid1())
 
         self.__reminder_timer = None
 
-        # Call on_remind as method with the id as argument to notify
+        # Call on_remind as method with the uid as argument to notify
         # listening methods.
         self.__events__ = ('on_remind')
 
     def delete_task(self):
         """Deletes the task."""
-        logging.debug('Delete task \'%s\'...' % self.id)
+        logging.debug('Delete task \'%s\'...' % self.uid)
 
         if not self.__check_save_dir():
             return
 
         task_dir = os.path.expanduser(self.task_dir)
-        task = os.path.join(task_dir, '%s.json' % self.id)
+        task = os.path.join(task_dir, '%s.json' % self.uid)
 
         os.remove(task)
 
@@ -82,7 +82,7 @@ class Task(Events):
     def update_task(self, task):
         """Updates the task to the parsed *task* dictionary."""
 
-        logging.debug('Update task \'%s\'...' % self.id)
+        logging.debug('Update task \'%s\'...' % self.uid)
 
         if 'assignee' in task.keys():
             self.assignee = task['assignee']
@@ -123,14 +123,14 @@ class Task(Events):
             'due': self.due,
             'reminder': self.reminder,
             'title': self.title,
-            'id': self.id
+            'id': self.uid
         }
 
     def __check_save_dir(self):
         """Checks if a save directory is defined."""
         if not self.task_dir:
             logging.warning(
-                'No save directory for task \'%s\' set.' % self.id)
+                'No save directory for task \'%s\' set.' % self.uid)
             return False
 
         return True
@@ -140,7 +140,7 @@ class Task(Events):
             return
 
         task_dir = os.path.expanduser(self.task_dir)
-        task = os.path.join(task_dir, '%s.json' % self.id)
+        task = os.path.join(task_dir, '%s.json' % self.uid)
 
         try:
             os.makedirs(task_dir)
@@ -152,8 +152,8 @@ class Task(Events):
 
     def __set_reminder(self):
         def reminder_alarm():
-            logging.debug('Reminder alarm for \'%s\' triggered...' % self.id)
-            self.on_remind(self.id)
+            logging.debug('Reminder alarm for \'%s\' triggered...' % self.uid)
+            self.on_remind(self.uid)
 
         if self.__reminder_timer:
             self.__reminder_timer.cancel()
@@ -165,6 +165,6 @@ class Task(Events):
             return
 
         logging.debug('Set a reminder for \'%s\' which is due in %i seconds...'
-                      % (str(self.id), time_from_now))
+                      % (str(self.uid), time_from_now))
         self.__reminder_timer = threading.Timer(time_from_now, reminder_alarm)
         self.__reminder_timer.start()

@@ -1,20 +1,17 @@
-"""
-Copyright (C) 2020  Joe Pearson
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from . import light
 from pytradfri import Gateway
 from pytradfri.api.libcoap_api import APIFactory
@@ -29,9 +26,9 @@ class PyTradfriLight(light.Light):
 
     This class uses the `pytradfri <https://github.com/ggravlingen/pytradfri>`_
     package to control an IKEA TRÅDFRI light. A light is located at a
-    *location* inside a *room*. It has a *id* for the Knut system and
+    *location* inside a *room*. It has a *uid* for the Knut system and
     a *device_id* inside the TRÅDFRI system. To connect to the TRÅDFRI gateway
-    with the known *host* address, a pre-shared key *psk* with its id
+    with the known *host* address, a pre-shared key *psk* with its uid
     *psk_id* is used. Those are generated as following::
 
        from pytradfri.api.libcoap_api import APIFactory
@@ -60,12 +57,12 @@ class PyTradfriLight(light.Light):
 
        for device in devices:
            print('Found device %s with the device_id %i'
-                 % (device.name, device.id))
+                 % (device.name, device.uid))
 
     """
 
-    def __init__(self, location, id, room, device_id, host, psk_id, psk):
-        super(PyTradfriLight, self).__init__(location, id, room)
+    def __init__(self, location, uid, room, device_id, host, psk_id, psk):
+        super(PyTradfriLight, self).__init__(location, uid, room)
 
         self.device_id = device_id
         """The TRÅDFRI device id."""
@@ -79,14 +76,14 @@ class PyTradfriLight(light.Light):
         gateway = Gateway()
 
         while not self.device:
-            logging.debug('Try to get device \'%s\'...' % id)
+            logging.debug('Try to get device \'%s\'...' % uid)
             try:
                 self.device = self.api(gateway.get_device(self.device_id))
             except pytradfri.error.RequestTimeout:
                 pass
             except FileNotFoundError:
                 logging.critical('Failed to load pytradfri service \'%s\'.'
-                                 % self.id)
+                                 % self.uid)
                 return
 
         # get device information
@@ -116,10 +113,10 @@ class PyTradfriLight(light.Light):
 
         # start the TRÅDFRI observation
         observation_thread = threading.Thread(target=self.observation,
-                                              name='%s-thread' % id)
+                                              name='%s-thread' % uid)
         observation_thread.daemon = True
         observation_thread.start()
-        logging.info('Initialized TRADFRI device \'%s\'.' % self.id)
+        logging.info('Initialized TRADFRI device \'%s\'.' % self.uid)
 
     def percent_to_mired(self, value):
         """Return the mired value of *value*.
@@ -129,7 +126,7 @@ class PyTradfriLight(light.Light):
         """
         if not self.has_temperature:
             raise AttributeError('Light \'%s\' has no temperature'
-                                 % self.id)
+                                 % self.uid)
 
         diff = (self.device.light_control.max_mireds
                 - self.device.light_control.min_mireds)
@@ -144,7 +141,7 @@ class PyTradfriLight(light.Light):
         """
         if not self.has_temperature:
             raise AttributeError('Light \'%s\' has no temperature'
-                                 % self.id)
+                                 % self.uid)
 
         diff = (self.device.light_control.max_mireds
                 - self.device.light_control.min_mireds)
@@ -175,7 +172,7 @@ class PyTradfriLight(light.Light):
                 if (device_state.color_temp != temperature_mired):
                     self.api(light_control.set_color_temp(temperature_mired))
         except pytradfri.error.RequestTimeout:
-            logging.error('\'%s\' has a request timeout.' % self.id)
+            logging.error('\'%s\' has a request timeout.' % self.uid)
             self.update_device()
 
     def observation(self):
@@ -187,19 +184,19 @@ class PyTradfriLight(light.Light):
 
         def err_callback(err):
             logging.error('Error in TRADFRI observation \'%s\'.'
-                          % self.id)
+                          % self.uid)
 
         while True:
             # check if the observation is alive and restart it if not
             if thread and not thread.is_alive():
                 logging.debug('Observation of \'%s\' terminated.'
-                              % self.id)
+                              % self.uid)
                 thread = None
 
             if not thread:
                 thread = threading.Thread(
                     target=self.api,
-                    name='%s-observation' % self.id,
+                    name='%s-observation' % self.uid,
                     args=(self.device.observe(self.update_backend,
                                               err_callback,
                                               duration=90),)
@@ -207,7 +204,7 @@ class PyTradfriLight(light.Light):
                 thread.daemon = True
                 thread.start()
                 logging.debug('Started observation of \'%s\'.'
-                              % self.id)
+                              % self.uid)
 
             time.sleep(1)
 
@@ -224,7 +221,7 @@ class PyTradfriLight(light.Light):
         lock.acquire()
 
         logging.debug('Update light \'%s\' in the back-end.'
-                      % self.id)
+                      % self.uid)
         device_state = device.light_control.lights[0]
 
         # apply new states to back-end
@@ -246,4 +243,4 @@ class PyTradfriLight(light.Light):
 
         # TODO: add color handling
         # trigger on_change to notify listener
-        self.on_change(self.id)
+        self.on_change(self.uid)

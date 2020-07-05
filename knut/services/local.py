@@ -36,7 +36,7 @@ class Local(Events):
     and *elevation* of the *location*.
     """
 
-    def __init__(self, location=None, id='local',
+    def __init__(self, location=None, uid='local',
                  latitude=0, longitude=0, elevation=0):
         self.elevation = elevation
         """The elevation of the location in meters."""
@@ -64,7 +64,7 @@ class Local(Events):
         """The time when the sun sets in seconds since the epoch January 1,
         1970, 00:00:00 (UTC)."""
 
-        self.id = id
+        self.uid = uid
         """The identifier of the location service."""
 
         self.__daylight_timer = None  # used to update is_daylight
@@ -97,7 +97,7 @@ class Local(Events):
                 'location': self.location,
                 'sunrise': self.sunrise,
                 'sunset': self.sunset,
-                'id': self.id}
+                'id': self.uid}
 
     def update_observer(self):
         """Updates the :attr:`observer` and :attr:`sunset` time.
@@ -106,7 +106,7 @@ class Local(Events):
         :attr:`elevation`, the :attr:`observer` should be updated using this
         method. This also updates the :attr:`sunset` time.
         """
-        logging.debug('Update observer for \'%s\'...' % self.id)
+        logging.debug('Update observer for \'%s\'...' % self.uid)
         self.observer = Observer(longitude=self.longitude*astropy.units.deg,
                                  latitude=self.latitude*astropy.units.deg,
                                  elevation=self.elevation*astropy.units.m)
@@ -138,7 +138,7 @@ class Local(Events):
         """
         def update_alarm():
             logging.debug('Update alarm for \'%s\' triggered...'
-                          % self.id)
+                          % self.uid)
             self.__get_sun_rise_and_set()
             self.__update_daylight()
             self.__set_daylight_timer()
@@ -155,7 +155,7 @@ class Local(Events):
 
         logging.debug('Set a timer for the next sun rise or set at \'%s\' which '
                       'is due in %i seconds...'
-                      % (self.id, time_from_now))
+                      % (self.uid, time_from_now))
 
         self.__daylight_timer = threading.Timer(time_from_now, update_alarm)
         self.__daylight_timer.daemon = True

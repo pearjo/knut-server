@@ -37,7 +37,7 @@ server:
 #       module: knut.services.pytradfri
 #       class: PyTradfriLight
 #       location: Sideboard
-#       id: table_living_room
+#       uid: table_living_room
 #       room: Living Room
 #       device_id: 65536
 #       host: 192.168.0.2
@@ -52,7 +52,7 @@ local:
     module: knut.services
     class: Local
     #location:
-    #id: local
+    #uid: local
     #latitude: 0
     #longitude: 0
     #elevation: 0
@@ -76,7 +76,7 @@ task:
 #       module: knut.services.openweathermap
 #       class: OpenWeatherMap
 #       location: Hamburg
-#       id: localWeather
+#       uid: localWeather
 #       appid:
 #
 #temperature:

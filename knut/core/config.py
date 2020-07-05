@@ -76,7 +76,7 @@ class KnutConfig(KnutObject):
         """Loads all configurations from a file."""
         try:
             with open(self.file, 'r') as f:
-                config = yaml.load(f, Loader=yaml.Loader)
+                config = yaml.load(f, Loader=yaml.SafeLoader)
                 for key, item in config.items():
                     self.config[key] = item
         except FileNotFoundError:

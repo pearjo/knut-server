@@ -37,7 +37,7 @@ server:
 #       module: knut.services.pytradfri
 #       class: PyTradfriLight
 #       location: Sideboard
-#       id: table_living_room
+#       uid: table_living_room
 #       room: Living Room
 #       device_id: 65536
 #       host: 192.168.0.2
@@ -49,7 +49,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Sideboard
-    id: sideboard_light
+    uid: sideboard_light
     room: Dinning Room
     dimlevel: true
     color: false
@@ -58,7 +58,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Table
-    id: dinningtable_light
+    uid: dinningtable_light
     room: Dinning Room
     dimlevel: true
     color: false
@@ -67,7 +67,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Pool
-    id: pool_light
+    uid: pool_light
     room: Pool House
     dimlevel: false
     color: false
@@ -76,7 +76,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Pool House
-    id: pool_house_light
+    uid: pool_house_light
     room: Pool House
     dimlevel: true
     color: true
@@ -85,7 +85,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Windowsill
-    id: windowsill_light
+    uid: windowsill_light
     room: Bedroom
     dimlevel: true
     color: false
@@ -94,7 +94,7 @@ lights:
     module: knut.services.light
     class: DummyLight
     location: Chandelier
-    id: entry_hall_light
+    uid: entry_hall_light
     room: Entry Hall
     dimlevel: true
     color: false
@@ -106,7 +106,7 @@ local:
     module: knut.services
     class: Local
     location: Beverly Hills
-    id: home
+    uid: home
     latitude: 34.091944
     longitude: -118.401667
     elevation: 209
@@ -130,7 +130,7 @@ task:
 #       module: knut.services.openweathermap
 #       class: OpenWeatherMap
 #       location: Hamburg
-#       id: localWeather
+#       uid: localWeather
 #       appid:
 #
 temperature:
@@ -138,19 +138,19 @@ temperature:
     module: knut.services.temperature
     class: DummyTemperature
     location: Pool House
-    id: poolHouse
+    uid: poolHouse
   - !knutobject
     module: knut.services.temperature
     class: DummyTemperature
     location: Pool
-    id: pool
+    uid: pool
   - !knutobject
     module: knut.services.temperature
     class: DummyTemperature
     location: Entry Hall
-    id: entryHall
+    uid: entryHall
   - !knutobject
     module: knut.services.temperature
     class: DummyTemperature
     location: Beverly Hills
-    id: localWeather
+    uid: localWeather

@@ -16,7 +16,7 @@ from .temperature import Temperature
 
 
 class DummyTemperature(Temperature):
-    def __init__(self, location, id):
-        super().__init__(location, id)
-        self.temperature = 10.2
+    def __init__(self, location, uid):
+        super().__init__(location, uid)
+        self.temperature = 300
         self.condition = 'day-cloudy'

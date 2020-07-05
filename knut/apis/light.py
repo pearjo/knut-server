@@ -34,7 +34,7 @@ class Room(Events):
 
         self.backends = list()
         """A dictionary with all back-ends in the room where the keys are the
-        :attr:`knut.services.Light.id` and the values are the
+        :attr:`knut.services.Light.uid` and the values are the
         corresponding light objects :class:`knut.services.Light`.
         """
 
@@ -54,7 +54,7 @@ class Room(Events):
         """Adds a light *backend* to the room."""
         if backend.room != self.room:
             logging.warning("Back-end is not in room '{}': {}"
-                            .format(self.room, backend.id))
+                            .format(self.room, backend.uid))
             return
 
         if backend not in self.backends:
@@ -167,18 +167,18 @@ class Light(KnutAPI):
                     hasattr(backend, 'state'),
                     hasattr(backend, 'location'),
                     hasattr(backend, 'room'),
-                    hasattr(backend, 'id')]):
+                    hasattr(backend, 'uid')]):
             raise AttributeError("Back-end is missing at least on of the "
                                  "following attributes: ['temperature', "
                                  "'color', 'dimlevel', 'state', "
-                                 "'location', 'id'")
+                                 "'location', 'uid']")
 
-        if backend.id in self.backends.keys():
+        if backend.uid in self.backends.keys():
             logging.warning('Back-end identifier is not unique: {}'
-                            .format(backend.id))
+                            .format(backend.uid))
             return
 
-        self.backends[backend.id] = backend
+        self.backends[backend.uid] = backend
 
         # add room to rooms dictionary
         if backend.room not in self.rooms.keys():
@@ -188,8 +188,8 @@ class Light(KnutAPI):
         self.rooms[backend.room].add_backend(backend)
 
         # add the notifier method to the back-end's on_change event
-        if callable(self.backends[backend.id].on_change):
-            self.backends[backend.id].on_change += self.notifier
+        if callable(self.backends[backend.uid].on_change):
+            self.backends[backend.uid].on_change += self.notifier
 
     def fetch(self):
         state_set = set((light.state) for light in self.backends.values())
@@ -218,30 +218,30 @@ class Light(KnutAPI):
 
         return response_id, response
 
-    def notifier(self, id):
-        """Pushes the :meth:`status()` of the back-end with the *id* to all
+    def notifier(self, uid):
+        """Pushes the :meth:`status()` of the back-end with the *uid* to all
         listeners of the ``on_push()`` event.
         """
         # update room in which the light is located
-        light = self.backends[id]
+        light = self.backends[uid]
         self.rooms[light.room].fetch()
 
         # push the message to registered objects
-        logging.debug('Push status to listeners: {}'.format(id))
+        logging.debug('Push status to listeners: {}'.format(uid))
         self.on_push(Light.apiid, Light.LIGHT_STATUS_RESPONSE,
-                     self.backends[id].status())
+                     self.backends[uid].status())
 
     def __handle_status_request(self, msg):
         response = dict()
         response_id = Light.NULL
 
-        light_id = msg['id']
+        uid = msg['id']
 
-        if light_id not in self.backends.keys():
+        if uid not in self.backends.keys():
             logging.warning('Unknown light service requested: {}'
-                            .format(light_id))
+                            .format(uid))
         else:
-            response = self.backends[light_id].status()
+            response = self.backends[uid].status()
             response_id = Light.LIGHT_STATUS_RESPONSE
 
         return response_id, response
@@ -262,13 +262,13 @@ class Light(KnutAPI):
         response = dict()
         response_id = Light.NULL
 
-        light_id = msg['id']
+        uid = msg['id']
 
-        if light_id not in self.backends.keys():
+        if uid not in self.backends.keys():
             logging.warning('Unknown light service requested: {}'
-                            .format(light_id))
+                            .format(uid))
         else:
-            light = self.backends[light_id]
+            light = self.backends[uid]
             light.status_setter(msg)
             self.rooms[light.room].fetch()  # update room
 
@@ -291,7 +291,7 @@ class Light(KnutAPI):
                 else:
                     light.status_setter({'state': False})
                 # update room and send status response for each light
-                self.notifier(light.id)
+                self.notifier(light.uid)
         except KeyError:
             logging.warning("Invalid 'ALL_LIGHTS_RESPONSE' received.")
 

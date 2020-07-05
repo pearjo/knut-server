@@ -1,20 +1,17 @@
-"""
-Copyright (C) 2020  Joe Pearson
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from . import light
 import logging
 
@@ -33,21 +30,21 @@ class RFLight(light.Light):
     For more details have a look at `rpi-rf <https://github.com/milaq/rpi-rf>`_.
     """
 
-    def __init__(self, location, id, room, gpio, code_on, code_off):
-        super(RFLight, self).__init__(location, id, room)
+    def __init__(self, location, uid, room, gpio, code_on, code_off):
+        super(RFLight, self).__init__(location, uid, room)
         self._gpio = gpio
         self._code_on = code_on
         self._code_off = code_off
 
     def status_setter(self, status):
         if rpi_rf:
-            logging.debug('Enable TX for device \'%s\'...' % self.id)
+            logging.debug('Enable TX for device \'%s\'...' % self.uid)
             device = rpi_rf.RFDevice(self._gpio)
             enabled = device.enable_tx()
 
             if not enabled:
                 logging.error('Failed to enable TX for \'%s\''
-                              % self.id)
+                              % self.uid)
 
             if status['state']:
                 device.tx_code(self._code_on)
@@ -58,6 +55,6 @@ class RFLight(light.Light):
             del(device)
         else:
             logging.error('\'%s\' needs to run on a Raspberry Pi.'
-                          % self.id)
+                          % self.uid)
 
         super(RFLight, self).status_setter(status)
