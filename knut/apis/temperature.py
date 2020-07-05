@@ -225,6 +225,8 @@ WEATHER_ICON_MAP = {
     'night-thunderstorm': '\uf03b'
 }
 
+Msg = Tuple[int, dict]
+
 
 class Temperature(KnutAPI):
     """This class allows interaction with the temperature service. The following
@@ -239,84 +241,6 @@ class Temperature(KnutAPI):
     :attr:`backends` dictionary. They can be add using the :meth:`add_backend()`
     which also connects the back-end's ``on_change()`` event to the
     :meth:`notifier()` method.
-
-    .. py:data:: STATUS_REQUEST
-       :value: 0x0001
-
-       Requests the status of a back-end. The message message must have the
-       key ``'uniqueName'``. For example::
-
-          {"uniqueName": "myTemperatureBackend"}
-
-    .. py:data:: STATUS_RESPONSE
-       :value: 0x0101
-
-       The status response has the unique name of the back-end as key the
-       dictionary returned by :meth:`status()` as value. For example::
-
-          {
-              "myTemperatureBackend": {
-                  "location": "Miami",
-                  "unit": "°C",
-                  "condition": "\\uf00d",
-                  "temperature": 30.1
-              }
-          }
-
-    .. py:data:: TEMPERATURE_LIST_REQUEST
-       :value: 0x0002
-
-       Requests a list of all temperature back-ends with their status. The
-       message can be an empty dictionary.
-
-    .. py:data:: TEMPERATURE_LIST_RESPONSE
-       :value: 0x0102
-
-       The temperature list response is similar to the :const:`STATUS_RESPONSE`,
-       only with all known back-ends that are in :attr:`backends`. For example::
-
-          {
-              "myTemperatureBackend1": {
-                  "location": "Miami",
-                  "unit": "°C",
-                  "condition": "\\uf00d",
-                  "temperature": 30.420000000000009
-              },
-              "myTemperatureBackend2": {
-                  "location": "Hamburg",
-                  "unit": "°C",
-                  "condition": "\\uf008",
-                  "temperature": 14.240000000000009
-              }
-          }
-
-    .. py:data:: TEMPERATURE_HISTORY_REQUEST
-       :value: 0x0003
-
-       Request the temperature history of a back-end. The message must be in
-       the same format as for a :const:`STATUS_REQUEST`.
-
-    .. py:data:: TEMPERATURE_HISTORY_RESPONSE
-       :value: 0x0103
-
-       This response is a dictionary with the keys ``'uniqueName'``, ``'time'``
-       and ``'temperature'``. The *time* value is an array of floats with the
-       time in seconds since the epoch January 1, 1970, 00:00:00 (UTC). The
-       *temperature* value is also an array with the corresponding temperature
-       values as float. For example::
-
-          {
-              "uniqueName": "myTemperatureBackend",
-              "temperature": [
-                  30.420000000000009,
-                  32.420000000000009
-              ],
-              "time": [
-                  1581863822.2132704,
-                  1581863882.2132704
-              ]
-          }
-
     """
     STATUS_REQUEST = 0x0001
     STATUS_RESPONSE = 0x0101
@@ -325,10 +249,7 @@ class Temperature(KnutAPI):
     TEMPERATURE_HISTORY_REQUEST = 0x0003
     TEMPERATURE_HISTORY_RESPONSE = 0x0103
 
-    serviceid = 0x01
-    """The temperature service id."""
-
-    Msg = Tuple[int, dict]
+    apiId = 0x01
 
     def __init__(self):
         super(Temperature, self).__init__()
@@ -352,31 +273,31 @@ class Temperature(KnutAPI):
         if not all([hasattr(backend, 'temperature'),
                     hasattr(backend, 'condition'),
                     hasattr(backend, 'location'),
-                    hasattr(backend, 'unique_name')]):
+                    hasattr(backend, 'id')]):
             raise AttributeError('Data backend is missing either'
                                  + ' \'temperature\', \'condition\','
-                                 + ' \'location\' or an \'unique_name\'.')
+                                 + ' \'location\' or an \'id\'.')
 
-        if backend.unique_name in self.backends.keys():
+        if backend.id in self.backends.keys():
             logging.warning('Unique name \'%s\' is not unique and backend is'
-                            ' not add.' % backend.unique_name)
+                            ' not add.' % backend.id)
             return
 
-        self.backends[backend.unique_name] = backend
+        self.backends[backend.id] = backend
 
         # add the notifier method to the back-end's on_change event
-        if callable(self.backends[backend.unique_name].on_change):
-            self.backends[backend.unique_name].on_change += self.notifier
+        if callable(self.backends[backend.id].on_change):
+            self.backends[backend.id].on_change += self.notifier
 
-    def notifier(self, unique_name: str) -> None:
-        """Pushes a :const:`STATUS_RESPONSE` for *unique_name* via the
+    def notifier(self, id: str) -> None:
+        """Pushes a :const:`STATUS_RESPONSE` for *id* via the
         ``on_push()`` event."""
-        self.on_push(Temperature.serviceid, Temperature.STATUS_RESPONSE,
-                     {unique_name: self.status(unique_name)})
+        self.on_push(Temperature.apiId, Temperature.STATUS_RESPONSE,
+                     {id: self.status(id)})
 
-    def status(self, unique_name: str) -> dict:
+    def status(self, id: str) -> dict:
         """Returns a status dictionary of the back-end specified by its
-        *unique_name*.
+        *id*.
 
         The returned dictionary has the keys:
 
@@ -392,15 +313,16 @@ class Temperature(KnutAPI):
         temperature = float()
 
         try:
-            location = self.backends[unique_name].location
+            location = self.backends[id].location
             unit = self.unit
-            condition = WEATHER_ICON_MAP[self.backends[unique_name].condition]
-            temperature = self.backends[unique_name].temperature
+            condition = WEATHER_ICON_MAP[self.backends[id].condition]
+            temperature = self.backends[id].temperature
         except KeyError as exception:
             logging.warning('Status of back-end \'%s\' is unkown. %s'
-                            % (unique_name, exception))
+                            % (id, exception))
 
         return {
+            'id': id,
             'location': location,
             'unit': unit,
             'condition': condition,
@@ -408,36 +330,36 @@ class Temperature(KnutAPI):
         }
 
     def __status_request(self, msg: dict) -> Msg:
-        unique_name = str()
+        id = str()
         response = dict()
 
         try:
-            unique_name = msg['uniqueName']
+            id = msg['id']
         except KeyError:
             logging.error('Invalid STATUS_REQUEST received.')
 
-        response[unique_name] = self.status(unique_name)
+        response[id] = self.status(id)
 
         return Temperature.STATUS_RESPONSE, response
 
     def __list_request(self, _msg: dict) -> Msg:
-        response = dict()
+        backends = list()
 
-        for temperature in self.backends.keys():
-            response[temperature] = self.status(temperature)
+        for id in self.backends.keys():
+            backends.append(self.status(id))
 
-        return Temperature.TEMPERATURE_LIST_RESPONSE, response
+        return Temperature.TEMPERATURE_LIST_RESPONSE, {'backends': backends}
 
     def __history_request(self, msg: dict) -> Msg:
         response = dict()
 
         try:
-            unique_name = msg['uniqueName']
-            backend = self.backends[unique_name]
+            id = msg['id']
+            backend = self.backends[id]
 
             response['temperature'] = backend.history[0]
             response['time'] = backend.history[1]
-            response['uniqueName'] = unique_name
+            response['id'] = id
         except KeyError:
             logging.warning('Received temperature history request for unknown'
                             + ' temperature back-end.')

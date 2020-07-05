@@ -76,7 +76,7 @@ task:
 #       module: knut.services.openweathermap
 #       class: OpenWeatherMap
 #       location: Hamburg
-#       unique_name: localWeather
+#       id: localWeather
 #       appid:
 #
 #temperature:

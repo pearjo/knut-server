@@ -1,20 +1,17 @@
-"""
-Copyright (C) 2020  Joe Pearson
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from .temperature import Temperature
 import logging
 import requests
@@ -44,8 +41,8 @@ OWM_TO_WEATHER_ICON = {
 
 
 class OpenWeatherMap(Temperature):
-    def __init__(self, location, unique_name, appid):
-        super(OpenWeatherMap, self).__init__(location, unique_name)
+    def __init__(self, location, id, appid):
+        super(OpenWeatherMap, self).__init__(location, id)
         self.data = dict()  # stores data received from OpenWeatherMap
         self.url = str('http://api.openweathermap.org/data/2.5/weather?'
                        + 'q=' + location
@@ -85,7 +82,7 @@ class OpenWeatherMap(Temperature):
 
             # push data only if changed
             if previus_data != self.data:
-                self.on_change(self.unique_name)
+                self.on_change(self.id)
 
             time.sleep(90)  # wait 1.5 minutes to not exceed the polling limit
 

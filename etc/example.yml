@@ -130,7 +130,7 @@ task:
 #       module: knut.services.openweathermap
 #       class: OpenWeatherMap
 #       location: Hamburg
-#       unique_name: localWeather
+#       id: localWeather
 #       appid:
 #
 temperature:
@@ -138,19 +138,19 @@ temperature:
     module: knut.services.temperature
     class: DummyTemperature
     location: Pool House
-    unique_name: poolHouse
+    id: poolHouse
   - !knutobject
     module: knut.services.temperature
     class: DummyTemperature
     location: Pool
-    unique_name: pool
+    id: pool
   - !knutobject
     module: knut.services.temperature
     class: DummyTemperature
     location: Entry Hall
-    unique_name: entryHall
+    id: entryHall
   - !knutobject
     module: knut.services.temperature
     class: DummyTemperature
     location: Beverly Hills
-    unique_name: localWeather
+    id: localWeather
