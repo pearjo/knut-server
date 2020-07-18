@@ -1,6 +1,7 @@
 astroplan
 coloredlogs
 events
+flask-socketio
 numpy>=1.16  # required by astroplan
 pytradfri[async]
 pyyaml
