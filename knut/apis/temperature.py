@@ -328,16 +328,13 @@ class Temperature(KnutAPI):
 
     def __status_request(self, msg: dict) -> Msg:
         uid = str()
-        response = dict()
 
         try:
             uid = msg['id']
         except KeyError:
             logging.error('Invalid STATUS_REQUEST received.')
 
-        response[uid] = self.status(uid)
-
-        return Temperature.STATUS_RESPONSE, response
+        return Temperature.STATUS_RESPONSE, self.status(uid)
 
     def __list_request(self, _msg: dict) -> Msg:
         backends = list()
