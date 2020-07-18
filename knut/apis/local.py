@@ -28,10 +28,10 @@ class Local(KnutAPI):
     ``on_push()`` event with a :const:`LOCAL_RESPONSE`.
 
     """
-    LOCAL_REQUEST = 0x0001
-    LOCAL_RESPONSE = 0x0101
+    LOCAL_REQUEST = 1
+    LOCAL_RESPONSE = 2
 
-    apiid = 0x04
+    apiid = 4
 
     def __init__(self):
         super(Local, self).__init__()

@@ -54,14 +54,14 @@ class Task(KnutAPI):
     saved by the task service.
 
     """
-    REMINDER = 0x0101
-    TASK_REQUEST = 0x0002
-    TASK_RESPONSE = 0x0102
-    ALL_TASKS_REQUEST = 0x0003
-    ALL_TASKS_RESPONSE = 0x0103
-    DELETE_TASK_REQUEST = 0x0004
+    REMINDER = 1
+    TASK_REQUEST = 2
+    TASK_RESPONSE = 3
+    ALL_TASKS_REQUEST = 4
+    ALL_TASKS_RESPONSE = 5
+    DELETE_TASK_REQUEST = 6
 
-    apiid = 0x03
+    apiid = 3
 
     def __init__(self, task_dir="~/.local/share/knut/tasks"):
         super(Task, self).__init__()

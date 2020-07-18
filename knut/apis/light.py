@@ -24,7 +24,7 @@ import logging
 class Room(Events):
     """Bundles :class:`~knut.services.Light` objects in a room."""
 
-    apiid = 0x02
+    apiid = 2
     """The room service id. The id is the same as the light service id since
     this service is part of the light service."""
 
@@ -125,18 +125,18 @@ class Light(KnutAPI):
        :class:`~knut.services.light.Light` class.
 
     """
-    LIGHT_STATUS_REQUEST = 0x0001
-    LIGHT_STATUS_RESPONSE = 0x0101
-    LIGHTS_REQUEST = 0x0002
-    LIGHTS_RESPONSE = 0x0102
-    ALL_LIGHTS_REQUEST = 0x0003
-    ALL_LIGHTS_RESPONSE = 0x0103
-    ROOMS_LIST_REQUEST = 0x0004
-    ROOMS_LIST_RESPONSE = 0x0104
-    ROOM_REQUEST = 0x0005
-    ROOM_RESPONSE = 0x0105
+    LIGHT_STATUS_REQUEST = 1
+    LIGHT_STATUS_RESPONSE = 2
+    LIGHTS_REQUEST = 3
+    LIGHTS_RESPONSE = 4
+    ALL_LIGHTS_REQUEST = 5
+    ALL_LIGHTS_RESPONSE = 6
+    ROOMS_LIST_REQUEST = 7
+    ROOMS_LIST_RESPONSE = 8
+    ROOM_REQUEST = 9
+    ROOM_RESPONSE = 10
 
-    apiid = 0x02
+    apiid = 2
 
     def __init__(self):
         super(Light, self).__init__()

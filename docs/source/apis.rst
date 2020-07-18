@@ -47,11 +47,11 @@ Temperature
 -----------
 
 .. data:: apiId
-   :value: 0x01
+   :value: 1
    :noindex:
 
 .. data:: TEMPERATURE_STATUS_REQUEST
-   :value: 0x0001
+   :value: 1
 
    Requests the status of a back-end. The message message must have the key
    ``id`` which is the identifier of the requested back-end. For example:
@@ -63,7 +63,7 @@ Temperature
       }
 
 .. data:: TEMPERATURE_STATUS_RESPONSE
-   :value: 0x0101
+   :value: 2
 
    Upon a :const:`TEMPERATURE_STATUS_REQUEST` or change of the back-end is a
    status response send which has the following keys:
@@ -86,13 +86,13 @@ Temperature
       }
 
 .. data:: TEMPERATURE_LIST_REQUEST
-   :value: 0x0002
+   :value: 3
 
    Requests a list of all temperature back-ends with their status. The
    ``msg`` can be an empty.
 
 .. data:: TEMPERATURE_LIST_RESPONSE
-   :value: 0x0102
+   :value: 4
 
    The temperature list response is similar to the
    :const:`TEMPERATURE_STATUS_RESPONSE`, only with the key ``backends``. The
@@ -121,13 +121,13 @@ Temperature
       }
 
 .. data:: TEMPERATURE_HISTORY_REQUEST
-   :value: 0x0003
+   :value: 5
 
    Request the temperature history of a back-end. The ``msg`` equals the
    :const:`TEMPERATURE_STATUS_REQUEST` message.
 
 .. data:: TEMPERATURE_HISTORY_RESPONSE
-   :value: 0x0103
+   :value: 6
 
    The response upon a temperature history request has the following keys:
 
@@ -156,11 +156,11 @@ Light
 -----
 
 .. data:: apiId
-   :value: 0x02
+   :value: 2
    :noindex:
 
 .. data:: LIGHT_STATUS_REQUEST
-   :value: 0x0001
+   :value: 1
 
    Requests the status of a back-end. The message has the key ``id`` with the
    identifier of the back-end as value. The server will respond with a
@@ -173,7 +173,7 @@ Light
       }
 
 .. data:: LIGHT_STATUS_RESPONSE
-   :value: 0x0101
+   :value: 2
 
    The status of a back-end with the following keys:
 
@@ -229,12 +229,12 @@ Light
       }
 
 .. data:: LIGHTS_REQUEST
-   :value: 0x0002
+   :value: 3
 
    Requests the status of all back-ends. The message ``msg`` can be empty.
 
 .. data:: LIGHTS_RESPONSE
-   :value: 0x0102
+   :value: 4
 
    The lights response is similar to the :const:`LIGHT_STATUS_RESPONSE`, only
    with the key ``backends``. The value of ``backends`` is an array containing
@@ -276,12 +276,12 @@ Light
       }
 
 .. data:: ALL_LIGHTS_REQUEST
-   :value: 0x0003
+   :value: 5
 
    Requests the combined state of all lights. The message can be empty.
 
 .. data:: ALL_LIGHTS_RESPONSE
-   :value: 0x0103
+   :value: 6
 
    The response has the key ``state``, where the value *-1* indicates all lights
    off and *1* all lights on. If the value is *0*, neither all lights are on nor
@@ -301,12 +301,12 @@ Light
       }
 
 .. data:: ROOMS_LIST_REQUEST
-   :value: 0x0004
+   :value: 7
 
    Requests a list of all rooms with their state. The message can be empty.
 
 .. data:: ROOMS_LIST_RESPONSE
-   :value: 0x0104
+   :value: 8
 
    The response has a key ``rooms`` with an array as value containing room state
    objects. A room state object has the following keys:
@@ -333,7 +333,7 @@ Light
       }
 
 .. data:: ROOM_REQUEST
-   :value: 0x0005
+   :value: 9
 
    Requests to set the state for a room. The message has the following keys:
 
@@ -349,7 +349,7 @@ Light
       }
 
 .. data:: ROOM_RESPONSE
-   :value: 0x0105
+   :value: 10
 
    The response has the same keys as the :const:`ROOM_REQUEST`, only that the
    value of ``state`` can be also *0*.
@@ -358,11 +358,11 @@ Task
 ----
 
 .. data:: apiId
-   :value: 0x03
+   :value: 3
    :noindex:
 
 .. data:: REMINDER
-   :value: 0x0101
+   :value: 1
 
    A message that is send as reminder. It has the following keys:
 
@@ -377,7 +377,7 @@ Task
       }
 
 .. data:: TASK_REQUEST
-   :value: 0x0002
+   :value: 2
 
    Requests the task with the identifier ``id``.
 
@@ -388,7 +388,7 @@ Task
       }
 
 .. data:: TASK_RESPONSE
-   :value: 0x0102
+   :value: 3
 
    The task response has the following keys:
 
@@ -420,12 +420,12 @@ Task
       }
 
 .. data:: ALL_TASKS_REQUEST
-   :value: 0x0003
+   :value: 4
 
    Requests a list of all tasks. The message can be empty.
 
 .. data:: ALL_TASKS_RESPONSE
-   :value: 0x0103
+   :value: 5
 
    The response has the key ``tasks`` with an array as value, containing the
    object of the :const:`TASK_RESPONSE` for each task. For example:
@@ -458,7 +458,7 @@ Task
       }
 
 .. data:: DELETE_TASK_REQUEST
-   :value: 0x0004
+   :value: 6
 
    Requests to delete a task. The message has the identifier key ``id`` of the
    task which should be deleted.
@@ -467,18 +467,18 @@ Local
 -----
 
 .. data:: apiId
-   :value: 0x04
+   :value: 4
    :noindex:
 
 .. _LOCAL_REQUEST:
 
 .. data:: LOCAL_REQUEST
-   :value: 0x0001
+   :value: 1
 
    Requests local information. The message ``msg`` can be empty.
 
 .. data:: LOCAL_RESPONSE
-   :value: 0x0101
+   :value: 2
 
    The local information response has the following keys:
 

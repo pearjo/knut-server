@@ -239,14 +239,14 @@ class Temperature(KnutAPI):
     which also connects the back-end's ``on_change()`` event to the
     :meth:`notifier()` method.
     """
-    STATUS_REQUEST = 0x0001
-    STATUS_RESPONSE = 0x0101
-    TEMPERATURE_LIST_REQUEST = 0x0002
-    TEMPERATURE_LIST_RESPONSE = 0x0102
-    TEMPERATURE_HISTORY_REQUEST = 0x0003
-    TEMPERATURE_HISTORY_RESPONSE = 0x0103
+    STATUS_REQUEST = 1
+    STATUS_RESPONSE = 2
+    TEMPERATURE_LIST_REQUEST = 3
+    TEMPERATURE_LIST_RESPONSE = 4
+    TEMPERATURE_HISTORY_REQUEST = 5
+    TEMPERATURE_HISTORY_RESPONSE = 6
 
-    apiid = 0x01
+    apiid = 1
 
     def __init__(self):
         super(Temperature, self).__init__()
