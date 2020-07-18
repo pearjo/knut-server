@@ -32,36 +32,37 @@ class KnutWebSocket():
         self.apis[apiid] = api
 
     async def request_handler(self, websocket, path):
-        msg = dict()
-        msgid = 0
-        apiid = 0
+        while True:
+            msg = dict()
+            msgid = 0
+            apiid = 0
 
-        try:
-            data = await websocket.recv()
+            try:
+                data = await websocket.recv()
 
-            if len(data) > 0:
-                knutmsg = json.loads(data)
+                if len(data) > 0:
+                    knutmsg = json.loads(data)
 
-                try:
-                    apiid = knutmsg['apiId']
-                    msgid = knutmsg['msgId']
-                    msg = knutmsg['msg']
+                    try:
+                        apiid = knutmsg['apiId']
+                        msgid = knutmsg['msgId']
+                        msg = knutmsg['msg']
 
-                    logging.debug('Message of type {} for API {} '
-                                  'received...'.format(msgid, apiid))
+                        logging.debug('Message of type {} for API {} '
+                                      'received...'.format(msgid, apiid))
 
-                    msgid, msg = self.request_service(apiid, msgid, msg)
-                except KeyError:
-                    logging.warning('Received message is missing at least '
-                                    'one of the following keys: '
-                                    '[msgId, apiId, msg]')
+                        msgid, msg = self.request_service(apiid, msgid, msg)
+                    except KeyError:
+                        logging.warning('Received message is missing at least '
+                                        'one of the following keys: '
+                                        '[msgId, apiId, msg]')
 
-        except json.decoder.JSONDecodeError:
-            logging.warning('Failed to decode JSON message...')
+            except json.decoder.JSONDecodeError:
+                logging.warning('Failed to decode JSON message...')
 
-        if msgid > 0:
-            data = {'apiId': apiid, 'msgId': msgid, 'msg': msg}
-            await websocket.send(json.dumps(data))
+            if msgid > 0:
+                data = {'apiId': apiid, 'msgId': msgid, 'msg': msg}
+                await websocket.send(json.dumps(data))
 
     def request_service(self,
                         apiid: int,
