@@ -1,4 +1,17 @@
-from knut.core import KnutConfig
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Tuple
 import asyncio
 import json
@@ -81,46 +94,3 @@ class KnutWebSocket():
             return msgid, msg
 
         return self.apis[apiid].request_handler(msgid, msg)
-
-
-socket = KnutWebSocket()
-
-# load config
-config = KnutConfig('../../etc/example.yml').config
-
-# load task module
-task = config['task']
-task.load_tasks()
-socket.add_api(task)
-
-# load temperature module
-try:
-    temp = knut.apis.Temperature()
-    for backend in config['temperature']:
-        temp.add_backend(backend)
-
-    socket.add_api(temp)
-except KeyError:
-    pass
-
-# load light module
-try:
-    light = knut.apis.Light()
-    for backend in config['lights']:
-        light.add_backend(backend)
-
-    socket.add_api(light)
-except KeyError:
-    pass
-
-# load local module
-if config['local']:
-    local = knut.apis.Local()
-    local.set_local(config['local'])
-    socket.add_api(local)
-
-if __name__ == '__main__':
-    start_server = websockets.serve(socket.request_handler, "localhost", 8765)
-
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
