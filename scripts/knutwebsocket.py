@@ -19,11 +19,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from knut.core import KnutConfig
 from knut.server import KnutWebSocket
 import argparse
+import asyncio
 import coloredlogs
 import knut.apis
 import logging
 import sys
 import threading
+import websockets
 
 # global constants
 LOGLEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
