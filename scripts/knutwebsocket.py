@@ -46,6 +46,12 @@ def main():
     parser.add_argument('--conf', dest='configFile',
                         default='/etc/knut/knutserver.yml',
                         help='Set the knut server configuration file')
+    parser.add_argument('--address', dest='address',
+                        default='localhost',
+                        help='Binds the sever to the address')
+    parser.add_argument('--port', dest='port',
+                        default=8765,
+                        help='The port to access the server')
 
     args = parser.parse_args()
 
@@ -91,7 +97,9 @@ def main():
         socket.add_api(local)
 
     try:
-        start_server = websockets.serve(socket.request_handler, "localhost", 8765)
+        start_server = websockets.serve(socket.request_handler,
+                                        args.address,
+                                        args.port)
 
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
