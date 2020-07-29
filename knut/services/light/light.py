@@ -69,10 +69,10 @@ class Light(Events):
             'hasTemperature': self.has_temperature,
             'hasDimlevel': self.has_dimlevel,
             'hasColor': self.has_color,
-            'temperature': self.temperature if self.has_temperature else None,
+            'temperature': int(self.temperature) if self.has_temperature else None,
             'colorCold': self.color_cold if self.has_temperature else None,
             'colorWarm': self.color_warm if self.has_temperature else None,
-            'dimlevel': self.dimlevel if self.has_dimlevel else None,
+            'dimlevel': int(self.dimlevel) if self.has_dimlevel else None,
             'color': self.color if self.has_color else None
         }
 
@@ -88,60 +88,64 @@ class Light(Events):
 
         """
         state = status['state']
-        if not self.has_dimlevel:
-            self.state = state
+        if self.has_dimlevel:
+            dimlevel = None
+            if 'dimlevel' in status.keys():
+                dimlevel = status['dimlevel']
 
-        # If the back-end state is false and either the status state is true or
-        # the status dim level is > 0, switch back-end state to true and set the
-        # last active dim level. Else, if the back-end state is true and either
-        # the status dim level is 0 or state is false, switch the back-end state
-        # to false and the dim level to 0. If none of the two cases are given,
-        # the state and dim level of the back-end are set from the status.
-        if self.has_dimlevel and 'dimlevel' in status.keys():
-            dimlevel = status['dimlevel']
-
-            if 0 <= dimlevel <= 100:
-                if (self.state is False and
-                    (state is True or
-                     dimlevel > 0)):
-                    self.state = True
-                    self.dimlevel = (
-                        dimlevel if dimlevel > 0 else self.saved_dimlevel
-                    )
-                elif (self.state is True and
-                      (state is False
-                       or dimlevel == 0)):
-                    self.state = False
-                    self.saved_dimlevel = (
-                        self.dimlevel if self.dimlevel > 0 else 1
-                    )
-                    self.dimlevel = 0
+            if dimlevel:
+                # If the back-end state is false and either the status state is
+                # true or the status dim level is > 0, switch back-end state to
+                # true and set the last active dim level. Else, if the back-end
+                # state is true and either the status dim level is 0 or state is
+                # false, switch the back-end state to false and the dim level to
+                # 0. If none of the two cases are given, the state and dim level
+                # of the back-end are set from the status.
+                if 0 <= dimlevel <= 100:
+                    if (self.state is False and
+                        (state is True or
+                         dimlevel > 0)):
+                        self.state = True
+                        self.dimlevel = (
+                            dimlevel if dimlevel > 0 else self.saved_dimlevel
+                        )
+                    elif (self.state is True and
+                          (state is False
+                           or dimlevel == 0)):
+                        self.state = False
+                        self.saved_dimlevel = (
+                            self.dimlevel if self.dimlevel > 0 else 1
+                        )
+                        self.dimlevel = 0
+                    else:
+                        self.state = state
+                        self.dimlevel = dimlevel
+                        if dimlevel > 0:
+                            self.saved_dimlevel = dimlevel
                 else:
-                    self.state = state
-                    self.dimlevel = dimlevel
-                    if dimlevel > 0:
-                        self.saved_dimlevel = dimlevel
+                    logging.error('Dim level must be in range(0, 100).')
             else:
-                logging.error(('Tried to set dim level of %.2f for \'%s\'.'
-                               + ' Dim level must be in range(0, 100).')
-                              % (dimlevel, self.uid))
-        # If the back-end has a dim level, but none if provided by status,
-        # switch the back-end only regarding to the status state.
-        elif self.has_dimlevel and 'dimlevel' not in status.keys():
-            if self.state is False and state is True:
-                self.state = True
-                self.dimlevel = self.saved_dimlevel
-            elif self.state is True and state is False:
-                self.state = False
-                self.saved_dimlevel = self.dimlevel if self.dimlevel > 0 else 1
-                self.dimlevel = 0
+                # If the back-end has a dim level, but none if provided by
+                # status, switch the back-end only regarding to the status
+                # state.
+                if self.state is False and state is True:
+                    self.state = True
+                    self.dimlevel = self.saved_dimlevel
+                elif self.state is True and state is False:
+                    self.state = False
+                    self.saved_dimlevel = self.dimlevel if self.dimlevel > 0 else 1
+                    self.dimlevel = 0
+        else:
+            self.state = state
 
         if self.has_temperature and 'temperature' in status.keys():
             temperature = status['temperature']
-            self.temperature = temperature
+            if temperature:
+                self.temperature = temperature
 
         if self.has_color and 'color' in status.keys():
             color = status['color']
-            self.color = color
+            if color:
+                self.color = color
 
         self.on_change(self.uid)
