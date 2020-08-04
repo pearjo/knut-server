@@ -1,11 +1,12 @@
+<p align="center">
+  <img src="knut.png" title="Knut"><br>
+</p>
+
+# Knut: your humble server!
 [![Build Status](https://travis-ci.org/pearjo/knut-server.svg?branch=devel)](https://travis-ci.org/pearjo/knut-server)
 [![Documentation Status](https://readthedocs.org/projects/knut-server/badge/?version=latest)](https://knut-server.readthedocs.io/en/latest/?badge=latest)
 [![CodeFactor](https://www.codefactor.io/repository/github/pearjo/knut-server/badge)](https://www.codefactor.io/repository/github/pearjo/knut-server)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://github.com/pearjo/knut-server/blob/master/LICENSE)
-
-# Knut Server
-
-![Image of Knut](knut.png)
 
 *Knut* is a friendly penguin to help organize your home.
 
