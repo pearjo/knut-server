@@ -24,8 +24,17 @@ This module provides the Knut light services to be used with the
    :class:`knut.services.light.Light`.
 
 """
-from .light import *  # base class
+import logging
 
+from .light import *  # base class
 from .dummylight import *
-from .pytradfri import *
-from .rflight import *
+
+try:
+    from .pytradfri import *
+except ModuleNotFoundError:
+    logging.warning('Failed to load service: pytradfri')
+
+try:
+    from .rflight import *
+except ModuleNotFoundError:
+    logging.warning('Failed to load service: rflight')
