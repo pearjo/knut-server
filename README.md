@@ -1,17 +1,21 @@
 <h1 align="center">
-    <br>
-    <img src="knut.png" alt="Knut">
+  <br>
+  <img src="knut.png" alt="Knut">
 </h1>
 <h4 align="center">Knut: your humble server</h4>
 <p align="center">
-    <a href="https://travis-ci.org/pearjo/knut-server.svg?branch=devel)](https://travis-ci.org/pearjo/knut-server"
-            alt="Build Status"></a>
-    <a href="https://readthedocs.org/projects/knut-server/badge/?version=latest)](https://knut-server.readthedocs.io/en/latest/?badge=latest"
-            alt="Documentation Status"></a>
-    <a href="https://www.codefactor.io/repository/github/pearjo/knut-server/badge)](https://www.codefactor.io/repository/github/pearjo/knut-server"
-            alt="CodeFactor"></a>
-    <a href="https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://github.com/pearjo/knut-server/blob/master/LICENSE"
-            alt="License"></a>
+  <a href="https://travis-ci.org/pearjo/knut-server">
+    <img src="https://travis-ci.org/pearjo/knut-server.svg?branch=devel" alt="Build Status">
+  </a>
+  <a href="https://knut-server.readthedocs.io/en/latest/?badge=latest">
+    <img src="https://readthedocs.org/projects/knut-server/badge/?version=latest" alt="Documentation Status">
+  </a>
+  <a href="https://www.codefactor.io/repository/github/pearjo/knut-server">
+    <img src="https://www.codefactor.io/repository/github/pearjo/knut-server/badge" alt="CodeFactor">
+  </a>
+  <a href="https://github.com/pearjo/knut-server/blob/master/LICENSE">
+    <img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg" alt="License">
+  </a>
 </p>
 
 *Knut* is a friendly penguin to help organize your home.
