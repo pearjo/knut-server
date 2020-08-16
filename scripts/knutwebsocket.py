@@ -25,7 +25,6 @@ import knut.apis
 import logging
 import sys
 import threading
-import websockets
 
 # global constants
 LOGLEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
@@ -65,7 +64,7 @@ def main():
     # load config
     config = KnutConfig(args.configFile).config
 
-    socket = KnutWebSocket()
+    socket = KnutWebSocket(args.address, args.port)
 
     # load task module
     task = config['task']
@@ -99,12 +98,7 @@ def main():
         socket.add_api(local)
 
     try:
-        start_server = websockets.serve(socket.request_handler,
-                                        args.address,
-                                        args.port)
-
-        asyncio.get_event_loop().run_until_complete(start_server)
-        asyncio.get_event_loop().run_forever()
+        socket.knut_serve_forever()
     except KeyboardInterrupt:
         logging.debug('Shutting down server...')
         logging.debug('Cheerio!')

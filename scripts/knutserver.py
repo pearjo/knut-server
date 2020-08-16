@@ -92,12 +92,7 @@ def main():
         local.set_local(config['local'])
 
     try:
-        with server:
-            # logging.debug('Start server on: {}'.format(server.server_address))
-            server_thread = threading.Thread(target=server.serve_forever)
-            server_thread.daemon = True
-            server_thread.start()
-            server_thread.join()
+        server.knut_serve_forever()
     except KeyboardInterrupt:
         logging.debug('Shutting down server...')
         server.shutdown()

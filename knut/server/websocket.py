@@ -19,31 +19,10 @@ import knut.apis
 import logging
 import websockets
 
+from .knutserver import KnutServer
 
-class KnutWebSocket():
-    def __init__(self) -> None:
-        self.apis = dict()
-        """A dictionary with all APIs as value and their corresponding service
-        ids as keys. See :meth:`add_api()` for more about adding an API.
-        """
 
-    def add_api(self, api: knut.apis.KnutAPI) -> None:
-        """Adds a *api* to the server.
-
-        The *api* is added to the dictionary of APIs and it's ``on_push()``
-        event is connected to the servers request handler to push messages.
-
-        The request handler will also call the APIs ``request_handler()`` method
-        if the API's service matches the requested service.
-        """
-        if not all([hasattr(api, 'apiid'),
-                    hasattr(api, 'on_push')]):
-            raise AttributeError('API is missing either a \'apiid\' or '
-                                 'an \'on_push\' event: {}'.format(api))
-
-        apiid = api.apiid
-        self.apis[apiid] = api
-
+class KnutWebSocket(KnutServer):
     async def request_handler(self, websocket, path):
         while True:
             msg = dict()
@@ -72,6 +51,9 @@ class KnutWebSocket():
 
             except json.decoder.JSONDecodeError:
                 logging.warning('Failed to decode JSON message...')
+            except websockets.exceptions.ConnectionClosedError:
+                logging.debug('Connection unexpected closed.')
+                return
 
             if msgid > 0:
                 data = {'apiId': apiid, 'msgId': msgid, 'msg': msg}
@@ -94,3 +76,10 @@ class KnutWebSocket():
             return msgid, msg
 
         return self.apis[apiid].request_handler(msgid, msg)
+
+    def knut_serve_forever(self):
+        server = websockets.serve(self.request_handler,
+                                  self.address,
+                                  self.port)
+        asyncio.get_event_loop().run_until_complete(server)
+        asyncio.get_event_loop().run_forever()

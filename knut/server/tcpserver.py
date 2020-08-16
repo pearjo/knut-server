@@ -20,6 +20,7 @@ import queue
 import socketserver
 import threading
 
+from .knutserver import KnutServer
 
 class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
     """The request handler class for the :class:`knut.server.KnutTCPServer`.
@@ -175,7 +176,8 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
 
 
 class KnutTCPServer(socketserver.ThreadingMixIn,
-                    socketserver.TCPServer):
+                    socketserver.TCPServer,
+                    KnutServer):
     """The Knut TCP server class.
 
     The server handles all communication from clients and redirects requests to
@@ -238,29 +240,16 @@ class KnutTCPServer(socketserver.ThreadingMixIn,
         self.allow_reuse_address = True
 
         self.apis = dict()
-        """A dictionary with all APIs as value and their corresponding service
-        ids as keys. See :meth:`add_api()` for more about adding an API.
-        """
 
         super(KnutTCPServer, self).__init__((address, port),
                                             KnutTCPRequestHandler)
 
-    def add_api(self, api: KnutAPI) -> None:
-        """Adds a *api* to the server.
-
-        The *api* is added to the dictionary of APIs and it's ``on_push()``
-        event is connected to the servers request handler to push messages.
-
-        The request handler will also call the APIs ``request_handler()`` method
-        if the API's service matches the requested service.
-        """
-        if not all([hasattr(api, 'apiid'),
-                    hasattr(api, 'on_push')]):
-            raise AttributeError('API is missing either a \'apiid\' or '
-                                 'an \'on_push\' event: {}'.format(api))
-
-        apiid = api.apiid
-        self.apis[apiid] = api
+    def knut_serve_forever(self):
+        with self:
+            server_thread = threading.Thread(target=self.serve_forever)
+            server_thread.daemon = True
+            server_thread.start()
+            server_thread.join()
 
 
 def knutmsg_builder(apiid: int,

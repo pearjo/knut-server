@@ -4,6 +4,20 @@
 Server
 ******
 
+``KnutServer`` --- Knut's Base Server
+=====================================
+
+.. autoclass:: knut.server.KnutServer
+   :members:
+
+
+``KnutWebSocket`` --- Knut's WebSocket
+======================================
+
+.. autoclass:: knut.server.KnutWebSocket
+   :members:
+
+
 ``KnutTCPServer`` --- Knut's TCP Server
 =======================================
 
