@@ -56,10 +56,12 @@ def main():
 
     args = parser.parse_args()
 
+    fmt = '%(levelname)s %(module)s.%(funcName)s: %(message)s'
+
     # setup logging
     logging.basicConfig(level=getattr(logging, args.logLevel))
     logger = logging.getLogger(__name__)
-    coloredlogs.install(level=args.logLevel, logger=logger)
+    coloredlogs.install(level=args.logLevel, logger=logger, fmt=fmt)
 
     # load config
     config = KnutConfig(args.configFile).config
