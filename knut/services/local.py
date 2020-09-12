@@ -69,11 +69,6 @@ class Local(Events):
 
         self.__daylight_timer = None  # used to update is_daylight
 
-        try:
-            download_IERS_A()  # update IERS Bulletin A table
-        except urllib.error.URLError:
-            logging.debug('Failed to load IERS Bulletin A table.')
-
         self.update_observer()
 
         self.__events__ = ('on_change')
