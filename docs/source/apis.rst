@@ -80,9 +80,9 @@ Temperature
       {
         "id": "myTemperatureBackend",
         "location": "Miami",
-        "unit": "°C",
+        "unit": "K",
         "condition": "\\uf00d",
-        "temperature": 30.1
+        "temperature": 275.13
       }
 
 .. data:: TEMPERATURE_LIST_REQUEST
@@ -106,16 +106,16 @@ Temperature
           {
             "id": "myTemperatureBackend1",
             "location": "Miami",
-            "unit": "°C",
+            "unit": "K",
             "condition": "\\uf00d",
-            "temperature": 30.420000000000009
+            "temperature": 303.15
           },
           {
             "id": "myTemperatureBackend1",
             "location": "Hamburg",
-            "unit": "°C",
+            "unit": "K",
             "condition": "\\uf008",
-            "temperature": 14.240000000000009
+            "temperature": 288.05
           }
         ]
       }
@@ -143,8 +143,8 @@ Temperature
       {
         "id": "myTemperatureBackend",
         "temperature": [
-          30.420000000000009,
-          32.420000000000009
+          288.05,
+          291.05
         ],
         "time": [
           1581863822.2132704,

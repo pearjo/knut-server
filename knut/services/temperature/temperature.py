@@ -32,8 +32,6 @@ class Temperature(Events):
         """The identifier of the temperature service."""
 
         self.data_file = Temperature.DATA_DIR + uid
-        # Use -273.15 °C since this is the absolute zero temperature. If the
-        # temperature is not above that value, it is invalid.
 
         self.temperature = 0
         """Temperature in Kelvin."""
@@ -76,8 +74,7 @@ class Temperature(Events):
         pickled representation of :attr:`history` to a file.
         """
         # check if temperature is valid before adding it to the history
-        # -273.15 is the lowest possible temperature
-        if self.temperature <= -273.15:
+        if self.temperature < 0:
             return
 
         self.check_history()

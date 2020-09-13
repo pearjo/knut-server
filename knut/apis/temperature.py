@@ -299,7 +299,7 @@ class Temperature(KnutAPI):
         The returned dictionary has the keys:
 
         - ``'location'`` as string where the temperature is measured
-        - ``'unit'`` as string with the value ``°C``
+        - ``'unit'`` as string with the value ``K``
         - ``'condition'`` is a string with the code point for the `Weather Icon
           <https://erikflowers.github.io/weather-icons/>`_ font
         - ``'temperature'`` as a float
@@ -358,7 +358,7 @@ class Temperature(KnutAPI):
             response['time'] = backend.history[1]
             response['id'] = uid
         except KeyError:
-            logging.warning('Received temperature history request for unknown'
-                            + ' temperature back-end.')
+            logging.warning('Received temperature history request for unknown' \
+                            ' temperature back-end.')
 
         return Temperature.TEMPERATURE_HISTORY_RESPONSE, response
