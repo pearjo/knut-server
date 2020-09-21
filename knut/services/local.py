@@ -94,7 +94,7 @@ class Local(Events):
            }
 
         """
-        return {'isDaylight': self.is_daylight,
+        return {'isDaylight': bool(self.is_daylight),  # make sure that no numpy.bool_ is used
                 'location': self.location,
                 'sunrise': self.sunrise,
                 'sunset': self.sunset,
