@@ -12,17 +12,21 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from typing import Tuple
 import asyncio
 import json
-import knut.apis
 import logging
+
 import websockets
 
 from .knutserver import KnutServer
+import knut.apis
 
 
 class KnutWebSocket(KnutServer):
+    """WebSocket for Knut."""
+
     async def request_handler(self, websocket, path):
         while True:
             msg = dict()
@@ -63,14 +67,14 @@ class KnutWebSocket(KnutServer):
                         apiid: int,
                         msgid: int,
                         msg: dict) -> Tuple[int, dict]:
-        """Returns a service's response.
+        """Return a service's response.
 
-        This method calls the ``request_handler()`` of the API with the
-        *apiid*. The API's request handler handles then the *msg* of
-        type *msgid*. The returned tuple holds the responses *msgid* and *msg*.
-        If no API for *apiid* is found in the servers API
-        dictionary, the *msg* and *msgid* is returned.
+        Call the ``request_handler()`` of the API with the *apiid*. The API's
+        request handler handles then the *msg* of type *msgid*. Return a tuple
+        that holds the responses *msgid* and *msg*. If no API for *apiid* is
+        found in the servers API dictionary, the *msg* and *msgid* is returned.
         """
+
         if apiid not in self.apis.keys():
             logging.warning('Unknown API request: {}'.format(apiid))
             return msgid, msg

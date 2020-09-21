@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,49 +14,53 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from . import light
+
 import logging
 
-try:
-    import rpi_rf
-except RuntimeError:
-    rpi_rf = None
+import rpi_rf
+
+from .light import Light
 
 
-class RFLight(light.Light):
-    """RF 433 mHz light service.
+class RFLight(Light):
+    """A RF 433 mHz light service.
 
-    This light service is used for lights behind a RF 433 mHz socket.  To work,
-    this class needs a transmitter installed at a *gpio*.  Also, the decimal
-    *code_on* and *code_off* to switch the socket is needed.
-    For more details have a look at `rpi-rf <https://github.com/milaq/rpi-rf>`_.
+    Provide a light service for lights plugged into a RF 433 mHz controllable
+    power socket. This class uses the `rpi-rf
+    <https://github.com/milaq/rpi-rf>`_ module to control a RF 433 mHz
+    transmitter.
     """
 
-    def __init__(self, location, uid, room, gpio, code_on, code_off):
+    def __init__(self, location: str, uid: str, room: str, gpio: int,
+                 code_on: int, code_off: int) -> None:
+        """The transmitter at the defined *gpio* is used to send either a
+        *code_on* or *code_off* command to switch the power socket.
+        """
         super(RFLight, self).__init__(location, uid, room)
         self._gpio = gpio
         self._code_on = code_on
         self._code_off = code_off
 
-    def status_setter(self, status):
-        if rpi_rf:
-            logging.debug('Enable TX for device \'%s\'...' % self.uid)
-            device = rpi_rf.RFDevice(self._gpio)
-            enabled = device.enable_tx()
+    def status_setter(self, status: dict):
+        """Send a code via the transmitter depending on the *status*.
 
-            if not enabled:
-                logging.error('Failed to enable TX for \'%s\''
-                              % self.uid)
+        Extend the base class method to send a code depending on the ``'state'``
+        key of the status dict.
+        """
+        logging.debug('Enable TX for device \'%s\'...' % self.uid)
+        device = rpi_rf.RFDevice(self._gpio)
+        enabled = device.enable_tx()
 
-            if status['state']:
-                device.tx_code(self._code_on)
-            elif not status['state']:
-                device.tx_code(self._code_off)
-
-            device.cleanup()
-            del(device)
-        else:
-            logging.error('\'%s\' needs to run on a Raspberry Pi.'
+        if not enabled:
+            logging.error('Failed to enable TX for \'%s\''
                           % self.uid)
+
+        if status['state']:
+            device.tx_code(self._code_on)
+        elif not status['state']:
+            device.tx_code(self._code_off)
+
+        device.cleanup()
+        del(device)
 
         super(RFLight, self).status_setter(status)

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from events import Events
+
 import json
 import logging
 import os
@@ -21,37 +23,49 @@ import threading
 import time
 import uuid
 
+from events import Events
+
 
 class Task(Events):
-    """A Knut task service.
+    """Create and manipulate a task.
 
-    This class represents a Knut task service. A task can have a :attr:`due`
-    date and time with a :attr:`reminder` in seconds before the :attr:`due`.
-    When the reminder is due, the event :meth:`on_remind()` is called. Objects
-    registered to this event can react upon the notification and send a reminder
-    to clients.
+    Provide a task object. The task can have a :attr:`due` date and time with a
+    :attr:`reminder` in seconds before the :attr:`due`.  When the reminder is
+    due, the event ``on_remind()`` is called. Objects registered to this
+    event can react upon the notification and send e.g. a reminder to clients.
     """
 
     def __init__(self, uid=None, task_dir=None):
+        """Create a task with the *uid* and save it in the *task_dir*. If the uid is
+        None, a new unique identifier is assigned to the task.
+        """
+
         self.uid = uid
         """The unique identifier of the task."""
+
         self.task_dir = task_dir
         """The directory where the task can be saved."""
 
         self.assignee = str()
         """The user to which the task is assigned."""
+
         self.author = str()
         """The name of the task author."""
+
         self.description = str()
         """The description text of the task."""
+
         self.done = False
         """Whether the task is done or not."""
+
         self.due = int()
         """The due date time of the task in seconds since the epoch January 1,
         1970, 00:00:00 (UTC)."""
+
         self.reminder = int()
         """The time in seconds before *due*. When the time is reached, a
         reminder notification is send."""
+
         self.title = str()
         """The task title."""
 
@@ -65,7 +79,7 @@ class Task(Events):
         self.__events__ = ('on_remind')
 
     def delete_task(self):
-        """Deletes the task."""
+        """Delete the task."""
         logging.debug('Delete task \'%s\'...' % self.uid)
 
         if not self.__check_save_dir():
@@ -80,7 +94,7 @@ class Task(Events):
             self.__reminder_timer.cancel()
 
     def update_task(self, task):
-        """Updates the task to the parsed *task* dictionary."""
+        """Update the task to the parsed *task* dictionary."""
 
         logging.debug('Update task \'%s\'...' % self.uid)
 
@@ -109,11 +123,11 @@ class Task(Events):
         self.__save_task()
 
     def task(self):
-        """Returns the task as dictionary.
+        """Return the task as dictionary.
 
-        The returned dictionary has the keys ``'assignee'``, ``'author'``,
-        ``'description'``, ``'done'``, ``'due'``, ``'reminder'``, ``'title'`` and
-        ``'id'``
+        The dictionary has the keys ``'assignee'``, ``'author'``,
+        ``'description'``, ``'done'``, ``'due'``, ``'reminder'``, ``'title'``
+        and ``'id'``
         """
         return {
             'assignee': self.assignee,
@@ -127,7 +141,7 @@ class Task(Events):
         }
 
     def __check_save_dir(self):
-        """Checks if a save directory is defined."""
+        """Check if a save directory is defined."""
         if not self.task_dir:
             logging.warning(
                 'No save directory for task \'%s\' set.' % self.uid)
@@ -136,6 +150,7 @@ class Task(Events):
         return True
 
     def __save_task(self):
+        """Save the task as JSON file in the :attr:`task_dir`."""
         if not self.__check_save_dir():
             return
 
@@ -151,6 +166,7 @@ class Task(Events):
             json.dump(self.task(), f)
 
     def __set_reminder(self):
+        """Set a reminder to call ``on_remind``."""
         def reminder_alarm():
             logging.debug('Reminder alarm for \'%s\' triggered...' % self.uid)
             self.on_remind(self.uid)

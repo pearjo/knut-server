@@ -1,28 +1,30 @@
-"""
-Copyright (C) 2020  Joe Pearson
+# -*- coding: utf-8 -*-
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+import logging
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
 from events import Events
+
 from .knutapi import KnutAPI
 import knut.services.light
-import logging
 
 
 class Room(Events):
-    """Bundles :class:`~knut.services.Light` objects in a room."""
+    """Bundle :class:`~knut.services.Light` objects in a room."""
 
     apiid = 2
     """The room service id. The id is the same as the light service id since
@@ -108,8 +110,9 @@ class Room(Events):
 
 
 class Light(KnutAPI):
-    """This class allows interaction with the light service. The following message
-    types are handled by the ``request_handler()``:
+    """Interact with light services.
+
+    This class extends the :class:`KnutAPI` to handle the following requests:
 
     - :const:`LIGHT_STATUS_REQUEST`
     - :const:`LIGHT_STATUS_RESPONSE`
@@ -121,10 +124,10 @@ class Light(KnutAPI):
 
     .. note::
 
-       Each light service back-end add to the dictionary must subclass the
-       :class:`~knut.services.light.Light` class.
-
+       Each light service back-end add to :attr:`backends` **must** subclass the
+       base :class:`~knut.services.light.Light` class.
     """
+
     LIGHT_STATUS_REQUEST = 1
     LIGHT_STATUS_RESPONSE = 2
     LIGHTS_REQUEST = 3

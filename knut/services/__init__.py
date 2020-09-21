@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -13,10 +15,44 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Knut services.
-
-This module provides all Knut services.
-
 """
-from .local import *
-from .task import *
+Knut services (:mod:`knut.services`)
+====================================
+
+.. currentmodule:: knut.services
+
+A Knut service provide data and implement functionalities which can be used by
+the APIs. For example, to switch a light, a service provide commands which
+are used by the API to switch the light on or off and to get e.g. status
+information of the light.
+
+.. autosummary::
+   :toctree: generated/
+
+   local.Local
+   task.Task
+
+.. note::
+
+   Each light service **must** subclass the base class :class:`~light.Light`.
+
+.. autosummary::
+   :toctree: generated/
+
+   light.Light
+   light.dummylight.DummyLight
+   light.pytradfri.PyTradfriLight
+   light.rflight.RFLight
+
+.. note::
+
+   Each temperature service **must** subclass the base class
+   :class:`temperature.Temperature`.
+
+.. autosummary::
+   :toctree: generated/
+
+   temperature.Temperature
+   temperature.dummytemperature.DummyTemperature
+   temperature.openweathermap.OpenWeatherMap
+"""

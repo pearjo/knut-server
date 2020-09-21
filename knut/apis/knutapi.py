@@ -1,28 +1,30 @@
-"""
-Copyright (C) 2020  Joe Pearson
+# -*- coding: utf-8 -*-
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""
-from events import Events
 from typing import Tuple
 import logging
 
+from events import Events
+
 
 class KnutAPI(Events):
-    """This class is used to provide the basic Knut's API. It must be subclassed
-    by each service specific API.
+    """Provide the base Knut API.
+
+    .. note:: This class must be subclassed by each service specific API.
 
     The :meth:`request_handler()` builds the core for communicate to services
     handled by the API. It handles a request message and calls a callback
@@ -62,8 +64,8 @@ class KnutAPI(Events):
        >>> foo.request_handler(0x0001, {'text': 'bar'})
        bar
        (0, {})
-
     """
+
     NULL = 0x0000
     """The null message indicates that no further action is going to happen."""
 
@@ -78,9 +80,9 @@ class KnutAPI(Events):
         callback functions as values ``{msg_id: callback}``."""
 
     def request_handler(self, msg_id: int, msg: dict) -> Tuple[int, dict]:
-        """Returns the tuple (*response_id*, *response*) upon a request.
+        """Return the tuple (*response_id*, *response*) upon a request.
 
-        Handles the request *msg* of type *msg_id* and returns a corresponding
+        Handle the request *msg* of type *msg_id* and return a corresponding
         *response* of type *response_id*. If either no valid request *msg* was
         passed, or the request does not expect any response, the response
         ``(0x0000, {})`` is returned.

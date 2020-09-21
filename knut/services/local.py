@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,32 +14,36 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from astroplan import download_IERS_A
-from astroplan import Observer
-from astropy.time import Time
-from events import Events
-import astropy
+
 import logging
 import numpy
 import threading
 import time
 import urllib
 
+from astroplan import download_IERS_A
+from astroplan import Observer
+from astropy.time import Time
+from events import Events
+import astropy
+
 
 class Local(Events):
-    """A service providing local data.
+    """Provide local data like sunrise and sunset times.
 
-    This service represents a *location* and can mainly be used to get the sun
-    rise and set. Furthermore, it runs a daemon task which updates the
-    :attr:`is_daylight` attribute and pushes a notification ``on_change()``
-    to listening objects whether the sun has set or not.
-
-    The sun's position is calculated according to the *latitude*, *longitude*
-    and *elevation* of the *location*.
+    This service represent a *location* with it's sunrise and sunset time, as
+    well as whether the sun is currently up or not. A daemon task is run to
+    update the :attr:`is_daylight` attribute and push a ``on_change()``
+    notification to listening objects.
     """
 
     def __init__(self, location=None, uid='local',
                  latitude=0, longitude=0, elevation=0):
+        """Calculate the location data for the *location* based on the *latitude*,
+        *longitude* and *elevation*. The latitude and longitude are in degree
+        and the elevation in metres.
+        """
+
         self.elevation = elevation
         """The elevation of the location in meters."""
 
@@ -74,9 +80,9 @@ class Local(Events):
         self.__events__ = ('on_change')
 
     def local(self):
-        """Returns the :class:`Local` object as dictionary.
+        """Return the :class:`Local` object as dictionary.
 
-        The returned dictionary has the keys ``'isDaylight'``, ``'location'``,
+        The dictionary has the keys ``'isDaylight'``, ``'location'``,
         ``'sunrise'``, ``'sunset'`` and ``'id'``. For example::
 
            {
@@ -95,7 +101,7 @@ class Local(Events):
                 'id': self.uid}
 
     def update_observer(self):
-        """Updates the :attr:`observer` and :attr:`sunset` time.
+        """Update the :attr:`observer` and :attr:`sunset` time.
 
         After changing any of the :attr:`longitude`, :attr:`latitude` or
         :attr:`elevation`, the :attr:`observer` should be updated using this
@@ -109,7 +115,7 @@ class Local(Events):
         self.__set_daylight_timer()
 
     def __get_sun_rise_and_set(self):
-        """Gets the next sun rise and set time."""
+        """Get the next sun rise and set time."""
         # Try to get for now and in one hour the next sun rise and set. In
         # spring the next sun set can takes more than on day when trying to get
         # the next sun set when currently the sun is setting. This would lead to
@@ -126,7 +132,7 @@ class Local(Events):
                       % (self.sunrise, self.sunset))
 
     def __set_daylight_timer(self):
-        """Sets a timer to update :attr:`is_daylight`.
+        """Set a timer to update :attr:`is_daylight`.
 
         The timer resets itself as soon as it is triggered and updates the
         :attr:`is_daylight`.
@@ -157,7 +163,7 @@ class Local(Events):
         self.__daylight_timer.start()
 
     def __update_daylight(self):
-        """Updates the :attr:`is_daylight` attribute."""
+        """Update the :attr:`is_daylight` attribute."""
         # if the next sun set is before the next sun rise and the current time
         # is before the sun set, it must be day light at the moment
         is_daylight = self.sunset < self.sunrise and time.time() < self.sunset

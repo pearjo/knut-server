@@ -16,8 +16,8 @@ to install all needed packages.
 
 .. note::
 
-   Some services may require additional installation steps. Please follow
-   the instructions of the :ref:`services` if an error occurs.
+   Some services may require additional installation steps. Please follow the
+   instructions of the :py:mod:`~knut.services` if an error occurs.
 
 To finally install the Knut server run::
 
@@ -28,20 +28,26 @@ To finally install the Knut server run::
 How Knut Works
 --------------
 
-Knut has various :ref:`apis` to control e.g. lights or supply temperature data
-from various sources. Each API can be connected to multiple service back-ends
-which are implementing the actions needed to execute a command.
+Knut has various :py:mod:`~knut.apis` to control e.g. lights or supply
+temperature data from various sources. Each API can be connected to multiple
+service back-ends which are implementing the actions needed to execute a
+command.
+
+.. _knutinternal:
+
+How it works internally
+~~~~~~~~~~~~~~~~~~~~~~~
 
 For example, lets switch a light which is plugged into a RF controllable socket.
 The light API :py:class:`~knut.apis.Light` class calls a method of the light
-service :py:class:`~knut.services.light.RFLight`, which switches the socket
+service :py:class:`~knut.services.light.rflight.RFLight`, which switches the socket
 according to a parsed status in a back-end.
 
 .. code-block::
    :linenos:
 
    from knut.apis import Light
-   from knut.services.rflight import RFLight
+   from knut.services.light.rflight import RFLight
 
    # first we define a service back-end using the RFLight module
    rf_light = RFLight('Side Board',  # the location of the light
@@ -56,17 +62,17 @@ according to a parsed status in a back-end.
    light_api.add_backend(rf_light)
 
    # lets switch the defined light on
-   light_api.request_handler(0x0101,  # the APIs message type to change a light
-                             {'uniqueName': 'side_board_lamp', 'state': True})
+   light_api.request_handler(2,  # LIGHT_STATUS_RESPONSE to change a light
+                             {'id': 'side_board_lamp', 'state': True})
 
 Now to interact with all APIs from another client program, Knut has a TCP
-interface, the :py:class:`~knut.server.KnutTCPServer`. Lets extend the code of
-the previous example by the following lines to get working Knut server:
+interface, the :py:class:`~knut.server.tcpserver.KnutTCPServer`. Lets extend the
+code of the previous example by the following lines to get working Knut server:
 
 .. code-block::
    :linenos:
 
-   from knut.server import KnutTCPServer
+   from knut.server.tcpserver import KnutTCPServer
    import threading
    import time
 
@@ -86,4 +92,4 @@ handler of the API by the server and we can switch our light:
 
 .. code-block:: bash
 
-   echo -ne '{"serviceid": 2, "msgid": 257, "msg": {"uniqueName": "side_board_lamp", "state": true}}\0' | netcat localhost 8080
+   echo -ne '{"apiId": 2, "msgId": 2, "msg": {"id": "side_board_lamp", "state": true}}\0' | netcat localhost 8080

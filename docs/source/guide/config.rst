@@ -9,7 +9,7 @@ File Structure
 
 Knut is configured by a YAML configuration file. Knut objects are defined
 directly in the configuration and are initialize from the file (see
-:py:class:`~knut.core.config.KnutConfig` for more details). To define a Knut
+:py:class:`~knut.core.KnutConfig` for more details). To define a Knut
 object in the configuration, the tag ``!knutobject`` is used:
 
 .. code-block:: yaml
@@ -23,16 +23,16 @@ object in the configuration, the tag ``!knutobject`` is used:
 The keys ``module`` and ``class`` are mandatory and specify the Class and the
 module containing it to load. The keys after the two mandatory are the arguments
 of the classes ``__init__()`` method. For example, the
-:class:`knut.server.KnutTCPServer` would be configured as following:
+:py:class:`knut.server.tcpserver.KnutTCPServer` would be configured as
+following:
 
 .. code-block:: yaml
 
    !knutobject
-     module: knut.server
+     module: knut.server.tcpserver
      class: KnutTCPServer
      address: 127.0.0.1
      port: 8080
-
 
 If no configuration is found, default values are used which are documented in
 the following sections.
@@ -45,9 +45,10 @@ Knut Configuration Reference
 server
 ------
 
-Configuration options to setup the :py:class:`~knut.server.KnutTCPServer`. The
-TCP server is bound to the ``address`` on the specified ``port``. The default
-values are for the address ``127.0.0.1`` and for the port ``8080``:
+Configuration options to setup the
+:py:class:`~knut.server.tcpserver.KnutTCPServer`. The TCP server is bound to the
+``address`` on the specified ``port``. The default values are for the address
+``127.0.0.1`` and for the port ``8080``:
 
 .. code-block:: yaml
 
@@ -64,13 +65,13 @@ lights
 Configures all light back-ends which are subclassed from the
 :py:class:`~knut.services.light.Light` superclass. To add a back-end service,
 the back-end object needs to be add to the lights sequence. For example, a
-:py:class:`~knut.services.pytradfri.PyTradfriLight` light is add as following:
+:py:class:`~knut.services.light.pytradfri.PyTradfriLight` light is add as following:
 
 .. code-block:: yaml
 
    lights:
      - !knutobject
-       module: knut.services.pytradfri
+       module: knut.services.light.pytradfri
        class: PyTradfriLight
        location: Sideboard
        unique_name: table_living_room
@@ -85,8 +86,8 @@ On default, no light is configured.
 local
 -----
 
-Configures the :py:class:`~knut.services.Local` service. The local service has
-the configuration keys ``location``, ``longitude``, ``latitude`` and
+Configures the :py:class:`~knut.services.local.Local` service. The local service
+has the configuration keys ``location``, ``longitude``, ``latitude`` and
 ``elevation``. Note that the degree values are decimal values and the elevation
 is in metres.  By default, a local at latitude 0, longitude 0 and elevation 0 is
 configured. For example, Hamburg in Germany would be defined as following:
@@ -95,7 +96,7 @@ configured. For example, Hamburg in Germany would be defined as following:
 
    local:
      !knutobject
-       module: knut.services
+       module: knut.services.local
        class: Local
        location: Hamburg
        unique_name: hamburg
@@ -106,9 +107,9 @@ configured. For example, Hamburg in Germany would be defined as following:
 task
 ----
 
-Configuration options for the :py:class:`~knut.services.Task` service. Each task
-is written to a file in the directory ``task_dir``. The default directory is
-``~/.local/share/knut/tasks``:
+Configuration options for the :py:class:`~knut.services.task.Task` service. Each
+task is written to a file in the directory ``task_dir``. The default directory
+is ``~/.local/share/knut/tasks``:
 
 .. code-block:: yaml
 
@@ -129,14 +130,14 @@ e.g. a room or city name. The temperature back-ends are added analog to the
 ``temperature`` sequence as light back-ends are add to the ``lights`` sequence.
 
 For example, a temperature back-end with the unique name ``localWeather`` using
-the :py:class:`~knut.services.openweathermap.OpenWeatherMap` service with it's
-additional argument ``appid`` is add to the temperature sequence:
+the :py:class:`~knut.services.temperature.openweathermap.OpenWeatherMap` service
+with it's additional argument ``appid`` is add to the temperature sequence:
 
 .. code-block:: yaml
 
    temperature:
      - !knutobject
-       module: knut.services.openweathermap
+       module: knut.services.temperature.openweathermap
        class: OpenWeatherMap
        location: Hamburg
        unique_name: localWeather
@@ -149,5 +150,5 @@ Example Configuration
 
 Example configuration ``etc/example.yml``:
 
-.. literalinclude:: ../../etc/example.yml
+.. literalinclude:: ../../../etc/example.yml
    :language: yaml

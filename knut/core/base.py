@@ -20,7 +20,7 @@ import importlib
 
 
 class KnutObject(yaml.YAMLObject):
-    """Baseclass for various Knut objects."""
+    """Base class for various Knut objects."""
 
     yaml_tag = u'!knutobject'
 

@@ -21,6 +21,7 @@ import time
 
 
 class Temperature(Events):
+    """Base class for temperature services."""
     # location where temperature history data are stored
     DATA_DIR = str(pathlib.Path.home()) + '/.local/share/knut/'
 

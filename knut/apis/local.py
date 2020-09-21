@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,22 +14,24 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from .knutapi import KnutAPI
 
 
 class Local(KnutAPI):
-    """This class allows interaction with the local service. The following message
-    types are handled by the ``request_handler()`` method of the superclass:
+    """Interact with the local service.
+
+    This class extends the :class:`KnutAPI` to handle the following requests::
 
     - :const:`LOCAL_REQUEST`
     - :const:`LOCAL_RESPONSE`
 
-    This class can only be connected to one :attr:`local` service by setting it
-    using the :meth:`set_local()` method. The ``on_change()`` event of the
-    service is connected to the :meth:`notifier()` method, which triggers the
-    ``on_push()`` event with a :const:`LOCAL_RESPONSE`.
-
+    Only one :attr:`local` service can be connected by setting it using
+    :meth:`set_local()`. The ``on_change()`` event of the service is connected
+    to the :meth:`notifier()` method, which triggers the ``on_push()`` event
+    with a :const:`LOCAL_RESPONSE`.
     """
+
     LOCAL_REQUEST = 1
     LOCAL_RESPONSE = 2
 

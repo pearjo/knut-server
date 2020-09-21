@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,10 +14,12 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .knutapi import KnutAPI
+
 from typing import Tuple
-import knut.services.temperature
 import logging
+
+from .knutapi import KnutAPI
+import knut.services.temperature
 
 UNIT = 'K'
 WEATHER_ICON_MAP = {
@@ -226,21 +230,22 @@ Msg = Tuple[int, dict]
 
 
 class Temperature(KnutAPI):
-    """This class allows interaction with the temperature service. The following
-    message types are handled by the ``request_handler()`` method of the
-    superclass:
+    """Interact with the temperature service.
 
-    - :const:`STATUS_REQUEST`
+    This class extends the :class:`KnutAPI` to handle the following requests:
+
+    - :const:`TEMPERATURE_STATUS_REQUEST`
     - :const:`TEMPERATURE_HISTORY_REQUEST`
     - :const:`TEMPERATURE_LIST_REQUEST`
 
     The temperature back-ends accessed by this class are registered in the
-    :attr:`backends` dictionary. They can be add using the :meth:`add_backend()`
+    :attr:`backends` dictionary. They can be add using :meth:`add_backend()`
     which also connects the back-end's ``on_change()`` event to the
     :meth:`notifier()` method.
     """
-    STATUS_REQUEST = 1
-    STATUS_RESPONSE = 2
+
+    TEMPERATURE_STATUS_REQUEST = 1
+    TEMPERATURE_STATUS_RESPONSE = 2
     TEMPERATURE_LIST_REQUEST = 3
     TEMPERATURE_LIST_RESPONSE = 4
     TEMPERATURE_HISTORY_REQUEST = 5
@@ -252,7 +257,7 @@ class Temperature(KnutAPI):
         super(Temperature, self).__init__()
 
         self.supported = {
-            Temperature.STATUS_REQUEST: self.__status_request,
+            Temperature.TEMPERATURE_STATUS_REQUEST: self.__status_request,
             Temperature.TEMPERATURE_HISTORY_REQUEST: self.__history_request,
             Temperature.TEMPERATURE_LIST_REQUEST: self.__list_request
         }
@@ -287,9 +292,9 @@ class Temperature(KnutAPI):
             self.backends[backend.uid].on_change += self.notifier
 
     def notifier(self, uid: str) -> None:
-        """Pushes a :const:`STATUS_RESPONSE` for *uid* via the
+        """Pushes a :const:`TEMPERATURE_STATUS_RESPONSE` for *uid* via the
         ``on_push()`` event."""
-        self.on_push(Temperature.apiid, Temperature.STATUS_RESPONSE,
+        self.on_push(Temperature.apiid, Temperature.TEMPERATURE_STATUS_RESPONSE,
                      {uid: self.status(uid)})
 
     def status(self, uid: str) -> dict:
@@ -332,9 +337,9 @@ class Temperature(KnutAPI):
         try:
             uid = msg['id']
         except KeyError:
-            logging.error('Invalid STATUS_REQUEST received.')
+            logging.error('Invalid TEMPERATURE_STATUS_REQUEST received.')
 
-        return Temperature.STATUS_RESPONSE, self.status(uid)
+        return Temperature.TEMPERATURE_STATUS_RESPONSE, self.status(uid)
 
     def __list_request(self, _msg: dict) -> Msg:
         backends = list()

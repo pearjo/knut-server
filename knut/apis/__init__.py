@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,8 +14,38 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .knutapi import *
-from .light import *
-from .local import *
-from .task import *
-from .temperature import *
+
+"""
+Knut APIs (:mod:`knut.apis`)
+============================
+
+.. currentmodule:: knut.apis
+
+This module provide the APIs to control Knut's :mod:`~knut.services`.
+Each API has a set of commands and call-back function assigned to them which are
+executed if a :mod:`~knut.server` receives a valid request.
+
+Each API should subclass the base API :class:`KnutAPI` as this class implements
+the call-back functionality using a request handler.
+
+.. autosummary::
+   :toctree: generated/
+
+   KnutAPI
+
+The following APIs are available:
+
+.. autosummary::
+   :toctree: generated/
+
+   Light
+   Local
+   Task
+   Temperature
+"""
+
+from .knutapi import KnutAPI
+from .light import Light
+from .local import Local
+from .task import Task
+from .temperature import Temperature

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,11 +14,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .temperature import Temperature
+
 import logging
-import requests
 import threading
 import time
+
+import requests
+
+from .temperature import Temperature
 
 OWM_TO_WEATHER_ICON = {
     '01d': 'day-sunny',
@@ -41,7 +46,19 @@ OWM_TO_WEATHER_ICON = {
 
 
 class OpenWeatherMap(Temperature):
-    def __init__(self, location, uid, appid):
+    """OpenWeatherMap temperature service.
+
+    Extend the :class:`Temperature` base class to provide a temperature service
+    which connects to `OpenWeatherMap's <https://openweathermap.org/api>`_ API.
+    """
+
+    def __init__(self, location: str, uid: str, appid: str) -> None:
+        """Connect to OpenWeatherMap's API to get the weather information for
+        the *location*. The unique id *uid* is used within Knut. To connect to
+        the API, an *appid* is required. For more information regarding the
+        appid read `OpenWeatherMap's guide
+        <https://openweathermap.org/appid#get>`_.
+        """
         super(OpenWeatherMap, self).__init__(location, uid)
         self.data = dict()  # stores data received from OpenWeatherMap
         self.url = str('http://api.openweathermap.org/data/2.5/weather?'
@@ -61,8 +78,7 @@ class OpenWeatherMap(Temperature):
         data_logger_thread.start()
 
     def request_data(self):
-        """Sends a HTTP request to the openweathermap API.
-        """
+        """Send a HTTP request to the OpenWeatherMap API."""
         try:
             self.data = requests.get(self.url).json()
             self.location = self.data['name']
@@ -72,8 +88,9 @@ class OpenWeatherMap(Temperature):
         except:
             logging.warning('Can not connect to api.openweathermap.org.')
 
-    def daemon(self):
-        """Runs every 1.5 minutes :meth:`request_data` to get new weather data.
+    def daemon(self, s: int=60) -> None:
+        """Request every *s* seconds new weather data.
+
         If the data changed, the :meth:`on_change` event is called.
         """
         while True:
@@ -84,11 +101,10 @@ class OpenWeatherMap(Temperature):
             if previus_data != self.data:
                 self.on_change(self.uid)
 
-            time.sleep(90)  # wait 1.5 minutes to not exceed the polling limit
+            time.sleep(s)
 
     def data_logger(self):
-        """Runs every hour :meth:`save_data` to save the temperature history.
-        """
+        """Save every hour the temperature history."""
         # wait for first value to be written to history
         while len(self.history[0]) == 0:
             self.save_data()

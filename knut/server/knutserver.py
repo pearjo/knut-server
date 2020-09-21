@@ -26,9 +26,8 @@ class KnutServer():
     """
 
     def __init__(self, address: str, port: int):
-        """A server which binds to the *address* and listens on the *port* for
-        requests.
-        """
+        """Bind to the *address* and listen on the *port* for requests."""
+
         self.address = address
         """The address to which the server is bound."""
 
@@ -49,12 +48,12 @@ class KnutServer():
         The request handler will also call the APIs ``request_handler()`` method
         if the API's service matches the requested service.
         """
-        if not all([hasattr(api, 'apiid'),
-                    hasattr(api, 'on_push')]):
+        if all([hasattr(api, 'apiid'),
+                hasattr(api, 'on_push')]):
+            logging.debug('Add api to server: {}'.format(api))
+        else:
             raise AttributeError('API is missing either a \'apiid\' or '
                                  'an \'on_push\' event: {}'.format(api))
-        else:
-            logging.debug('Add api to server: {}'.format(api))
 
         apiid = api.apiid
         self.apis[apiid] = api
@@ -67,5 +66,5 @@ class KnutServer():
            Must be implemented by a subclass.
 
         """
-        raise AttributeError("'knut_serve_forever' method of server "
-                             "not implemented.")
+        raise NotImplementedError("'knut_serve_forever' method of server "
+                                  "not implemented.")

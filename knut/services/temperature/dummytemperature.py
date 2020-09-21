@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,10 +14,16 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from .temperature import Temperature
 
 
 class DummyTemperature(Temperature):
+    """A dummy temperature for mock purpose.
+
+    .. warning:: This object is only for mock purpose and has no functionality.
+    """
+
     def __init__(self, location, uid):
         super().__init__(location, uid)
         self.temperature = 300

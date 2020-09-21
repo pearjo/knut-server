@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,7 +14,10 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from knut.apis import KnutAPI
+
+"""Provide a TCP server.
+"""
+
 from typing import Tuple
 import json
 import logging
@@ -20,14 +25,18 @@ import queue
 import socketserver
 import threading
 
+from knut.apis import KnutAPI
 from .knutserver import KnutServer
 
-class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
-    """The request handler class for the :class:`knut.server.KnutTCPServer`.
 
-    It is instantiated once per connection to the server and kept open until
-    either the client closes the connection or the server is shutdown.
+class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
+    """Request handler for the :class:`KnutTCPServer`.
+
+    The request handler is instantiated once per connection to the server and
+    kept open until either the client closes the connection or the server is
+    shutdown.
     """
+
     ENCODING = 'utf-8'
     """The encoding in which messages are received and send."""
 
@@ -116,6 +125,30 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
             timer.daemon = True
             timer.start()
 
+    def msg_builder(self,
+                    apiid: int,
+                    msgid: int,
+                    msg: dict,
+                    encoding: str) -> bytearray:
+        """Return a Knut message.
+
+        Build a Knut message for the API *apiid* and the message *msg* of type
+        *msgid*. The Knut message is terminated by an null byte ``b'\\x00'``.
+
+        For example::
+
+           >>> msg_builder(2, 2, {}, 'utf-8')
+           bytearray(b'{"apiid": 2, "msgId": 2, "msg": {}}\\x00')
+
+        """
+        data = {'apiId': apiid, 'msgId': msgid, 'msg': msg}
+        data_str = json.dumps(data)
+
+        logging.debug('Build {} byte long message: {}'
+                      .format(len(data_str), data_str))
+
+        return bytearray(data_str, encoding) + b'\x00'
+
     def request_service(self,
                         apiid: int,
                         msgid: int,
@@ -140,10 +173,10 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
         Sends the *msg* of type *msgid* from the *apiid* as a queued Knut
         message.
         """
-        self.send_queued(knutmsg_builder(apiid,
-                                         msgid,
-                                         msg,
-                                         KnutTCPRequestHandler.ENCODING))
+        self.send_queued(self.msg_builder(apiid,
+                                          msgid,
+                                          msg,
+                                          KnutTCPRequestHandler.ENCODING))
 
     def send_queued(self, msg: bytearray) -> None:
         """Sends a queued message.
@@ -178,14 +211,14 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
 class KnutTCPServer(socketserver.ThreadingMixIn,
                     socketserver.TCPServer,
                     KnutServer):
-    """The Knut TCP server class.
+    """Knut TCP socket server.
 
-    The server handles all communication from clients and redirects requests to
-    the APIs of the corresponding services. For each client, the request handler
-    :class:`~knut.server.tcpserver.KnutTCPRequestHandler` is instantiated in a
-    new thread. The connection is kept open once a request is received to allow
-    sending push notifications via TCP back to the connected client. See
-    :meth:`add_api()` for more about how to add an API to the server.
+    Handle all communication from clients and redirect requests to the APIs of
+    the corresponding services. For each client, the request handler
+    :class:`KnutTCPRequestHandler` is instantiated in a new thread. The
+    connection is kept open once a request is received to allow sending push
+    notifications via TCP back to the connected client. See :meth:`add_api()`
+    for more about how to add an API to the server.
 
     The request handler reads UTF-8 encoded JSON messages terminated by a null
     byte ``b'\\x00'``. See :ref:`knutmsg` for more details.
@@ -232,11 +265,10 @@ class KnutTCPServer(socketserver.ThreadingMixIn,
 
     The server finally responses with the API's
     :const:`TEMPERATURE_LIST_RESPONSE`.
-
     """
 
     def __init__(self, address: str = "127.0.0.1", port: int = 8080) -> None:
-        """The server is bound to the *address* on the specified *port*."""
+        """Bind the server to the *address* on the specified *port*."""
         self.allow_reuse_address = True
 
         self.apis = dict()
@@ -250,28 +282,3 @@ class KnutTCPServer(socketserver.ThreadingMixIn,
             server_thread.daemon = True
             server_thread.start()
             server_thread.join()
-
-
-def knutmsg_builder(apiid: int,
-                    msgid: int,
-                    msg: dict,
-                    encoding: str) -> bytearray:
-    """Returns a Knut message.
-
-    Builds a Knut message for the API *apiid* and the message *msg* of
-    type *msgid*. The Knut message is terminated by an null byte ``b'\\x00'``.
-
-    For example::
-
-       >>> import knut.server.tcpserver
-       >>> knut.server.tcpserver.knutmsg_builder(2, 2, {}, 'utf-8')
-       bytearray(b'{"apiid": 2, "msgId": 2, "msg": {}}\\x00')
-
-    """
-    data = {'apiId': apiid, 'msgId': msgid, 'msg': msg}
-    data_str = json.dumps(data)
-
-    logging.debug('Build {} byte long message: {}'
-                  .format(len(data_str), data_str))
-
-    return bytearray(data_str, encoding) + b'\x00'

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,17 +14,5 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Knut temperature services.
 
-This module provides Knut temperature services to be used with the
-:class:`~knut.apis.Temperature` API.
-
-.. note::
-
-   All temperature services must subclass the superclass
-   :class:`knut.services.temperature.Temperature`.
-
-"""
-from .dummytemperature import *
-from .openweathermap import *
-from .temperature import *
+from .temperature import Temperature

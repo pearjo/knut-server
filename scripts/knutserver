@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2020  Joe Pearson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""Run the Knut server forever.
+
+Use the environment variable KNUTDEBUG to change the log
+level. Available values are DEBUG, INFO, WARNING, ERROR and
+CRITICAL. The default log level is INFO.
+"""
+
+from optparse import OptionParser
+import logging
+import os
+import sys
+import threading
+
+import coloredlogs
+
+from knut.core import KnutConfig
+import knut.apis
+
+# global constants
+LOGLEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+
+
+def main():
+    print(
+        'knutserver  Copyright (C) 2020  Joe Pearson\n'
+        'This program comes with ABSOLUTELY NO WARRANTY; for details read LICENSE.\n'
+        'This is free software, and you are welcome to redistribute it\n'
+        'under certain conditions; read LICENSE for details.\n'
+    )
+
+    parser = OptionParser(description=__doc__)
+    parser.add_option('-f', '--file', dest='file',
+                      help='read the configuration from FILE',
+                      metavar='FILE')
+    parser.add_option('-v', '--verbose', dest='verbose',
+                      action='store_true', default=False,
+                      help='make Knut more talkative')
+
+    (options, args) = parser.parse_args()
+
+    # format the log output
+    fmt = '%(levelname)s %(module)s.%(funcName)s: %(message)s'
+
+    if options.verbose:
+        level = 'DEBUG'
+    else:
+        level = os.environ.get('KNUTDEBUG', 'INFO').upper()
+
+    logging.basicConfig(level=level)
+    logger = logging.getLogger(__name__)
+    coloredlogs.install(level=level, logger=logger, fmt=fmt)
+
+    # load config
+    config = KnutConfig(options.file).config
+
+    # initialize the Knut server
+    server = config['server']
+
+    # load task module
+    task = config['task']
+    server.add_api(task)
+    task.load_tasks()
+
+    # load temperature module
+    try:
+        temp = knut.apis.Temperature()
+        server.add_api(temp)
+
+        # iterate over all sections, where each section name is a backend ID
+        for backend in config['temperature']:
+            temp.add_backend(backend)
+    except KeyError:
+        pass
+
+    # load light module
+    try:
+        light = knut.apis.Light()
+        server.add_api(light)
+
+        for backend in config['lights']:
+            light.add_backend(backend)
+    except KeyError:
+        pass
+
+    # load local module
+    if config['local']:
+        local = knut.apis.Local()
+        server.add_api(local)
+        local.set_local(config['local'])
+
+    try:
+        server.knut_serve_forever()
+    except KeyboardInterrupt:
+        logging.debug('Shutting down server...')
+        server.shutdown()
+        logging.debug('Cheerio!')
+        sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,5 +14,22 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .config import *
-from .base import *
+
+"""
+Core functionality of Knut (:mod:`knut.core`)
+=============================================
+
+.. currentmodule:: knut.core
+
+This module provide core functionalities which allow subclassed objects
+configuration and integration into Knut.
+
+.. autosummary::
+   :toctree: generated/
+
+   KnutConfig
+   KnutObject
+"""
+
+from .base import KnutObject
+from .config import KnutConfig

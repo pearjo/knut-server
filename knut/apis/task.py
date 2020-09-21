@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,25 +14,28 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .knutapi import KnutAPI
+
 import glob
 import json
-import knut.services
-import logging
 import os
+import logging
+
+from .knutapi import KnutAPI
+import knut.services
 
 
 class Task(KnutAPI):
-    """This class allows interaction with the task service. The following message
-    types are handled by the ``request_handler()`` of the superclass:
+    """Interact with the task service.
+
+    This class extends the :class:`KnutAPI` to handle the following requests:
 
     - :const:`TASK_REQUEST`
     - :const:`TASK_RESPONSE`
     - :const:`ALL_TASKS_REQUEST`
     - :const:`DELETE_TASK_REQUEST`
 
-    The dictionary :attr:`tasks` stores all tasks. Using :meth:`load_tasks()`,
-    the dictionary can be filled with tasks that are stored in a local directory
+    All tasks are stored in :attr:`tasks`. Using :meth:`load_tasks()`, the
+    dictionary can be filled with tasks that are stored in the local directory
     :attr:`task_dir`.
 
     Here's a small example on how to create a new task::
@@ -52,8 +57,8 @@ class Task(KnutAPI):
 
     In the example is no directory specified. Therefore, the task would not be
     saved by the task service.
-
     """
+
     REMINDER = 1
     TASK_REQUEST = 2
     TASK_RESPONSE = 3

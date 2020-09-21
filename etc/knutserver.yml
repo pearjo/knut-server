@@ -34,7 +34,7 @@ server:
 #
 #   lights:
 #     - !knutobject
-#       module: knut.services.pytradfri
+#       module: knut.services.light.pytradfri
 #       class: PyTradfriLight
 #       location: Sideboard
 #       uid: table_living_room
@@ -49,7 +49,7 @@ server:
 # The Local service
 local:
   !knutobject
-    module: knut.services
+    module: knut.services.local
     class: Local
     #location:
     #uid: local

@@ -16,7 +16,10 @@ from .light import Light
 
 
 class DummyLight(Light):
-    """A dummy light."""
+    """A dummy light for mock purpose.
+
+    .. warning:: This object is only for mock purpose and has no functionality.
+    """
 
     def __init__(self, location, uid, room, dimlevel=False,
                  color=False, temperature=False, color_cold='#f5faf6',
@@ -33,5 +36,5 @@ class DummyLight(Light):
 
         # set color temperature limits if provided
         if self.has_temperature:
-            self.color_cold = color_warm
-            self.color_warm = color_cold
+            self.color_cold = color_cold
+            self.color_warm = color_warm

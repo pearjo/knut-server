@@ -1,27 +1,26 @@
-.. _apiref:
+.. _apis:
 
-****
-APIs
-****
+Client APIs
+===========
 
 .. _knutmsg:
 
 The Knut Message
 ================
 
-As mentioned in the previous sections, Knut provides various APIs to control
-services of different types. For example, to control a light service like the
-:py:class:`~knut.services.light.PyTradfriLight`, the corresponding
-:py:class:`~knut.apis.Light` API is used.
+As mentioned in the previous sections, Knut provides various APIs for clients to
+control services of different types. For example, to control a light service
+like the :py:class:`~knut.services.light.pytradfri.PyTradfriLight`, the
+corresponding :py:class:`~knut.apis.Light` API is used.
 
-When running ``knutserver.py``, a TCP server is bound to the configured address
-and port (see :ref:`config`). To interact with Knut, a client can send a JSON
-message terminated with a null byte ``\0``.
+When running ``knutserver``, a TCP server is bound on default to the configured
+address and port (see :ref:`config`). To interact with Knut, a client can send a
+JSON message terminated with a null byte ``\0``.
 
 Each message to be send to Knut or send form Knut, must have the following JSON
 schema:
 
-.. literalinclude:: ../../etc/knutmsg-schema.json
+.. literalinclude:: ../../../etc/knutmsg-schema.json
    :language: json
 
 For example, sending a message via ``netcat`` as client with the Knut server
@@ -34,6 +33,8 @@ bound to ``127.0.0.1:8080`` could look like the following:
 The key ``apiId`` is an identifier of the API which should be used to process
 the message. The ``msgId`` tells the API which message is received and ``msg``
 contains finally an individual JSON message which is supported by the API.
+
+.. seealso:: Module :py:mod:`knut.server` for all configurable server.
 
 The following section describes all available APIs with their supported
 messages.

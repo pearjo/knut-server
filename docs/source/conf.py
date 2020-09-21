@@ -35,6 +35,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.graphviz',
+    'sphinx.ext.intersphinx',
     'sphinx_copybutton'
 ]
 
@@ -65,6 +66,7 @@ autodoc_mock_imports = [
     'numpy',
     'pytradfri',
     'rpi_rf',
+    'websockets',
     'yaml'
 ]
 
@@ -76,6 +78,10 @@ autoclass_content = 'both'
 
 autosummary_generate = True
 autosummary_imported_members = True
+
+# -- Options for intersphinx -------------------------------------------------
+
+intersphinx_mapping = {'python': ('https://docs.python.org/3', None)}
 
 # -- Options for HTML output -------------------------------------------------
 

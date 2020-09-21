@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -12,56 +14,60 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from . import light
-from pytradfri import Gateway
-from pytradfri.api.libcoap_api import APIFactory
+
 import logging
-import pytradfri.error
 import threading
 import time
 
+import pytradfri.error
+from pytradfri import Gateway
+from pytradfri.api.libcoap_api import APIFactory
 
-class PyTradfriLight(light.Light):
-    """PyTradfriLight light service.
+from .light import Light
 
-    This class uses the `pytradfri <https://github.com/ggravlingen/pytradfri>`_
-    package to control an IKEA TRÅDFRI light. A light is located at a
-    *location* inside a *room*. It has a *uid* for the Knut system and
-    a *device_id* inside the TRÅDFRI system. To connect to the TRÅDFRI gateway
-    with the known *host* address, a pre-shared key *psk* with its uid
-    *psk_id* is used. Those are generated as following::
 
-       from pytradfri.api.libcoap_api import APIFactory
-       import uuid
+class PyTradfriLight(Light):
+    """A TRÅDFRI light service.
 
-       host = ''  # the IP of the gateway
-       key = ''  # the 'Security Code' of the Gateway (16 chars)
-
-       psk_id = uuid.uuid4().hex
-       api_factory = APIFactory(host=host, psk_id=psk_id)
-       psk = api_factory.generate_psk(key)
-       print('Generated PSK: ', psk)
-       print('Generated PSK_ID: ', psk_id)
-
-    To get the *device_id* of all devices known by the gateway, run the
-    following commands with the ``host``, ``psk_id`` and ``psk`` obtained in
-    the previous step::
-
-       from pytradfri.api.libcoap_api import APIFactory
-       from pytradfri import Gateway
-
-       api = APIFactory(host, psk_id, psk).request
-       gateway = Gateway()
-       devices_commands = api(gateway.get_devices())
-       devices = api(devices_commands)
-
-       for device in devices:
-           print('Found device %s with the device_id %i'
-                 % (device.name, device.uid))
-
+    Extend the :class:`~knut.services.light.Light` to implement a light which
+    uses the `pytradfri <https://github.com/ggravlingen/pytradfri>`_ package to
+    control an IKEA TRÅDFRI light.
     """
 
     def __init__(self, location, uid, room, device_id, host, psk_id, psk):
+        """Connect to a TRÅDFRI light with it's the *device_id*. To connect to the
+        TRÅDFRI gateway with the known *host* address, a pre-shared key *psk*
+        with its uid *psk_id* is used. Those are generated as following::
+
+           from pytradfri.api.libcoap_api import APIFactory
+           import uuid
+
+           host = ''  # the IP of the gateway
+           key = ''  # the 'Security Code' of the Gateway (16 chars)
+
+           psk_id = uuid.uuid4().hex
+           api_factory = APIFactory(host=host, psk_id=psk_id)
+           psk = api_factory.generate_psk(key)
+           print('Generated PSK: ', psk)
+           print('Generated PSK_ID: ', psk_id)
+
+        To get the *device_id* of all devices known by the gateway, run the
+        following commands with the ``host``, ``psk_id`` and ``psk`` obtained in
+        the previous step::
+
+           from pytradfri.api.libcoap_api import APIFactory
+           from pytradfri import Gateway
+
+           api = APIFactory(host, psk_id, psk).request
+           gateway = Gateway()
+           devices_commands = api(gateway.get_devices())
+           devices = api(devices_commands)
+
+           for device in devices:
+               print('Found device %s with the device_id %i'
+                     % (device.name, device.uid))
+
+        """
         super(PyTradfriLight, self).__init__(location, uid, room)
 
         self.device_id = device_id
@@ -153,7 +159,7 @@ class PyTradfriLight(light.Light):
         self.update_device()
 
     def update_device(self):
-        """Updates the TRÅDFRI device to the back-end."""
+        """Update the TRÅDFRI device to the back-end."""
         try:
             self.api(self.device.update())
             device_state = self.device.light_control.lights[0]
@@ -176,7 +182,7 @@ class PyTradfriLight(light.Light):
             self.update_device()
 
     def observation(self):
-        """Observes the TRÅDFRI light.
+        """Observe the TRÅDFRI light.
 
         If the observed light changes, :meth:`update_backend` is called.
         """
@@ -209,9 +215,9 @@ class PyTradfriLight(light.Light):
             time.sleep(1)
 
     def update_backend(self, device):
-        """Updates the back-end to the *device* state.
+        """Update the back-end to the *device* state.
 
-        Updates the back-end to the parsed TRÅDFRI *device*. The update is only
+        Update the back-end to the parsed TRÅDFRI *device*. The update is only
         done, if the id of *device* equals the ``device_id``.
         """
         if device.id != self.device_id:

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # Copyright (C) 2020  Joe Pearson
 #
 # This program is free software: you can redistribute it and/or modify
@@ -13,28 +15,4 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Knut light services.
-
-This module provides the Knut light services to be used with the
-:class:`~knut.apis.Light` API.
-
-.. note::
-
-   All light services must subclass the base class
-   :class:`knut.services.light.Light`.
-
-"""
-import logging
-
-from .light import *  # base class
-from .dummylight import *
-
-try:
-    from .pytradfri import *
-except ModuleNotFoundError:
-    logging.warning('Failed to load service: pytradfri')
-
-try:
-    from .rflight import *
-except ModuleNotFoundError:
-    logging.warning('Failed to load service: rflight')
+from .light import Light
