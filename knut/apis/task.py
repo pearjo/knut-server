@@ -21,7 +21,7 @@ import os
 import logging
 
 from .knutapi import KnutAPI
-import knut.services
+import knut.services.task
 
 
 class Task(KnutAPI):
@@ -112,7 +112,7 @@ class Task(KnutAPI):
                 else:
                     logging.debug('Loading task from file \'%s\'...' % task)
                     uid = data['id']
-                    loaded_task = knut.services.Task(uid, task_dir)
+                    loaded_task = knut.services.task.Task(uid, task_dir)
                     loaded_task.update_task(data)
                     loaded_task.on_remind += self.__reminder
                     self.tasks[uid] = loaded_task
