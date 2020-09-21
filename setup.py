@@ -18,11 +18,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from distutils.core import setup
 
 setup(name='Knut Server',
-      description='A kind helper for your home.',
+      description='Knut: your humble server!',
       author='Joe Pearson',
       author_email='pearjo@protonmail.com',
-      scripts=['scripts/knutclient',
-               'scripts/knutserver'],
+      scripts=['scripts/knutserver'],
       packages=['knut.apis',
                 'knut.core',
                 'knut.server',
