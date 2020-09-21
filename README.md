@@ -62,16 +62,16 @@ file `/etc/knutconfig.yaml` but will use a fail-safe configuration if
 the file is not found. The server is started by running the following:
 
 ```bash
-knutserver.py
+knutserver
 ```
 
-To run in debug mode, use `--log=DEBUG` as additional argument.
+To run with a more verbose output, use `-v` as additional option.
 
 You can also take Knut for a test run using the example configuration
 `etc/example.yml`:
 
 ```bash
-knutserver.py --conf=etc/example.yml --log=DEBUG
+knutserver -v -f etc/example.yml
 ```
 
 For more, please [read the docs](https://knut-server.readthedocs.io)
