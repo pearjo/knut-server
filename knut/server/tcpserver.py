@@ -60,7 +60,7 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
         logging.debug('Close request handle: {}'.format(self.client_address))
 
     def handle(self) -> None:
-        logging.debug('Handle client request: {}'.format(self.client_address))
+        logging.info('Handle client request: {}'.format(self.client_address))
 
         while True:
             data = b''
@@ -103,7 +103,9 @@ class KnutTCPRequestHandler(socketserver.BaseRequestHandler):
                         logging.warning('Received message is missing at least '
                                         'one of the following keys: '
                                         '[msgId, apiId, msg]')
-
+            except ConnectionResetError as e:
+                logging.info('Connection reset: {}'.format(e))
+                return
             except json.decoder.JSONDecodeError:
                 logging.warning('Failed to decode JSON message...')
 
