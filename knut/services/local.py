@@ -113,6 +113,7 @@ class Local(Events):
                                  elevation=self.elevation*astropy.units.m)
         self.__get_sun_rise_and_set()
         self.__set_daylight_timer()
+        self.__update_daylight()
 
     def __get_sun_rise_and_set(self):
         """Get the next sun rise and set time."""
@@ -169,7 +170,7 @@ class Local(Events):
         is_daylight = self.sunset < self.sunrise and time.time() < self.sunset
 
         if is_daylight != self.is_daylight:
-            logging.debug('Day light changed for location \'%s\''
+            logging.info('Day light changed for location \'%s\''
                           % self.location)
             self.is_daylight = is_daylight
             self.on_change(self.local())
