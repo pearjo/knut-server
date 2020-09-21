@@ -11,4 +11,4 @@ install:
   - pip install -r requirements.txt
   - pip install .
 
-scripts: knutserver.py --conf=etc/example.yml & sleep 10 && kill -SIGINT $!
+scripts: knutserver -f etc/example.yml & sleep 10 && kill -SIGINT $!
