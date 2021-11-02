@@ -145,7 +145,7 @@ class Task(KnutAPI):
 
             if uid not in self.tasks.keys():
                 if uid == '' or uid is None:
-                    new_task = knut.services.Task(task_dir=self.task_dir)
+                    new_task = knut.services.task.Task(task_dir=self.task_dir)
                     new_task.update_task(msg)
                     new_task.on_remind += self.__reminder
                     self.tasks[new_task.uid] = new_task
