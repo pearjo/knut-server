@@ -43,6 +43,7 @@ information of the light.
    light.dummylight.DummyLight
    light.pytradfri.PyTradfriLight
    light.rflight.RFLight
+   light.tasmota_light.TasmotaLight
    light.wlansocket.WlanSocket
 
 .. note::
