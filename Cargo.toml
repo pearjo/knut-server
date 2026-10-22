@@ -1,0 +1,36 @@
+[package]
+name = "knut"
+version = "2.0.0-dev"
+edition = "2021"
+description = "A small, focused smart-home daemon exposing lights to Apple Home"
+authors = ["Joe Pearson"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/pearjo/knut-server"
+publish = false
+build = "build.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures = "0.3"
+getrandom = "0.3"
+hap = { path = "vendor/hap" }
+log = "0.4"
+env_logger = "0.11"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+rumqttc = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+url = "2"
+
+[dev-dependencies]
+flume = "0.11"
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+lto = true
+strip = true

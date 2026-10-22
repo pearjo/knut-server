@@ -1,11 +1,11 @@
-# build directories
-.pytype
-__pycache__
-build
-docs/source/reference/generated
+/target
 
-# user environments
-*env
+# local deployment
+.env
+/config.rb
+
+# claude code local settings
+.claude/settings.local.json
 
 # emacs helper files
 TAGS
