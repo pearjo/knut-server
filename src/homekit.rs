@@ -100,6 +100,8 @@ pub async fn start(
     }
     config.port = model.homekit.port;
     config.name = homekit_name(&model.homekit.name);
+    // Matches the bridge's Protocol Information service (1.1.0).
+    config.protocol_version = "1.1".into();
     config.pin = Pin::new(pin_digits(&pin)?).map_err(hap_error)?;
     // Accessories that left the config would linger in the Home app as
     // "No Response"; dropping them from the cache and bumping the

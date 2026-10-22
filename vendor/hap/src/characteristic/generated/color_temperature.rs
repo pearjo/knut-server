@@ -37,7 +37,7 @@ impl ColorTemperatureCharacteristic {
             id,
             accessory_id,
             hap_type: HapType::ColorTemperature,
-            format: Format::Int32,
+            format: Format::UInt32,
             perms: vec![
 				Perm::Events,
 				Perm::PairedRead,

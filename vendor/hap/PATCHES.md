@@ -16,3 +16,11 @@ Patches:
   announces every interface address (Docker bridges, IPv6), and controllers
   stall trying addresses nothing listens on.
 - `BridgeAccessory` has the HAP Protocol Information service the spec requires.
+- Requests other than pair-setup, pair-verify and identify need a verified
+  session (470 otherwise); upstream served and accepted them in plaintext.
+- Color Temperature is declared `uint32`, as in the HAP spec.
+- Accessory Information numbers its optional characteristics consecutively.
+  Upstream used fixed offsets while the following service starts after the
+  characteristic count, so e.g. Firmware Revision and a lightbulb's
+  Brightness shared iid 10 (the Home app: "accessory out of compliance").
+- A controller gets no event for its own write.
