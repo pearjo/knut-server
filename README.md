@@ -39,7 +39,9 @@ First steps:
 3. **Check the config** with `docker compose run --rm knut check`, then
    `docker compose restart knut`.
 4. **Add the bridge to Apple Home.** The setup code is in the log:
-   `docker compose logs knut | grep "setup code"`.
+   `docker compose logs knut | grep "setup code"`. If an aborted pairing
+   left the bridge hidden from the Home app, reset it with
+   `docker compose stop knut && docker compose run --rm knut unpair && docker compose start knut`.
 
 ## Configuration
 
@@ -119,6 +121,7 @@ knut check [config.rb]         parse and validate, print the model
 knut discover                  list unreferenced devices as DSL snippets
 knut set <Room/Entity> <value> e.g. `knut set Küche/Spots 40% 2700K transition=2`
 knut run                       the daemon
+knut unpair                    forget all HomeKit pairings (daemon stopped)
 ```
 
 `--config` (`KNUT_CONFIG`, default `/etc/knut/config.rb`) and `--state-dir`

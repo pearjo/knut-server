@@ -6,6 +6,7 @@ use crate::pointer;
 /// An mDNS Responder. Used to announce the Accessory's name and HAP TXT records to potential controllers.
 pub struct MdnsResponder {
     config: pointer::Config,
+    host: std::net::IpAddr,
     responder: Responder,
     service: Option<Service>,
     task: Option<Box<dyn futures::Future<Output = ()> + Unpin + std::marker::Send>>,
@@ -14,10 +15,13 @@ pub struct MdnsResponder {
 impl MdnsResponder {
     /// Creates a new mDNS Responder.
     pub async fn new(config: pointer::Config) -> Self {
-        let (responder, task) = libmdns::Responder::with_default_handle().expect("creating mDNS responder");
+        let host = config.lock().await.host;
+        let (responder, task) =
+            libmdns::Responder::with_default_handle_and_ip_list(vec![host]).expect("creating mDNS responder");
 
         MdnsResponder {
             config,
+            host,
             responder,
             service: None,
             task: Some(task),
@@ -38,7 +42,7 @@ impl MdnsResponder {
 
         drop(c);
 
-        self.service = Some(self.responder.register("_hap._tcp".into(), name, port, &[
+        self.service = Some(self.responder.register("_hap._tcp", &name, port, &[
             &tr[0], &tr[1], &tr[2], &tr[3], &tr[4], &tr[5], &tr[6], &tr[7],
         ]));
 
@@ -51,7 +55,8 @@ impl MdnsResponder {
             Some(task) => task,
             // if the task handle is gone, recreate the whole responder
             None => {
-                let (responder, task) = libmdns::Responder::with_default_handle().expect("creating mDNS responder");
+                let (responder, task) =
+                    libmdns::Responder::with_default_handle_and_ip_list(vec![self.host]).expect("creating mDNS responder");
                 self.responder = responder;
 
                 task
