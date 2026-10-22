@@ -186,11 +186,17 @@ pub async fn start(
     Ok(())
 }
 
-/// Removes all stored controller pairings. A bridge with pairings is not
-/// offered for pairing, so one left behind by an aborted pairing hides it
-/// from the Home app.
+/// Removes all stored controller pairings and the bridge identity. A bridge
+/// with pairings is not offered for pairing, so one left behind by an aborted
+/// pairing hides it from the Home app. The Home app also keeps hiding a
+/// device id it has started pairing with, so the bridge gets a new one.
 pub fn unpair(state_dir: &Path) -> Result<()> {
-    let pairings = state_dir.join("homekit").join("pairings");
+    let homekit_dir = state_dir.join("homekit");
+    let config = homekit_dir.join("config.json");
+    if config.exists() {
+        std::fs::remove_file(&config).with_context(|| format!("cannot remove {}", config.display()))?;
+    }
+    let pairings = homekit_dir.join("pairings");
     let mut removed = 0;
     for entry in std::fs::read_dir(&pairings).into_iter().flatten() {
         let path = entry?.path();
