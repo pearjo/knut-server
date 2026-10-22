@@ -99,7 +99,7 @@ pub async fn start(
         config.host = host;
     }
     config.port = model.homekit.port;
-    config.name = model.homekit.name.clone();
+    config.name = homekit_name(&model.homekit.name);
     config.pin = Pin::new(pin_digits(&pin)?).map_err(hap_error)?;
     // Accessories that left the config would linger in the Home app as
     // "No Response"; dropping them from the cache and bumping the
@@ -119,7 +119,8 @@ pub async fn start(
     }
 
     let server = IpServer::new(config, storage).await.map_err(hap_error)?;
-    let bridge = BridgeAccessory::new(1, information(&model.homekit.name, "bridge")).map_err(hap_error)?;
+    let mut bridge = BridgeAccessory::new(1, information(&model.homekit.name, "bridge")).map_err(hap_error)?;
+    bridge.protocol_information.version.set_value(json!("1.1.0")).await.map_err(hap_error)?;
     server.add_accessory(bridge).await.map_err(hap_error)?;
 
     let mut entities: HashMap<String, Exposed> = HashMap::new();
@@ -291,13 +292,16 @@ fn switch(
 
 fn information(name: &str, serial: &str) -> AccessoryInformation {
     AccessoryInformation {
-        name: name.to_string(),
+        name: homekit_name(name),
         manufacturer: "Knut".into(),
         model: "Knut 2".into(),
         serial_number: serial.to_string(),
-        // Required by HAP; the Home app stalls while adding accessories
-        // without it.
-        firmware_revision: Some(env!("CARGO_PKG_VERSION").into()),
+        // Required by HAP, as plain numbers: the Home app rejects the bridge
+        // as "out of compliance" for a version like "2.0.0-dev".
+        firmware_revision: Some(
+            concat!(env!("CARGO_PKG_VERSION_MAJOR"), ".", env!("CARGO_PKG_VERSION_MINOR"), ".", env!("CARGO_PKG_VERSION_PATCH"))
+                .into(),
+        ),
         ..Default::default()
     }
 }
@@ -305,6 +309,19 @@ fn information(name: &str, serial: &str) -> AccessoryInformation {
 /// "Küche/Spots" becomes "Küche Spots".
 fn display_name(path: &str) -> String {
     path.replace('/', " ")
+}
+
+/// The Home app only accepts names of letters, digits, spaces and
+/// apostrophes that start and end with a letter or digit.
+fn homekit_name(name: &str) -> String {
+    let allowed: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' })
+        .collect();
+    let words: Vec<&str> = allowed.split_whitespace().collect();
+    let joined = words.join(" ");
+    let trimmed = joined.trim_matches(|c: char| !c.is_alphanumeric());
+    if trimmed.is_empty() { "Knut".to_string() } else { trimmed.to_string() }
 }
 
 /// The configured setup code, or one generated once and kept in the store.
@@ -331,8 +348,10 @@ fn pin_digits(pin: &str) -> Result<[u8; 8]> {
     digits.try_into().map_err(|_| anyhow!("the HomeKit setup code needs 8 digits"))
 }
 
+/// The code as the Home app asks for it, e.g. "1112-2333".
 fn format_pin(pin: &str) -> String {
-    format!("{}-{}-{}", &pin[0..3], &pin[3..5], &pin[5..8])
+    let digits: String = pin.chars().filter(char::is_ascii_digit).collect();
+    format!("{}-{}", &digits[..4], &digits[4..])
 }
 
 fn random_device_id() -> MacAddress {
@@ -348,4 +367,24 @@ fn rand_byte() -> u8 {
 
 fn hap_error(error: hap::Error) -> anyhow::Error {
     anyhow!("HomeKit: {error}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_the_setup_code_from_its_digits() {
+        assert_eq!(format_pin("11122333"), "1112-2333");
+        assert_eq!(format_pin("111-22-333"), "1112-2333");
+    }
+
+    #[test]
+    fn makes_names_acceptable_to_the_home_app() {
+        assert_eq!(homekit_name("Küche Spots"), "Küche Spots");
+        assert_eq!(homekit_name("Joe's Büro Licht"), "Joe's Büro Licht");
+        assert_eq!(homekit_name("Wohnzimmer - Decke (alt)"), "Wohnzimmer Decke alt");
+        assert_eq!(homekit_name("'Flur'"), "Flur");
+        assert_eq!(homekit_name("--"), "Knut");
+    }
 }

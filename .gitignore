@@ -4,6 +4,9 @@
 .env
 /config.rb
 
+# temporary files and test harnesses
+/.scratch/
+
 # claude code local settings
 .claude/settings.local.json
 

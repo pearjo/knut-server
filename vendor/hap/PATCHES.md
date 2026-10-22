@@ -15,3 +15,4 @@ Patches:
 - libmdns 0.10, restricted to the address the HAP server listens on. Upstream
   announces every interface address (Docker bridges, IPv6), and controllers
   stall trying addresses nothing listens on.
+- `BridgeAccessory` has the HAP Protocol Information service the spec requires.

@@ -2,7 +2,11 @@ use serde::ser::{Serialize, SerializeStruct, Serializer};
 
 use crate::{
     accessory::{AccessoryInformation, HapAccessory},
-    service::{accessory_information::AccessoryInformationService, HapService},
+    service::{
+        accessory_information::AccessoryInformationService,
+        protocol_information::ProtocolInformationService,
+        HapService,
+    },
     HapType,
     Result,
 };
@@ -15,16 +19,20 @@ pub struct BridgeAccessory {
 
     /// Accessory Information Service.
     pub accessory_information: AccessoryInformationService,
+    /// HAP Protocol Information Service.
+    pub protocol_information: ProtocolInformationService,
 }
 
 impl BridgeAccessory {
     /// Creates a new Bridge Accessory.
     pub fn new(id: u64, information: AccessoryInformation) -> Result<Self> {
         let accessory_information = information.to_service(1, id)?;
+        let protocol_information = ProtocolInformationService::new(100, id);
 
         Ok(Self {
             id,
             accessory_information,
+            protocol_information,
         })
     }
 }
@@ -52,9 +60,11 @@ impl HapAccessory for BridgeAccessory {
         None
     }
 
-    fn get_services(&self) -> Vec<&dyn HapService> { vec![&self.accessory_information] }
+    fn get_services(&self) -> Vec<&dyn HapService> { vec![&self.accessory_information, &self.protocol_information] }
 
-    fn get_mut_services(&mut self) -> Vec<&mut dyn HapService> { vec![&mut self.accessory_information] }
+    fn get_mut_services(&mut self) -> Vec<&mut dyn HapService> {
+        vec![&mut self.accessory_information, &mut self.protocol_information]
+    }
 }
 
 impl Serialize for BridgeAccessory {
