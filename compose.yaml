@@ -1,0 +1,68 @@
+# Knut with its Zigbee stack: Mosquitto and zigbee2mqtt for the CC2652 stick.
+#
+#   cp .env.example .env            # set ZIGBEE_DEVICE and TZ
+#   cp examples/config.rb config.rb # then adapt
+#   docker compose up -d --build
+#
+# Knut uses the host network: HomeKit controllers find the bridge over mDNS,
+# which does not leave a container network. It reaches Mosquitto through the
+# port published on 127.0.0.1, so use `mqtt: "mqtt://127.0.0.1:1883"` in
+# config.rb.
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./deploy/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+
+  # zigbee2mqtt rewrites its configuration (it generates the network key on
+  # first start), so the template is copied into the data volume once.
+  zigbee2mqtt-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "test -f /data/configuration.yaml || cp /template/configuration.yaml /data/"]
+    volumes:
+      - ./deploy/zigbee2mqtt/configuration.yaml:/template/configuration.yaml:ro
+      - zigbee2mqtt-data:/data
+
+  zigbee2mqtt:
+    # Pin a version once it is tested on the target.
+    image: ghcr.io/koenkk/zigbee2mqtt:latest
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_started
+      zigbee2mqtt-init:
+        condition: service_completed_successfully
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+    devices:
+      - ${ZIGBEE_DEVICE:?set ZIGBEE_DEVICE in .env}:/dev/zigbee
+    ports:
+      # Frontend for pairing devices.
+      - "8080:8080"
+    volumes:
+      - zigbee2mqtt-data:/app/data
+      - /run/udev:/run/udev:ro
+
+  knut:
+    build: .
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - mosquitto
+      - zigbee2mqtt
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      RUST_LOG: ${RUST_LOG:-info,hap=warn,libmdns=error}
+    volumes:
+      - ${KNUT_CONFIG_FILE:-./config.rb}:/config/config.rb:ro
+      - knut-data:/data
+
+volumes:
+  mosquitto-data:
+  zigbee2mqtt-data:
+  knut-data:

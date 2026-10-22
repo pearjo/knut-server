@@ -1,0 +1,19 @@
+# Initial zigbee2mqtt configuration, copied into the data volume on first
+# start. Later changes go into the volume (or the frontend on port 8080).
+homeassistant:
+  enabled: false
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://mosquitto:1883
+serial:
+  port: /dev/zigbee
+  # TI CC2652 with Z-Stack firmware.
+  adapter: zstack
+frontend:
+  enabled: true
+  port: 8080
+advanced:
+  network_key: GENERATE
+  pan_id: GENERATE
+  ext_pan_id: GENERATE
+  log_level: info
