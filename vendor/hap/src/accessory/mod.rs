@@ -144,8 +144,16 @@ impl AccessoryInformation {
         executor::block_on(i.name.set_value(serde_json::Value::String(self.name)))?;
         executor::block_on(i.serial_number.set_value(serde_json::Value::String(self.serial_number)))?;
 
+        // Optional characteristics are numbered consecutively, so that the
+        // next service can start right after the characteristic count.
+        let mut next_id = id + 5;
+        let mut next = || {
+            next_id += 1;
+            next_id
+        };
+
         if let Some(v) = self.accessory_flags {
-            let mut c = AccessoryFlagsCharacteristic::new(id + 6, accessory_id);
+            let mut c = AccessoryFlagsCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.accessory_flags = Some(c);
         } else {
@@ -153,7 +161,7 @@ impl AccessoryInformation {
         }
 
         if let Some(v) = self.application_matching_identifier {
-            let mut c = ApplicationMatchingIdentifierCharacteristic::new(id + 7, accessory_id);
+            let mut c = ApplicationMatchingIdentifierCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.application_matching_identifier = Some(c);
         } else {
@@ -161,7 +169,7 @@ impl AccessoryInformation {
         }
 
         if let Some(v) = self.configured_name {
-            let mut c = ConfiguredNameCharacteristic::new(id + 8, accessory_id);
+            let mut c = ConfiguredNameCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.configured_name = Some(c);
         } else {
@@ -169,7 +177,7 @@ impl AccessoryInformation {
         }
 
         if let Some(v) = self.firmware_revision {
-            let mut c = FirmwareRevisionCharacteristic::new(id + 9, accessory_id);
+            let mut c = FirmwareRevisionCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.firmware_revision = Some(c);
         } else {
@@ -177,7 +185,7 @@ impl AccessoryInformation {
         }
 
         if let Some(v) = self.hardware_finish {
-            let mut c = HardwareFinishCharacteristic::new(id + 12, accessory_id);
+            let mut c = HardwareFinishCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.hardware_finish = Some(c);
         } else {
@@ -185,7 +193,7 @@ impl AccessoryInformation {
         }
 
         if let Some(v) = self.hardware_revision {
-            let mut c = HardwareRevisionCharacteristic::new(id + 10, accessory_id);
+            let mut c = HardwareRevisionCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.hardware_revision = Some(c);
         } else {
@@ -193,7 +201,7 @@ impl AccessoryInformation {
         }
 
         if let Some(v) = self.product_data {
-            let mut c = ProductDataCharacteristic::new(id + 12, accessory_id);
+            let mut c = ProductDataCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.product_data = Some(c);
         } else {
@@ -201,7 +209,7 @@ impl AccessoryInformation {
         }
 
         if let Some(v) = self.software_revision {
-            let mut c = SoftwareRevisionCharacteristic::new(id + 11, accessory_id);
+            let mut c = SoftwareRevisionCharacteristic::new(next(), accessory_id);
             executor::block_on(c.set_value(v.into()))?;
             i.software_revision = Some(c);
         } else {

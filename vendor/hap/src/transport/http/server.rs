@@ -121,6 +121,20 @@ impl Service<Request<Body>> for Api {
         let accessory_database = self.accessory_database.clone();
         let event_emitter = self.event_emitter.clone();
 
+        // Everything but pairing and the unpaired identify needs a session
+        // established by pair-verify (HAP: 470 Connection Authorization Required).
+        let needs_session = !matches!(uri.path(), "/pair-setup" | "/pair-verify" | "/identify");
+        if needs_session && controller_id.read().map(|id| id.is_none()).unwrap_or(true) {
+            return future::ready(
+                Response::builder()
+                    .status(StatusCode::from_u16(470).expect("470 is a valid status code"))
+                    .header("Content-Type", "application/hap+json")
+                    .body(Body::from(r#"{"status":-70401}"#))
+                    .map_err(crate::Error::from),
+            )
+            .boxed();
+        }
+
         let fut = async move {
             match handler.take() {
                 Some(handler) =>

@@ -168,7 +168,18 @@ impl AccessoryDatabase {
                             }
                             if let Some(value) = write_object.value {
                                 if characteristic_perms.contains(&Perm::PairedWrite) {
-                                    characteristic.set_value(value).await?;
+                                    // The writing controller must not get an event for its own
+                                    // write, so its subscription is lifted while the value is set.
+                                    let subscription = (write_object.aid, write_object.iid);
+                                    let position = event_subscriptions.lock().await.iter().position(|&s| s == subscription);
+                                    if let Some(p) = position {
+                                        event_subscriptions.lock().await.remove(p);
+                                    }
+                                    let result = characteristic.set_value(value).await;
+                                    if position.is_some() {
+                                        event_subscriptions.lock().await.push(subscription);
+                                    }
+                                    result?;
                                 } else {
                                     result_object.status = Status::ReadOnlyCharacteristic as i32;
                                 }
