@@ -196,11 +196,17 @@ impl Server {
 
         async move {
             let config_lock = config.lock().await;
-            let socket_addr = SocketAddr::new(config_lock.host, config_lock.port);
+            let port = config_lock.port;
             drop(config_lock);
 
-            info!("binding TCP listener on {}", &socket_addr);
-            let listener = TcpListener::bind(socket_addr).await?;
+            // Controllers connect to any address announced for the host
+            // name, and Apple devices prefer IPv6, so listen on all of them.
+            let dual_stack = SocketAddr::new(std::net::Ipv6Addr::UNSPECIFIED.into(), port);
+            let listener = match TcpListener::bind(dual_stack).await {
+                Ok(listener) => listener,
+                Err(_) => TcpListener::bind(SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port)).await?,
+            };
+            info!("listening on {}", listener.local_addr()?);
 
             mdns_responder.lock().await.update_records().await;
 
