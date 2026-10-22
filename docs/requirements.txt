@@ -1,4 +1,0 @@
-pydata-sphinx-theme
-sphinx-copybutton
-docutils==0.16
-sphinx==3.0.3
