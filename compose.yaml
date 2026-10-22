@@ -43,7 +43,7 @@ services:
       - ${ZIGBEE_DEVICE:?set ZIGBEE_DEVICE in .env}:/dev/zigbee
     ports:
       # Frontend for pairing devices.
-      - "8080:8080"
+      - "${Z2M_FRONTEND_PORT:-8080}:8080"
     volumes:
       - zigbee2mqtt-data:/app/data
       - /run/udev:/run/udev:ro

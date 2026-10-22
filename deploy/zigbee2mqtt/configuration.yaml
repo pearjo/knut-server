@@ -13,6 +13,11 @@ frontend:
   enabled: true
   port: 8080
 advanced:
+  # Channel 11 (the default) overlaps Wi-Fi channel 1; 20 sits between Wi-Fi
+  # channels 6 and 11. Changing it later means re-pairing every device.
+  channel: 20
+  # CC2652P sticks ship with low transmit power; 20 dBm is their maximum.
+  transmit_power: 20
   network_key: GENERATE
   pan_id: GENERATE
   ext_pan_id: GENERATE
