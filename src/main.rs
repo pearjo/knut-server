@@ -59,6 +59,9 @@ enum Command {
     },
     /// Run the daemon.
     Run,
+    /// Forget all HomeKit pairings, so the bridge can be added to Apple Home
+    /// again. Run it while the daemon is stopped.
+    Unpair,
 }
 
 fn main() -> ExitCode {
@@ -71,6 +74,7 @@ fn main() -> ExitCode {
         Command::Discover => runtime.block_on(discover(&cli.config, &cli.state_dir)),
         Command::Set { entity, values } => runtime.block_on(set(&cli.config, &cli.state_dir, &entity, &values)),
         Command::Run => runtime.block_on(run(&cli.config, &cli.state_dir)),
+        Command::Unpair => homekit::unpair(&cli.state_dir),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

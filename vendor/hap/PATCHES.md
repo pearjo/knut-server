@@ -12,3 +12,6 @@ Patches:
 - Made `pointer` public so accessory handles returned by `add_accessory` can be named.
 - `get_local_ip` prefers IPv4 addresses; upstream returns whatever interface
   address comes first, often a global IPv6 one.
+- libmdns 0.10, restricted to the address the HAP server listens on. Upstream
+  announces every interface address (Docker bridges, IPv6), and controllers
+  stall trying addresses nothing listens on.

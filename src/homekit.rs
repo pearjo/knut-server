@@ -113,6 +113,10 @@ pub async fn start(
     }
     storage.save_config(&config).await.map_err(hap_error)?;
     log::info!("HomeKit: {:?} on {}:{}, setup code {}", config.name, config.host, config.port, format_pin(&pin));
+    let pairings = storage.count_pairings().await.map_err(hap_error)?;
+    if pairings > 0 {
+        log::info!("HomeKit: paired with {pairings} controller(s), not offered for pairing (`knut unpair` resets)");
+    }
 
     let server = IpServer::new(config, storage).await.map_err(hap_error)?;
     let bridge = BridgeAccessory::new(1, information(&model.homekit.name, "bridge")).map_err(hap_error)?;
@@ -182,6 +186,21 @@ pub async fn start(
     Ok(())
 }
 
+/// Removes all stored controller pairings. A bridge with pairings is not
+/// offered for pairing, so one left behind by an aborted pairing hides it
+/// from the Home app.
+pub fn unpair(state_dir: &Path) -> Result<()> {
+    let pairings = state_dir.join("homekit").join("pairings");
+    let mut removed = 0;
+    for entry in std::fs::read_dir(&pairings).into_iter().flatten() {
+        let path = entry?.path();
+        std::fs::remove_file(&path).with_context(|| format!("cannot remove {}", path.display()))?;
+        removed += 1;
+    }
+    println!("removed {removed} HomeKit pairing(s)");
+    Ok(())
+}
+
 fn lightbulb(id: u64, path: &str, pushing: &Arc<AtomicBool>, inputs: &mpsc::UnboundedSender<Input>) -> Result<LightbulbAccessory> {
     let mut accessory = LightbulbAccessory::new(id, information(&display_name(path), path)).map_err(hap_error)?;
     let service = &mut accessory.lightbulb;
@@ -192,6 +211,9 @@ fn lightbulb(id: u64, path: &str, pushing: &Arc<AtomicBool>, inputs: &mpsc::Unbo
     service.supported_characteristic_value_transition_configuration = None;
     service.hue = None;
     service.saturation = None;
+    // The accessory information already carries the name; an empty one here
+    // would override it.
+    service.name = None;
 
     let send = |change: fn(f64) -> Change| {
         let pushing = Arc::clone(pushing);
@@ -237,6 +259,7 @@ fn switch(
 ) -> Result<SwitchAccessory> {
     let name = scene.unwrap_or("Auto");
     let mut accessory = SwitchAccessory::new(id, information(name, name)).map_err(hap_error)?;
+    accessory.switch.name = None;
     let pushing = Arc::clone(pushing);
     let inputs = inputs.clone();
     let reset = reset.clone();
@@ -266,7 +289,9 @@ fn information(name: &str, serial: &str) -> AccessoryInformation {
         manufacturer: "Knut".into(),
         model: "Knut 2".into(),
         serial_number: serial.to_string(),
-        software_revision: Some(env!("CARGO_PKG_VERSION").into()),
+        // Required by HAP; the Home app stalls while adding accessories
+        // without it.
+        firmware_revision: Some(env!("CARGO_PKG_VERSION").into()),
         ..Default::default()
     }
 }
