@@ -6,22 +6,39 @@ use crate::pointer;
 /// An mDNS Responder. Used to announce the Accessory's name and HAP TXT records to potential controllers.
 pub struct MdnsResponder {
     config: pointer::Config,
-    host: std::net::IpAddr,
+    addresses: Vec<std::net::IpAddr>,
     responder: Responder,
     service: Option<Service>,
     task: Option<Box<dyn futures::Future<Output = ()> + Unpin + std::marker::Send>>,
 }
 
+/// The addresses of the interface that carries `host`, so that IPv6 is
+/// announced too but other interfaces (such as Docker bridges) are not.
+fn interface_addresses(host: std::net::IpAddr) -> Vec<std::net::IpAddr> {
+    let interfaces = if_addrs::get_if_addrs().unwrap_or_default();
+    let name = interfaces.iter().find(|iface| iface.ip() == host).map(|iface| iface.name.clone());
+    let mut addresses: Vec<std::net::IpAddr> = interfaces
+        .iter()
+        .filter(|iface| Some(&iface.name) == name.as_ref())
+        .map(|iface| iface.ip())
+        .collect();
+    if addresses.is_empty() {
+        addresses.push(host);
+    }
+    addresses
+}
+
 impl MdnsResponder {
     /// Creates a new mDNS Responder.
     pub async fn new(config: pointer::Config) -> Self {
-        let host = config.lock().await.host;
-        let (responder, task) =
-            libmdns::Responder::with_default_handle_and_ip_list(vec![host]).expect("creating mDNS responder");
+        let addresses = interface_addresses(config.lock().await.host);
+        debug!("announcing addresses {:?}", &addresses);
+        let (responder, task) = libmdns::Responder::with_default_handle_and_ip_list(addresses.clone())
+            .expect("creating mDNS responder");
 
         MdnsResponder {
             config,
-            host,
+            addresses,
             responder,
             service: None,
             task: Some(task),
@@ -56,7 +73,7 @@ impl MdnsResponder {
             // if the task handle is gone, recreate the whole responder
             None => {
                 let (responder, task) =
-                    libmdns::Responder::with_default_handle_and_ip_list(vec![self.host]).expect("creating mDNS responder");
+                    libmdns::Responder::with_default_handle_and_ip_list(self.addresses.clone()).expect("creating mDNS responder");
                 self.responder = responder;
 
                 task

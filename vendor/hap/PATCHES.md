@@ -12,9 +12,12 @@ Patches:
 - Made `pointer` public so accessory handles returned by `add_accessory` can be named.
 - `get_local_ip` prefers IPv4 addresses; upstream returns whatever interface
   address comes first, often a global IPv6 one.
-- libmdns 0.10, restricted to the address the HAP server listens on. Upstream
-  announces every interface address (Docker bridges, IPv6), and controllers
-  stall trying addresses nothing listens on.
+- libmdns 0.10, restricted to the addresses of the interface that carries the
+  configured host. Upstream announces every interface (Docker bridges too),
+  and controllers stall trying addresses they cannot reach.
+- The HAP server listens on all addresses (dual-stack) instead of only the
+  configured host. Apple devices prefer the host's IPv6 address and showed
+  the accessories as "Not Responding".
 - `BridgeAccessory` has the HAP Protocol Information service the spec requires.
 - Requests other than pair-setup, pair-verify and identify need a verified
   session (470 otherwise); upstream served and accepted them in plaintext.
