@@ -163,6 +163,7 @@ async fn handle_add(
                 return Err(tlv::Error::Unknown);
             }
             pairing.permissions = permissions;
+            pairing.identifier = Some(uuid_str.to_string());
             s.save_pairing(&pairing).await?;
 
             drop(s);
@@ -182,11 +183,7 @@ async fn handle_add(
 
             let mut public_key = [0; 32];
             public_key.clone_from_slice(&ltpk);
-            let pairing = Pairing {
-                id: pairing_uuid,
-                permissions,
-                public_key,
-            };
+            let pairing = Pairing::new(pairing_uuid, uuid_str.to_string(), permissions, public_key);
             s.save_pairing(&pairing).await?;
 
             drop(s);
@@ -240,12 +237,12 @@ async fn handle_list(
     let pairings = storage.lock().await.list_pairings().await?;
     let mut list = vec![Value::State(StepNumber::Res as u8)];
     for (i, pairing) in pairings.iter().enumerate() {
-        list.push(Value::Identifier(pairing.id.to_hyphenated().to_string()));
-        list.push(Value::PublicKey(pairing.public_key.to_vec()));
-        list.push(Value::Permissions(pairing.permissions.clone()));
-        if i < pairings.len() {
+        if i > 0 {
             list.push(Value::Separator);
         }
+        list.push(Value::Identifier(pairing.identifier()));
+        list.push(Value::PublicKey(pairing.public_key.to_vec()));
+        list.push(Value::Permissions(pairing.permissions.clone()));
     }
 
     info!("pairings M2: sending list pairings response");
@@ -265,5 +262,75 @@ async fn check_admin(controller_id: &pointer::ControllerId, storage: &pointer::S
             Permissions::Admin => Ok(()),
             _ => Err(tlv::Error::Authentication),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use futures::lock::Mutex;
+    use std::sync::{Arc, RwLock};
+
+    use crate::{
+        event::EventEmitter,
+        storage::{FileStorage, Storage},
+        tlv::Encodable,
+        Config,
+    };
+
+    const IPHONE: &str = "6F0E1A2B-3C4D-4E5F-8A9B-0C1D2E3F4A5B";
+    const APPLE_TV: &str = "A1B2C3D4-E5F6-4789-9ABC-DEF012345678";
+
+    /// The Home app adds a home hub's pairing and then compares the listed
+    /// identifiers with its own; it removes the ones it does not recognise.
+    #[tokio::test]
+    async fn lists_pairings_as_added() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.scratch/hap-test-pairings");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut storage = FileStorage::new(&dir).await.unwrap();
+        // An iPhone paired before identifiers were kept.
+        let iphone = Pairing::from_bytes(
+            format!(
+                r#"{{"id":"{}","permissions":"0x01","public_key":[{}]}}"#,
+                IPHONE.to_lowercase(),
+                ["1"; 32].join(",")
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        storage.save_pairing(&iphone).await.unwrap();
+
+        let storage: pointer::Storage = Arc::new(Mutex::new(Box::new(storage)));
+        let controller_id: pointer::ControllerId = Arc::new(RwLock::new(Some(iphone.id)));
+        let config: pointer::Config = Arc::new(Mutex::new(Config::default()));
+        let event_emitter: pointer::EventEmitter = Arc::new(Mutex::new(EventEmitter::new()));
+
+        handle_add(
+            controller_id.clone(),
+            config,
+            storage.clone(),
+            event_emitter,
+            APPLE_TV.as_bytes().to_vec(),
+            vec![2; 32],
+            Permissions::Admin,
+        )
+        .await
+        .unwrap();
+        let listed = handle_list(controller_id, storage).await.unwrap().encode();
+
+        let identifiers: Vec<String> = listed
+            .windows(2 + IPHONE.len())
+            .filter(|w| w[0] == Type::Identifier as u8 && w[1] as usize == IPHONE.len())
+            .map(|w| String::from_utf8_lossy(&w[2..]).into_owned())
+            .collect();
+        let mut identifiers = identifiers;
+        identifiers.sort();
+        assert_eq!(identifiers, vec![IPHONE.to_string(), APPLE_TV.to_string()]);
+
+        // One empty separator between the two pairings, none after the last.
+        let separators = listed.windows(2).filter(|w| w == &[Type::Separator as u8, 0]).count();
+        assert_eq!(separators, 1);
+        assert!(!listed.ends_with(&[Type::Separator as u8, 0]));
     }
 }

@@ -309,7 +309,12 @@ async fn handle_exchange(
                     }
                 }
 
-                let pairing = Pairing::new(pairing_uuid, Permissions::Admin, device_ltpk.to_bytes());
+                let pairing = Pairing::new(
+                    pairing_uuid,
+                    uuid_str.to_string(),
+                    Permissions::Admin,
+                    device_ltpk.to_bytes(),
+                );
                 storage.lock().await.save_pairing(&pairing).await?;
 
                 debug!("pairing: {:?}", &pairing);
