@@ -150,7 +150,7 @@ impl Value {
                 vec.write_u32::<LittleEndian>(flags).unwrap();
                 (Type::Flags as u8, vec)
             },
-            Value::Separator => (Type::Separator as u8, vec![0x00]),
+            Value::Separator => (Type::Separator as u8, vec![]),
         }
     }
 }

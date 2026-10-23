@@ -27,3 +27,10 @@ Patches:
   characteristic count, so e.g. Firmware Revision and a lightbulb's
   Brightness shared iid 10 (the Home app: "accessory out of compliance").
 - A controller gets no event for its own write.
+- List Pairings returns each pairing identifier as the controller sent it
+  (pairings stored before fall back to the upper-case UUID Apple sends) and
+  separates pairings with empty separator items, none after the last.
+  Upstream listed lower-case UUIDs with a one-byte separator after every
+  pairing. When a home hub (Apple TV, HomePod) joins, the Home app does not
+  recognise its own pairings in that list and removes them: pairing fails,
+  and an already paired bridge turns "Not Responding".
