@@ -252,6 +252,22 @@ end
     }
 
     #[test]
+    fn the_example_config_adapts_by_need_and_warmth() {
+        let (mut script, model) =
+            Script::load_str(include_str!("../../examples/config.rb"), "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let sun = model.triggers.iter().find(|trigger| trigger.kind == crate::model::TriggerKind::SunTick).unwrap();
+        let noon = chrono::Local.with_ymd_and_hms(2026, 10, 22, 12, 0, 0).unwrap().timestamp();
+        let args = format!("Knut::Sun.new(20.0, 180.0, nil, nil), Time.at({noon})");
+        let actions = script.run(sun.proc_id, &args, &serde_json::json!({})).unwrap();
+        let [Action::Adapt { targets, need: Some(need), kelvin: Some(kelvin), .. }] = actions.as_slice() else {
+            panic!("{actions:?}");
+        };
+        assert_eq!(targets, &["Küche/Spots", "Wohnzimmer/Licht"]);
+        assert_eq!(*need, 1.0, "full demand at noon");
+        assert!((3000.0..=4000.0).contains(kelvin), "{kelvin}");
+    }
+
+    #[test]
     fn trigger_blocks_see_state() {
         let (mut script, model) = Script::load_str(CONFIG, "config.rb").unwrap();
         let motion = &model.triggers[1];
