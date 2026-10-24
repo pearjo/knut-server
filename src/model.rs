@@ -17,6 +17,18 @@ pub struct Location {
     pub lon: f64,
 }
 
+/// Wake and bed time of one weekday in minutes after that day's midnight.
+/// A bedtime after midnight is 1440 or more and still belongs to this day.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct ScheduleDay {
+    pub wake: u32,
+    pub bed: u32,
+}
+
+/// Weekday names in `Weekday::num_days_from_sunday` order, as the schedule
+/// is indexed.
+const WEEKDAY_NAMES: [&str; 7] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct HomeKitConfig {
     pub name: String,
@@ -211,6 +223,8 @@ pub enum EntityKind {
 pub struct Model {
     pub location: Option<Location>,
     pub homekit: HomeKitConfig,
+    /// Indexed by `Weekday::num_days_from_sunday`.
+    pub schedule: Option<[ScheduleDay; 7]>,
     pub adapters: Vec<AdapterConfig>,
     pub rooms: Vec<Room>,
     pub lights: BTreeMap<String, Light>,
@@ -259,6 +273,17 @@ impl fmt::Display for Model {
             None => writeln!(f, "location  (none, sun triggers disabled)")?,
         }
         writeln!(f, "homekit   {:?} on port {}", self.homekit.name, self.homekit.port)?;
+        if let Some(schedule) = &self.schedule {
+            writeln!(f)?;
+            writeln!(f, "schedule")?;
+            let clock = |minutes: u32| format!("{:02}:{:02}", minutes / 60 % 24, minutes % 60);
+            for weekday in [1, 2, 3, 4, 5, 6, 0] {
+                let day = schedule[weekday];
+                let next_day = if day.bed >= 1440 { format!(" ({})", WEEKDAY_NAMES[(weekday + 1) % 7]) } else { String::new() };
+                let name = WEEKDAY_NAMES[weekday];
+                writeln!(f, "  {name:<10} wake {}  bed {}{next_day}", clock(day.wake), clock(day.bed))?;
+            }
+        }
         writeln!(f)?;
         writeln!(f, "adapters")?;
         for adapter in &self.adapters {
@@ -355,6 +380,7 @@ impl std::error::Error for ValidationErrors {}
 pub struct RawModel {
     location: Option<Location>,
     homekit: Option<HomeKitConfig>,
+    schedule: Option<[ScheduleDay; 7]>,
     adapters: Vec<AdapterConfig>,
     rooms: Vec<RawRoom>,
     scenes: Vec<RawScene>,
@@ -623,6 +649,7 @@ impl RawModel {
         Ok(Model {
             location: self.location,
             homekit,
+            schedule: self.schedule,
             adapters: self.adapters,
             rooms,
             lights,
