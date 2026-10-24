@@ -386,6 +386,25 @@ $demand = curve(
     }
 
     #[test]
+    fn reads_room_daylight() {
+        let config = "room \"Küche\" do\n  daylight 0.8, facing: :east\nend\nroom \"Wohnzimmer\" do\n  daylight 0.4, facing: [:south, :west]\nend\nroom \"Flur\" do\nend\n";
+        let (_, model) = Script::load_str(config, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let daylight = |room: usize| model.rooms[room].daylight.clone();
+        assert_eq!(daylight(0), Some(crate::model::Daylight { amount: 0.8, facing: vec![90.0] }));
+        assert_eq!(daylight(1), Some(crate::model::Daylight { amount: 0.4, facing: vec![180.0, 270.0] }));
+        assert_eq!(daylight(2), None);
+        assert!(model.to_string().contains("room Wohnzimmer  daylight 0.4 facing south, west\n"), "{model}");
+
+        let error = |config: &str| Script::load_str(config, "config.rb").err().unwrap().to_string();
+        let too_much = error("room \"A\" do\n  daylight 1.5, facing: :east\nend\n");
+        assert!(too_much.starts_with("config.rb:2: daylight must be between 0 and 1"), "{too_much}");
+        let unknown = error("room \"A\" do\n  daylight 0.5, facing: [:east, :up]\nend\n");
+        assert!(unknown.starts_with("config.rb:2: unknown direction(s) for facing: :up"), "{unknown}");
+        let twice = error("room \"A\" do\n  daylight 0.5, facing: :east\n  daylight 0.5, facing: :west\nend\n");
+        assert!(twice.starts_with("config.rb:3: daylight is already set"), "{twice}");
+    }
+
+    #[test]
     fn reports_errors_with_config_lines() {
         let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"l\", zigbee: \"1\"\n  group \"G\", lights: [:nope]\nend\n";
         let error = Script::load_str(config, "config.rb").err().unwrap().to_string();

@@ -8,6 +8,8 @@ use std::fmt;
 
 use serde::Deserialize;
 
+use crate::sun::SunPosition;
+
 /// Source location in the config, e.g. `config.rb:12`.
 pub type Line = String;
 
@@ -177,6 +179,44 @@ pub struct Room {
     pub lights: Vec<String>,
     pub sensors: Vec<String>,
     pub groups: Vec<String>,
+    pub daylight: Option<Daylight>,
+}
+
+/// How much daylight a room gets. See DESIGN.md, "Room daylight".
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Daylight {
+    /// 0–1: window area and shading.
+    pub amount: f64,
+    /// Window orientations as azimuth, degrees clockwise from north.
+    pub facing: Vec<f64>,
+}
+
+/// The sky part is zero from the end of civil twilight and full from 30°.
+const SKY_DARK_ELEVATION: f64 = -6.0;
+const SKY_FULL_ELEVATION: f64 = 30.0;
+/// The direct part fades in over the first degrees above the horizon instead
+/// of jumping in at sunrise.
+const DIRECT_FADE_IN_ELEVATION: f64 = 5.0;
+
+impl Daylight {
+    /// Daylight reaching the room, 0–1.
+    pub fn at(&self, sun: SunPosition) -> f64 {
+        let sky = ease((sun.elevation - SKY_DARK_ELEVATION) / (SKY_FULL_ELEVATION - SKY_DARK_ELEVATION));
+        let windows = self.facing.iter().map(|facing| (sun.azimuth - facing).to_radians().cos().max(0.0)).sum::<f64>()
+            / self.facing.len() as f64;
+        let direct = ease(sun.elevation / DIRECT_FADE_IN_ELEVATION) * sun.elevation.to_radians().cos() * windows;
+        (self.amount * (sky + direct)).min(1.0)
+    }
+}
+
+/// Cosine ease from 0 to 1 while `x` goes from 0 to 1; flat outside.
+fn ease(x: f64) -> f64 {
+    (1.0 - (std::f64::consts::PI * x.clamp(0.0, 1.0)).cos()) / 2.0
+}
+
+fn compass_name(azimuth: f64) -> &'static str {
+    const NAMES: [&str; 8] = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+    NAMES[(azimuth / 45.0).round() as usize % 8]
 }
 
 #[derive(Debug, Clone)]
@@ -296,7 +336,13 @@ impl fmt::Display for Model {
         }
         for room in &self.rooms {
             writeln!(f)?;
-            writeln!(f, "room {}", room.name)?;
+            match &room.daylight {
+                Some(daylight) => {
+                    let facing: Vec<&str> = daylight.facing.iter().map(|azimuth| compass_name(*azimuth)).collect();
+                    writeln!(f, "room {}  daylight {} facing {}", room.name, daylight.amount, facing.join(", "))?
+                }
+                None => writeln!(f, "room {}", room.name)?,
+            }
             for path in &room.groups {
                 let group = &self.groups[path];
                 let hidden = if group.exposed { "" } else { " (hidden)" };
@@ -393,6 +439,7 @@ struct RawRoom {
     lights: Vec<RawDevice>,
     sensors: Vec<RawDevice>,
     groups: Vec<RawGroup>,
+    daylight: Option<Daylight>,
     line: Line,
 }
 
@@ -512,6 +559,7 @@ impl RawModel {
                 lights: Vec::new(),
                 sensors: Vec::new(),
                 groups: Vec::new(),
+                daylight: raw_room.daylight.clone(),
             };
             let mut names = HashSet::new();
             let mut claim_name = |name: &str, line: &str, errors: &mut Vec<String>| {
@@ -753,5 +801,42 @@ mod tests {
         assert_eq!(mapping.apply(100.0), 80.0);
         assert_eq!(mapping.apply(1.0), 1.0);
         assert!((mapping.apply(50.5) - 40.4).abs() < 1e-9);
+    }
+
+    fn sun(elevation: f64, azimuth: f64) -> SunPosition {
+        SunPosition { elevation, azimuth }
+    }
+
+    #[test]
+    fn daylight_follows_the_sun_and_the_windows() {
+        let east = Daylight { amount: 0.4, facing: vec![90.0] };
+        let west = Daylight { amount: 0.4, facing: vec![270.0] };
+        let north = Daylight { amount: 0.4, facing: vec![0.0] };
+
+        assert_eq!(east.at(sun(-10.0, 30.0)), 0.0, "night");
+        let morning = sun(15.0, 100.0);
+        assert!(east.at(morning) > west.at(morning) + 0.2, "{} vs {}", east.at(morning), west.at(morning));
+        let evening = sun(15.0, 260.0);
+        assert!(west.at(evening) > east.at(evening) + 0.2, "{} vs {}", west.at(evening), east.at(evening));
+
+        let noon = sun(30.0, 180.0);
+        assert_eq!(north.at(noon), 0.4, "sun behind the window: sky part only");
+        assert!((east.at(noon) - north.at(noon)).abs() < 1e-9, "sun exactly side-on");
+    }
+
+    #[test]
+    fn daylight_has_no_jump_at_sunrise_and_is_capped() {
+        let east = Daylight { amount: 1.0, facing: vec![90.0] };
+        let step = east.at(sun(0.1, 90.0)) - east.at(sun(-0.1, 90.0));
+        assert!(step < 0.01, "jump of {step} at sunrise");
+        assert_eq!(east.at(sun(20.0, 90.0)), 1.0);
+    }
+
+    #[test]
+    fn several_windows_average_their_direct_light() {
+        let south_west = Daylight { amount: 0.4, facing: vec![180.0, 270.0] };
+        let south = Daylight { amount: 0.4, facing: vec![180.0] };
+        let afternoon = sun(20.0, 225.0);
+        assert!((south_west.at(afternoon) - south.at(afternoon)).abs() < 1e-9, "both windows see the sun at 45°");
     }
 }
