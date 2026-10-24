@@ -211,7 +211,7 @@ module Knut
       @room[:lights] << entry.merge(Knut.device_ref(options, "light #{name.inspect}"))
     end
 
-    # sensor "Bewegung", zigbee: "0x…"
+    # sensor "Motion", zigbee: "0x…"
     def sensor(name, **options)
       Knut.name!(name, "sensor")
       unknown = options.keys - Knut::ADAPTER_KINDS - [:adapter]
@@ -540,7 +540,7 @@ end
 # on "Sun", :sun do |sun, now| ... end
 # on "Sun", :sunset, offset: -30 do |sun, now| ... end
 # on "Clock", at: "06:30" do |now| ... end
-# on "Flur/Bewegung", :motion do |event, now| ... end
+# on "Hallway/Motion", :motion do |event, now| ... end
 def on(source, *events, **options, &block)
   Knut.fail("trigger source must be a String") unless source.is_a?(String)
   options = options.map { |key, value| [key.to_s, value.is_a?(Symbol) ? value.to_s : value] }.to_h

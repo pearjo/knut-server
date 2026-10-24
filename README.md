@@ -52,35 +52,35 @@ homekit  name: "Knut", port: 32000          # optional: pin:, host:
 hue    "bridge", host: "192.168.1.20"
 zigbee "z2m",    mqtt: "mqtt://127.0.0.1:1883"
 
-room "Küche" do
-  light "spot1", zigbee: "0x00158d0001a2b3c4"
-  light "spot2", zigbee: "0x00158d0001a2b3c5"
-  light "decke", hue: "1a2b3c4d-…", expose: true
+room "Kitchen" do
+  light "spot1",   zigbee: "0x00158d0001a2b3c4"
+  light "spot2",   zigbee: "0x00158d0001a2b3c5"
+  light "ceiling", hue: "1a2b3c4d-…", expose: true
 
   group "Spots", lights: [:spot1, :spot2] do
     map :spot2, brightness: ->(x) { x * 0.8 }
   end
 end
 
-room "Flur" do
-  light  "Licht",    zigbee: "0x…"
-  sensor "Bewegung", zigbee: "0x…"
+room "Hallway" do
+  light  "Light",  zigbee: "0x…"
+  sensor "Motion", zigbee: "0x…"
 end
 
-scene "Filmabend", auto: false do
-  set "Küche/Spots", brightness: 20, kelvin: 2200
+scene "Movie Night", auto: false do
+  set "Kitchen/Spots", brightness: 20, kelvin: 2200
 end
 
 on "Clock", at: "06:30" do                    # at: also takes a list
-  activate "Filmabend"
+  activate "Movie Night"
 end
 
 on "Sun", :sunset, offset: -30 do |sun, now|   # also :sunrise
-  turn_on "Küche/decke"
+  turn_on "Kitchen/ceiling"
 end
 
-on "Flur/Bewegung", :motion do |event, now|    # also :clear, :action, :change
-  set "Flur/Licht", brightness: now.hour < 6 ? 5 : 60 unless on?("Flur/Licht")
+on "Hallway/Motion", :motion do |event, now|   # also :clear, :action, :change
+  set "Hallway/Light", brightness: now.hour < 6 ? 5 : 60 unless on?("Hallway/Light")
 end
 
 on "Sun", :sun do |sun, now|                   # every minute
@@ -119,7 +119,7 @@ DESIGN.md has the full rules. The parts that are not spelled out there:
 ```
 knut check [config.rb]         parse and validate, print the model
 knut discover                  list unreferenced devices as DSL snippets
-knut set <Room/Entity> <value> e.g. `knut set Küche/Spots 40% 2700K transition=2`
+knut set <Room/Entity> <value> e.g. `knut set Kitchen/Spots 40% 2700K transition=2`
 knut run                       the daemon
 knut unpair                    forget all HomeKit pairings (daemon stopped)
 ```

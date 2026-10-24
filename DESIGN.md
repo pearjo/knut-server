@@ -159,11 +159,11 @@ by the sun.
 ## Room daylight
 
 ```ruby
-room "Küche" do
+room "Kitchen" do
   daylight 0.8, facing: :east
 end
 
-room "Wohnzimmer" do
+room "Living Room" do
   daylight 0.4, facing: [:south, :west]
 end
 ```
@@ -230,16 +230,16 @@ location lat: 52.99, lon: 10.58
 hue    "bridge", host: "192.168.1.20"
 zigbee "z2m",    mqtt: "mqtt://localhost:1883"
 
-scene "Filmabend", auto: false do
-  set "Wohnzimmer/Licht", brightness: 20, kelvin: 2200
+scene "Movie Night", auto: false do
+  set "Living Room/Light", brightness: 20, kelvin: 2200
 end
 
-scene "Morgen", auto: true do
-  turn_on "Küche/Spots", "Flur/Licht"
+scene "Morning", auto: true do
+  turn_on "Kitchen/Spots", "Hallway/Light"
 end
 
 on "Clock", at: "06:30" do
-  activate "Morgen"
+  activate "Morning"
 end
 ```
 
@@ -283,7 +283,6 @@ Each step runs on its own.
 
 ## Code style
 
-- Readable top to bottom; descriptive names.
-- Comments only where context isn't obvious (e.g. magic numbers), never history.
-- Doc comments on public API only.
-- License: GPL-3.0 (kept from v1). Mascot: Knut the penguin.
+See [CONTRIBUTE.md](CONTRIBUTE.md), "Conventions".
+
+License: GPL-3.0 (kept from v1). Mascot: Knut the penguin.

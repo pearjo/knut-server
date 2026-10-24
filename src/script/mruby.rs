@@ -24,7 +24,7 @@ extern "C" {
 /// An exception raised while evaluating Ruby code: the exception's
 /// `inspect` output followed by its backtrace.
 #[derive(Debug, Clone)]
-pub struct RubyError {
+pub(crate) struct RubyError {
     pub message: String,
     pub backtrace: Vec<String>,
 }
@@ -43,12 +43,12 @@ impl std::error::Error for RubyError {}
 
 /// One mruby interpreter. mruby is single-threaded, so this is neither
 /// `Send` nor `Sync`.
-pub struct Mruby {
+pub(crate) struct Mruby {
     state: *mut MrbState,
 }
 
 impl Mruby {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let state = unsafe { knut_mrb_open() };
         assert!(!state.is_null(), "mruby failed to allocate its state");
         Self { state }
@@ -56,7 +56,7 @@ impl Mruby {
 
     /// Evaluates `code` and returns the result's `to_s`. `filename` is used
     /// in error messages and backtraces.
-    pub fn eval(&mut self, code: &str, filename: &str) -> Result<String, RubyError> {
+    pub(crate) fn eval(&mut self, code: &str, filename: &str) -> Result<String, RubyError> {
         let filename = CString::new(filename).unwrap_or_else(|_| c"(invalid)".into());
         let mut out: *mut c_char = std::ptr::null_mut();
         let failed = unsafe {
@@ -99,7 +99,7 @@ impl Drop for Mruby {
 }
 
 /// Writes `text` as a double-quoted Ruby string literal.
-pub fn ruby_string(text: &str) -> String {
+pub(crate) fn ruby_string(text: &str) -> String {
     let mut literal = String::with_capacity(text.len() + 2);
     literal.push('"');
     for ch in text.chars() {
@@ -120,7 +120,7 @@ pub fn ruby_string(text: &str) -> String {
 
 /// Writes a JSON value as an equivalent Ruby literal (objects become hashes
 /// with string keys).
-pub fn ruby_literal(value: &serde_json::Value) -> String {
+pub(crate) fn ruby_literal(value: &serde_json::Value) -> String {
     use serde_json::Value;
     match value {
         Value::Null => "nil".into(),

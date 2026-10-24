@@ -32,7 +32,7 @@ warmth = curve(
   [:bed - 3.h,   2800],   # evening plateau
   [:bed - 1.h,   2200])   # very warm for the late evening
 
-room "Küche" do
+room "Kitchen" do
   daylight 0.8, facing: :east
 
   light "spot1", zigbee: "0x0000000000000001"
@@ -46,42 +46,42 @@ room "Küche" do
   end
 end
 
-room "Wohnzimmer" do
+room "Living Room" do
   daylight 0.4, facing: [:south, :west]
 
-  light "Licht", hue: "00000000-0000-0000-0000-000000000001"
+  light "Light", hue: "00000000-0000-0000-0000-000000000001"
 end
 
-room "Flur" do
-  light  "Licht",    zigbee: "0x0000000000000010"
-  sensor "Bewegung", zigbee: "0x0000000000000011"
+room "Hallway" do
+  light  "Light",  zigbee: "0x0000000000000010"
+  sensor "Motion", zigbee: "0x0000000000000011"
 end
 
-scene "Filmabend", auto: false do
-  set "Wohnzimmer/Licht", brightness: 20, kelvin: 2200
-  turn_off "Küche/Spots"
+scene "Movie Night", auto: false do
+  set "Living Room/Light", brightness: 20, kelvin: 2200
+  turn_off "Kitchen/Spots"
 end
 
-scene "Morgen", auto: true do
-  turn_on "Küche/Spots", "Flur/Licht"
+scene "Morning", auto: true do
+  turn_on "Kitchen/Spots", "Hallway/Light"
 end
 
 on "Clock", at: "06:30" do
-  activate "Morgen"
+  activate "Morning"
 end
 
 on "Sun", :sunset, offset: -30 do
-  turn_on "Wohnzimmer/Licht"
+  turn_on "Living Room/Light"
 end
 
-on "Flur/Bewegung", :motion do |event, now|
-  set "Flur/Licht", brightness: now.hour < 6 ? 5 : 60 unless on?("Flur/Licht")
+on "Hallway/Motion", :motion do |event, now|
+  set "Hallway/Light", brightness: now.hour < 6 ? 5 : 60 unless on?("Hallway/Light")
 end
 
-on "Flur/Bewegung", :clear do
-  turn_off "Flur/Licht", transition: 10
+on "Hallway/Motion", :clear do
+  turn_off "Hallway/Light", transition: 10
 end
 
 on "Sun", :sun do |sun, now|
-  adapt all_groups, "Wohnzimmer/Licht", need: demand.at(now), kelvin: warmth.at(now), transition: 60
+  adapt all_groups, "Living Room/Light", need: demand.at(now), kelvin: warmth.at(now), transition: 60
 end
