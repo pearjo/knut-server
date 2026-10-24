@@ -543,10 +543,14 @@ def turn_off(*targets, transition: nil)
   Knut.record(op: "set", targets: Knut.paths(targets), on: false, transition: transition)
 end
 
-# Moves entities that are in auto mode toward the given values. Entities
-# that are switched off only remember them for when they come on.
-def adapt(*targets, brightness: nil, kelvin: nil, transition: nil)
-  Knut.record(op: "adapt", targets: Knut.paths(targets), brightness: brightness, kelvin: kelvin, transition: transition)
+# Moves entities that are in auto mode toward the given values; `need`
+# (0–1) is reduced by the room's daylight. Entities that are switched off
+# only remember the values for when they come on.
+def adapt(*targets, need: nil, kelvin: nil, transition: nil, brightness: nil)
+  raise Knut::ConfigError, "adapt takes need: (0–1) instead of brightness:" unless brightness.nil?
+  raise Knut::ConfigError, "adapt needs need:, kelvin: or both" if need.nil? && kelvin.nil?
+  need = Knut.number!(need, "need:") unless need.nil?
+  Knut.record(op: "adapt", targets: Knut.paths(targets), need: need, kelvin: kelvin, transition: transition)
 end
 
 def activate(scene_name)

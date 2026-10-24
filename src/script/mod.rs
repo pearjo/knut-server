@@ -27,7 +27,8 @@ pub enum Action {
     },
     Adapt {
         targets: Vec<String>,
-        brightness: Option<f64>,
+        /// 0–1, before room daylight is subtracted.
+        need: Option<f64>,
         kelvin: Option<f64>,
         transition: Option<f64>,
     },
@@ -234,7 +235,7 @@ end
             actions,
             vec![Action::Adapt {
                 targets: vec!["Küche/Spots".into()],
-                brightness: None,
+                need: None,
                 kelvin: Some(4000.0),
                 transition: Some(60.0),
             }]
@@ -402,6 +403,14 @@ $demand = curve(
         assert!(unknown.starts_with("config.rb:2: unknown direction(s) for facing: :up"), "{unknown}");
         let twice = error("room \"A\" do\n  daylight 0.5, facing: :east\n  daylight 0.5, facing: :west\nend\n");
         assert!(twice.starts_with("config.rb:3: daylight is already set"), "{twice}");
+    }
+
+    #[test]
+    fn adapt_points_brightness_users_to_need() {
+        let config = "on \"Clock\", at: \"06:30\" do\n  adapt all_groups, brightness: 50\nend\n";
+        let (mut script, model) = Script::load_str(config, "config.rb").unwrap();
+        let error = script.run(model.triggers[0].proc_id, "Time.now", &serde_json::json!({})).unwrap_err();
+        assert_eq!(describe(&error), "adapt takes need: (0–1) instead of brightness:");
     }
 
     #[test]
