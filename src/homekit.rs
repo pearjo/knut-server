@@ -56,7 +56,7 @@ impl Exposed {
 
 /// Starts the HAP server. HomeKit writes arrive as [`Input`]s; engine
 /// [`Update`]s are reflected in HomeKit.
-pub async fn start(
+pub(crate) async fn start(
     model: &Model,
     store: &mut Store,
     state_dir: &Path,
@@ -193,7 +193,7 @@ pub async fn start(
 /// with pairings is not offered for pairing, so one left behind by an aborted
 /// pairing hides it from the Home app. The Home app also keeps hiding a
 /// device id it has started pairing with, so the bridge gets a new one.
-pub fn unpair(state_dir: &Path) -> Result<()> {
+pub(crate) fn unpair(state_dir: &Path) -> Result<()> {
     let homekit_dir = state_dir.join("homekit");
     let config = homekit_dir.join("config.json");
     if config.exists() {

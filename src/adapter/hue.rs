@@ -23,7 +23,7 @@ use crate::model::{AdapterKind, DeviceRef};
 /// The bridge handles about ten light commands per second; more get dropped.
 const COMMAND_SPACING: Duration = Duration::from_millis(100);
 
-pub struct Bridge {
+pub(crate) struct Bridge {
     name: String,
     base_url: String,
     key: String,
@@ -101,7 +101,7 @@ struct ProductData {
 }
 
 impl Bridge {
-    pub fn connect(name: &str, host: &str, key: &str, events: mpsc::UnboundedSender<AdapterEvent>) -> Arc<Self> {
+    pub(crate) fn connect(name: &str, host: &str, key: &str, events: mpsc::UnboundedSender<AdapterEvent>) -> Arc<Self> {
         let bridge = Arc::new(Self {
             name: name.to_string(),
             base_url: format!("https://{host}"),
@@ -145,7 +145,7 @@ impl Bridge {
         Ok(())
     }
 
-    pub async fn send(&self, light_id: &str, command: &LightCommand) -> Result<()> {
+    pub(crate) async fn send(&self, light_id: &str, command: &LightCommand) -> Result<()> {
         if !self.colour_ranges.lock().unwrap().contains_key(light_id) {
             if let Err(error) = self.refresh_colour_ranges().await {
                 log::warn!("{error:#}");
@@ -185,7 +185,7 @@ impl Bridge {
         Ok(())
     }
 
-    pub async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
+    pub(crate) async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
         let devices: Vec<DeviceResource> = self.get("device").await?;
         let device_names: HashMap<&str, (&str, &str)> = devices
             .iter()
@@ -341,7 +341,7 @@ fn key_path(state_dir: &Path, bridge: &str) -> PathBuf {
     state_dir.join(format!("hue-{bridge}.key"))
 }
 
-pub fn load_key(state_dir: &Path, bridge: &str) -> Result<Option<String>> {
+pub(crate) fn load_key(state_dir: &Path, bridge: &str) -> Result<Option<String>> {
     match std::fs::read_to_string(key_path(state_dir, bridge)) {
         Ok(key) => Ok(Some(key.trim().to_string())),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -351,7 +351,7 @@ pub fn load_key(state_dir: &Path, bridge: &str) -> Result<Option<String>> {
 
 /// Asks the bridge for an application key. Fails until the link button on
 /// the bridge has been pressed (within the last 30 seconds).
-pub async fn pair(state_dir: &Path, bridge: &str, host: &str) -> Result<String> {
+pub(crate) async fn pair(state_dir: &Path, bridge: &str, host: &str) -> Result<String> {
     let response: Vec<Value> = http_client()
         .post(format!("https://{host}/api"))
         .json(&json!({ "devicetype": "knut#server", "generateclientkey": true }))

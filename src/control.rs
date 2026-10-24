@@ -16,7 +16,7 @@ const STAGE_DOWN: f64 = 75.0;
 /// Which members of a staged group a command reaches: `on` share the group's
 /// brightness, `off` are switched off, any others are left alone.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StagedLights {
+pub(crate) struct StagedLights {
     pub on: Vec<String>,
     pub off: Vec<String>,
 }
@@ -24,7 +24,7 @@ pub struct StagedLights {
 /// How many leading `stages` carry the group `value` (0–100). `active` is
 /// the count in use so far; without it the fewest stages that can carry the
 /// value are chosen.
-pub fn stage_count(stages: &[Vec<String>], value: f64, active: Option<usize>) -> usize {
+pub(crate) fn stage_count(stages: &[Vec<String>], value: f64, active: Option<usize>) -> usize {
     let total: usize = stages.iter().map(Vec::len).sum();
     let per_light = |count: usize| value * total as f64 / stages[..count].iter().map(Vec::len).sum::<usize>() as f64;
     let mut count = active.unwrap_or(1).clamp(1, stages.len());
@@ -41,14 +41,14 @@ pub fn stage_count(stages: &[Vec<String>], value: f64, active: Option<usize>) ->
 
 /// The lights of the first `count` stages, and those to switch off: the
 /// stages just dropped from `previous`, or all others without it.
-pub fn staged_lights(stages: &[Vec<String>], count: usize, previous: Option<usize>) -> StagedLights {
+pub(crate) fn staged_lights(stages: &[Vec<String>], count: usize, previous: Option<usize>) -> StagedLights {
     let lit_before = previous.map_or(stages.len(), |previous| previous.max(count));
     StagedLights { on: stages[..count].concat(), off: stages[count..lit_before].concat() }
 }
 
 /// The paths of the lights a staging block picked by name, in member order.
 /// Every name must be a light of the group, and at least one must be given.
-pub fn picked_lights(group: &Group, names: &[String]) -> Result<Vec<String>, String> {
+pub(crate) fn picked_lights(group: &Group, names: &[String]) -> Result<Vec<String>, String> {
     let room = group.path.rsplit_once('/').map_or("", |(room, _)| room);
     let paths: Vec<String> = names.iter().map(|name| format!("{room}/{name}")).collect();
     if let Some(stranger) = names.iter().zip(&paths).find(|(_, path)| !group.members.iter().any(|m| &m.light == *path)) {
@@ -63,7 +63,7 @@ pub fn picked_lights(group: &Group, names: &[String]) -> Result<Vec<String>, Str
 /// Commands for every physical light behind `path`. A group's brightness is
 /// spread over the lights that `staged` turns on (all members without it),
 /// then passed through each member's brightness mapping; switching off stays off.
-pub fn commands_for(
+pub(crate) fn commands_for(
     model: &Model,
     path: &str,
     command: &LightCommand,
@@ -99,7 +99,7 @@ pub fn commands_for(
 
 /// Sends commands to all lights at once, so a group changes together.
 /// Returns the paths of the lights whose command failed.
-pub async fn send_all(adapters: &Adapters, commands: &[(String, DeviceRef, LightCommand)]) -> Vec<String> {
+pub(crate) async fn send_all(adapters: &Adapters, commands: &[(String, DeviceRef, LightCommand)]) -> Vec<String> {
     let sends = commands.iter().map(|(path, device, command)| async move {
         match adapters.send(device, command).await {
             Ok(()) => None,
@@ -114,7 +114,7 @@ pub async fn send_all(adapters: &Adapters, commands: &[(String, DeviceRef, Light
 
 /// Parses `knut set` values: `on`, `off`, a brightness like `40` or `40%`,
 /// a colour temperature like `2700K`, and `transition=2` (seconds).
-pub fn parse_values(values: &[String]) -> Result<LightCommand> {
+pub(crate) fn parse_values(values: &[String]) -> Result<LightCommand> {
     let mut command = LightCommand::default();
     if values.is_empty() {
         bail!("expected a value: on, off, a brightness like 40%, or a colour temperature like 2700K");

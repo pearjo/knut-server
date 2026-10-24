@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct State {
+pub(crate) struct State {
     /// Auto (true) or overridden (false), per HomeKit-controlled entity.
     #[serde(default)]
     pub auto: BTreeMap<String, bool>,
@@ -21,13 +21,13 @@ pub struct State {
     pub homekit_pin: Option<String>,
 }
 
-pub struct Store {
+pub(crate) struct Store {
     path: PathBuf,
     pub state: State,
 }
 
 impl Store {
-    pub fn open(state_dir: &Path) -> Result<Self> {
+    pub(crate) fn open(state_dir: &Path) -> Result<Self> {
         std::fs::create_dir_all(state_dir)
             .with_context(|| format!("cannot create state directory {}", state_dir.display()))?;
         let path = state_dir.join("state.json");
@@ -40,7 +40,7 @@ impl Store {
     }
 
     /// Writes atomically, so a crash never leaves a half-written file.
-    pub fn save(&self) -> Result<()> {
+    pub(crate) fn save(&self) -> Result<()> {
         let temporary = self.path.with_extension("json.tmp");
         let text = serde_json::to_string_pretty(&self.state)?;
         std::fs::write(&temporary, text).with_context(|| format!("cannot write {}", temporary.display()))?;
@@ -49,7 +49,7 @@ impl Store {
 
     /// The accessory id for `key`, allocating a new one if needed. Id 1 is
     /// the bridge itself.
-    pub fn accessory_id(&mut self, key: &str) -> u64 {
+    pub(crate) fn accessory_id(&mut self, key: &str) -> u64 {
         if let Some(id) = self.state.accessory_ids.get(key) {
             return *id;
         }

@@ -30,7 +30,7 @@ const COMFORT_MINIMUM: f64 = 5.0;
 const MIN_STAGE_TRANSITION: f64 = 1.0;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct EntityState {
+pub(crate) struct EntityState {
     pub on: bool,
     /// 1–100; kept while off so the entity comes back at the same level.
     pub brightness: f64,
@@ -45,14 +45,14 @@ impl Default for EntityState {
 
 /// Requests from HomeKit.
 #[derive(Debug, Clone)]
-pub enum Input {
+pub(crate) enum Input {
     Entity { path: String, change: Change },
     Scene(String),
     AutoSwitch(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Change {
+pub(crate) enum Change {
     On(bool),
     Brightness(f64),
     Kelvin(f64),
@@ -60,7 +60,7 @@ pub enum Change {
 
 /// State HomeKit should show.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Update {
+pub(crate) enum Update {
     Entity { path: String, state: EntityState },
     /// Whether every entity is in auto.
     Auto(bool),
@@ -90,7 +90,7 @@ struct AutoTarget {
     kelvin: Option<f64>,
 }
 
-pub struct Engine {
+pub(crate) struct Engine {
     model: Arc<Model>,
     script: Script,
     adapters: Adapters,
@@ -109,7 +109,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(
+    pub(crate) fn new(
         model: Arc<Model>,
         script: Script,
         adapters: Adapters,
@@ -147,11 +147,11 @@ impl Engine {
         }
     }
 
-    pub fn all_auto(&self) -> bool {
+    pub(crate) fn all_auto(&self) -> bool {
         self.store.state.auto.values().all(|auto| *auto)
     }
 
-    pub async fn run(mut self, mut inputs: mpsc::UnboundedReceiver<Input>, mut events: mpsc::UnboundedReceiver<AdapterEvent>) {
+    pub(crate) async fn run(mut self, mut inputs: mpsc::UnboundedReceiver<Input>, mut events: mpsc::UnboundedReceiver<AdapterEvent>) {
         self.publish_all();
         let mut last_tick = Local::now();
         // Give adapters a moment to report state before the first sun tick.

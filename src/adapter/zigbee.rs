@@ -22,7 +22,7 @@ use crate::model::{AdapterKind, DeviceRef};
 /// zigbee2mqtt's brightness scale.
 const MAX_BRIGHTNESS: f64 = 254.0;
 
-pub struct Zigbee {
+pub(crate) struct Zigbee {
     name: String,
     base_topic: String,
     client: AsyncClient,
@@ -121,7 +121,7 @@ impl Device {
 }
 
 impl Zigbee {
-    pub fn connect(name: &str, url: &str, base_topic: &str, events: mpsc::UnboundedSender<AdapterEvent>) -> Result<Arc<Self>> {
+    pub(crate) fn connect(name: &str, url: &str, base_topic: &str, events: mpsc::UnboundedSender<AdapterEvent>) -> Result<Arc<Self>> {
         let options = mqtt_options(url, name)?;
         let (client, mut event_loop) = AsyncClient::new(options, 256);
         let zigbee = Self::new(name, base_topic, client);
@@ -246,7 +246,7 @@ impl Zigbee {
 
     /// Waits until zigbee2mqtt has sent its device list, which maps IEEE
     /// addresses to topics.
-    pub async fn ready(&self, timeout: Duration) -> Result<()> {
+    pub(crate) async fn ready(&self, timeout: Duration) -> Result<()> {
         let mut known = self.devices_known.subscribe();
         tokio::time::timeout(timeout, known.wait_for(|known| *known))
             .await
@@ -254,7 +254,7 @@ impl Zigbee {
         Ok(())
     }
 
-    pub async fn send(&self, ieee: &str, command: &LightCommand) -> Result<()> {
+    pub(crate) async fn send(&self, ieee: &str, command: &LightCommand) -> Result<()> {
         if let Err(error) = self.ready(Duration::from_secs(5)).await {
             log::warn!("{error}; addressing {ieee} by its IEEE address");
         }
@@ -293,7 +293,7 @@ impl Zigbee {
             .context("cannot queue MQTT message")
     }
 
-    pub async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
+    pub(crate) async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
         self.ready(Duration::from_secs(10)).await?;
         let devices = self.devices.lock().unwrap();
         let mut found: Vec<DiscoveredDevice> = devices

@@ -11,10 +11,10 @@ use serde::Deserialize;
 use crate::sun::SunPosition;
 
 /// Source location in the config, e.g. `config.rb:12`.
-pub type Line = String;
+pub(crate) type Line = String;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Location {
+pub(crate) struct Location {
     pub lat: f64,
     pub lon: f64,
 }
@@ -22,7 +22,7 @@ pub struct Location {
 /// Wake and bed time of one weekday in minutes after that day's midnight.
 /// A bedtime after midnight is 1440 or more and still belongs to this day.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-pub struct ScheduleDay {
+pub(crate) struct ScheduleDay {
     pub wake: u32,
     pub bed: u32,
 }
@@ -32,7 +32,7 @@ pub struct ScheduleDay {
 const WEEKDAY_NAMES: [&str; 7] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct HomeKitConfig {
+pub(crate) struct HomeKitConfig {
     pub name: String,
     pub pin: Option<String>,
     pub port: u16,
@@ -43,7 +43,7 @@ pub struct HomeKitConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub enum AdapterConfig {
+pub(crate) enum AdapterConfig {
     Hue {
         name: String,
         host: String,
@@ -59,20 +59,20 @@ pub enum AdapterConfig {
 }
 
 impl AdapterConfig {
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         match self {
             Self::Hue { name, .. } | Self::Zigbee { name, .. } => name,
         }
     }
 
-    pub fn kind(&self) -> AdapterKind {
+    pub(crate) fn kind(&self) -> AdapterKind {
         match self {
             Self::Hue { .. } => AdapterKind::Hue,
             Self::Zigbee { .. } => AdapterKind::Zigbee,
         }
     }
 
-    pub fn line(&self) -> &str {
+    pub(crate) fn line(&self) -> &str {
         match self {
             Self::Hue { line, .. } | Self::Zigbee { line, .. } => line,
         }
@@ -81,7 +81,7 @@ impl AdapterConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum AdapterKind {
+pub(crate) enum AdapterKind {
     Hue,
     Zigbee,
 }
@@ -97,7 +97,7 @@ impl fmt::Display for AdapterKind {
 
 /// A device on one adapter, e.g. `zigbee:0x00158d0001a2b3c4` on adapter `z2m`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DeviceRef {
+pub(crate) struct DeviceRef {
     pub adapter: String,
     pub kind: AdapterKind,
     pub device: String,
@@ -110,7 +110,7 @@ impl fmt::Display for DeviceRef {
 }
 
 #[derive(Debug, Clone)]
-pub struct Light {
+pub(crate) struct Light {
     pub name: String,
     pub path: String,
     pub device: DeviceRef,
@@ -118,14 +118,14 @@ pub struct Light {
 }
 
 #[derive(Debug, Clone)]
-pub struct Sensor {
+pub(crate) struct Sensor {
     pub name: String,
     pub path: String,
     pub device: DeviceRef,
 }
 
 #[derive(Debug, Clone)]
-pub struct Group {
+pub(crate) struct Group {
     pub name: String,
     pub path: String,
     pub exposed: bool,
@@ -135,7 +135,7 @@ pub struct Group {
 
 /// How a group decides which of its lights are on. See DESIGN.md, "Staging".
 #[derive(Debug, Clone, PartialEq)]
-pub enum Staging {
+pub(crate) enum Staging {
     /// Light paths per stage, in the order staging switches them on. Every
     /// member is in exactly one stage.
     Stages(Vec<Vec<String>>),
@@ -144,7 +144,7 @@ pub enum Staging {
 }
 
 #[derive(Debug, Clone)]
-pub struct GroupMember {
+pub(crate) struct GroupMember {
     /// Path of the member light.
     pub light: String,
     pub mapping: Option<BrightnessMapping>,
@@ -153,19 +153,19 @@ pub struct GroupMember {
 /// The light's brightness for each group brightness 1..=100, precomputed by
 /// evaluating the config's lambda once at load time.
 #[derive(Debug, Clone)]
-pub struct BrightnessMapping {
+pub(crate) struct BrightnessMapping {
     table: Vec<f64>,
 }
 
 impl BrightnessMapping {
-    pub fn new(table: Vec<f64>) -> Self {
+    pub(crate) fn new(table: Vec<f64>) -> Self {
         assert_eq!(table.len(), 100);
         Self { table }
     }
 
     /// Maps a group brightness (0–100) to the light's brightness, clamped to
     /// 1–100. Fractional input is interpolated between table entries.
-    pub fn apply(&self, group_brightness: f64) -> f64 {
+    pub(crate) fn apply(&self, group_brightness: f64) -> f64 {
         let x = group_brightness.clamp(1.0, 100.0);
         let lower = x.floor() as usize;
         let upper = x.ceil() as usize;
@@ -176,7 +176,7 @@ impl BrightnessMapping {
 }
 
 impl GroupMember {
-    pub fn brightness_for(&self, group_brightness: f64) -> f64 {
+    pub(crate) fn brightness_for(&self, group_brightness: f64) -> f64 {
         match &self.mapping {
             Some(mapping) => mapping.apply(group_brightness),
             None => group_brightness.clamp(1.0, 100.0),
@@ -185,7 +185,7 @@ impl GroupMember {
 }
 
 #[derive(Debug, Clone)]
-pub struct Room {
+pub(crate) struct Room {
     pub name: String,
     pub lights: Vec<String>,
     pub sensors: Vec<String>,
@@ -195,7 +195,7 @@ pub struct Room {
 
 /// How much daylight a room gets. See DESIGN.md, "Room daylight".
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct Daylight {
+pub(crate) struct Daylight {
     /// 0–1: window area and shading.
     pub amount: f64,
     /// Window orientations as azimuth, degrees clockwise from north.
@@ -211,7 +211,7 @@ const DIRECT_FADE_IN_ELEVATION: f64 = 5.0;
 
 impl Daylight {
     /// Daylight reaching the room, 0–1.
-    pub fn at(&self, sun: SunPosition) -> f64 {
+    pub(crate) fn at(&self, sun: SunPosition) -> f64 {
         let sky = ease((sun.elevation - SKY_DARK_ELEVATION) / (SKY_FULL_ELEVATION - SKY_DARK_ELEVATION));
         let windows = self.facing.iter().map(|facing| (sun.azimuth - facing).to_radians().cos().max(0.0)).sum::<f64>()
             / self.facing.len() as f64;
@@ -231,7 +231,7 @@ fn compass_name(azimuth: f64) -> &'static str {
 }
 
 #[derive(Debug, Clone)]
-pub struct Scene {
+pub(crate) struct Scene {
     pub name: String,
     pub auto: bool,
     pub proc_id: usize,
@@ -239,14 +239,14 @@ pub struct Scene {
 }
 
 #[derive(Debug, Clone)]
-pub struct Trigger {
+pub(crate) struct Trigger {
     pub kind: TriggerKind,
     pub proc_id: usize,
     pub line: Line,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TriggerKind {
+pub(crate) enum TriggerKind {
     /// Once per minute.
     SunTick,
     /// At sunrise or sunset, shifted by `offset_minutes`.
@@ -258,20 +258,20 @@ pub enum TriggerKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SunEvent {
+pub(crate) enum SunEvent {
     Sunrise,
     Sunset,
 }
 
 /// A controllable entity as addressed by `Room/Entity` paths.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntityKind {
+pub(crate) enum EntityKind {
     Light,
     Group,
 }
 
 #[derive(Debug, Clone)]
-pub struct Model {
+pub(crate) struct Model {
     pub location: Option<Location>,
     pub homekit: HomeKitConfig,
     /// Indexed by `Weekday::num_days_from_sunday`.
@@ -286,7 +286,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn entity_kind(&self, path: &str) -> Option<EntityKind> {
+    pub(crate) fn entity_kind(&self, path: &str) -> Option<EntityKind> {
         if self.groups.contains_key(path) {
             Some(EntityKind::Group)
         } else if self.lights.contains_key(path) {
@@ -298,25 +298,25 @@ impl Model {
 
     /// Groups and individually exposed lights: everything HomeKit controls
     /// and that therefore has an auto/override mode.
-    pub fn exposed_entities(&self) -> Vec<String> {
+    pub(crate) fn exposed_entities(&self) -> Vec<String> {
         let groups = self.groups.values().filter(|g| g.exposed).map(|g| g.path.clone());
         let lights = self.lights.values().filter(|l| l.exposed).map(|l| l.path.clone());
         groups.chain(lights).collect()
     }
 
-    pub fn room(&self, name: &str) -> Option<&Room> {
+    pub(crate) fn room(&self, name: &str) -> Option<&Room> {
         self.rooms.iter().find(|room| room.name == name)
     }
 
-    pub fn scene(&self, name: &str) -> Option<&Scene> {
+    pub(crate) fn scene(&self, name: &str) -> Option<&Scene> {
         self.scenes.iter().find(|scene| scene.name == name)
     }
 
-    pub fn light_by_device(&self, device: &DeviceRef) -> Option<&Light> {
+    pub(crate) fn light_by_device(&self, device: &DeviceRef) -> Option<&Light> {
         self.lights.values().find(|light| &light.device == device)
     }
 
-    pub fn sensor_by_device(&self, device: &DeviceRef) -> Option<&Sensor> {
+    pub(crate) fn sensor_by_device(&self, device: &DeviceRef) -> Option<&Sensor> {
         self.sensors.values().find(|sensor| &sensor.device == device)
     }
 }
@@ -428,7 +428,7 @@ impl fmt::Display for Model {
 
 /// Problems found while validating; each names its config line.
 #[derive(Debug)]
-pub struct ValidationErrors(pub Vec<String>);
+pub(crate) struct ValidationErrors(pub Vec<String>);
 
 impl fmt::Display for ValidationErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -448,7 +448,7 @@ impl std::error::Error for ValidationErrors {}
 // The raw JSON recorded by the prelude.
 
 #[derive(Debug, Deserialize)]
-pub struct RawModel {
+pub(crate) struct RawModel {
     location: Option<Location>,
     homekit: Option<HomeKitConfig>,
     schedule: Option<[ScheduleDay; 7]>,
@@ -503,7 +503,7 @@ struct RawStaging {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RawMapping {
+pub(crate) struct RawMapping {
     pub light: String,
     pub proc: usize,
     pub line: Line,
@@ -528,7 +528,7 @@ struct RawTrigger {
 
 impl RawModel {
     /// Ids of all brightness mapping procs, so the caller can evaluate them.
-    pub fn mapping_procs(&self) -> Vec<usize> {
+    pub(crate) fn mapping_procs(&self) -> Vec<usize> {
         self.rooms
             .iter()
             .flat_map(|room| &room.groups)
@@ -539,7 +539,7 @@ impl RawModel {
 
     /// Resolves references and validates the whole model. `mapping_tables`
     /// holds the evaluated table for each id from [`Self::mapping_procs`].
-    pub fn build(self, mapping_tables: &HashMap<usize, Vec<f64>>) -> Result<Model, ValidationErrors> {
+    pub(crate) fn build(self, mapping_tables: &HashMap<usize, Vec<f64>>) -> Result<Model, ValidationErrors> {
         let mut errors = Vec::new();
 
         let mut adapter_names = HashSet::new();

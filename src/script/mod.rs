@@ -1,6 +1,6 @@
 //! Loads the Ruby DSL and runs scene and trigger blocks.
 
-pub mod mruby;
+pub(crate) mod mruby;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -17,7 +17,7 @@ const PRELUDE_FILE: &str = "(knut)";
 /// Something a scene or trigger block asked for.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "op", rename_all = "lowercase")]
-pub enum Action {
+pub(crate) enum Action {
     Set {
         targets: Vec<String>,
         on: Option<bool>,
@@ -41,7 +41,7 @@ pub enum Action {
 }
 
 #[derive(Debug)]
-pub enum LoadError {
+pub(crate) enum LoadError {
     Io(std::io::Error),
     Ruby(RubyError),
     Invalid(ValidationErrors),
@@ -62,7 +62,7 @@ impl std::error::Error for LoadError {}
 /// Formats a Ruby error for people: config errors raised by the prelude
 /// already name their config line, so the prelude's own location and
 /// backtrace are noise.
-pub fn describe(error: &RubyError) -> String {
+pub(crate) fn describe(error: &RubyError) -> String {
     let message = error.message.as_str();
     let config_error = message.ends_with("(Knut::ConfigError)");
     let message = match message.strip_prefix(PRELUDE_FILE) {
@@ -83,19 +83,19 @@ pub fn describe(error: &RubyError) -> String {
 }
 
 /// The config's Ruby interpreter, kept alive to run scene and trigger blocks.
-pub struct Script {
+pub(crate) struct Script {
     ruby: Mruby,
 }
 
 impl Script {
     /// Loads and validates the config at `path`.
-    pub fn load(path: &Path) -> Result<(Self, Model), LoadError> {
+    pub(crate) fn load(path: &Path) -> Result<(Self, Model), LoadError> {
         let code = std::fs::read_to_string(path).map_err(LoadError::Io)?;
         let filename = path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into());
         Self::load_str(&code, &filename)
     }
 
-    pub fn load_str(code: &str, filename: &str) -> Result<(Self, Model), LoadError> {
+    pub(crate) fn load_str(code: &str, filename: &str) -> Result<(Self, Model), LoadError> {
         let mut ruby = Mruby::new();
         ruby.eval(PRELUDE, PRELUDE_FILE).map_err(LoadError::Ruby)?;
         ruby.eval(code, filename).map_err(LoadError::Ruby)?;
@@ -124,7 +124,7 @@ impl Script {
     /// Runs proc `proc_id` with `args`, a comma separated list of Ruby
     /// expressions, and returns the actions it requested. `state` is the
     /// entity snapshot exposed through `state(path)` and `on?(path)`.
-    pub fn run(&mut self, proc_id: usize, args: &str, state: &serde_json::Value) -> Result<Vec<Action>, RubyError> {
+    pub(crate) fn run(&mut self, proc_id: usize, args: &str, state: &serde_json::Value) -> Result<Vec<Action>, RubyError> {
         let code = format!("Knut.run({proc_id}, [{args}], {})", mruby::ruby_literal(state));
         let json = self.ruby.eval(&code, PRELUDE_FILE)?;
         Ok(serde_json::from_str(&json).expect("the prelude emits valid action JSON"))
@@ -132,7 +132,7 @@ impl Script {
 
     /// Runs the staging block `proc_id` for `need` (0–1) at the Unix time
     /// `now` and returns the names of the lights it picked.
-    pub fn staging(&mut self, proc_id: usize, need: f64, now: i64) -> Result<Vec<String>, RubyError> {
+    pub(crate) fn staging(&mut self, proc_id: usize, need: f64, now: i64) -> Result<Vec<String>, RubyError> {
         let json = self.ruby.eval(&format!("Knut.staging({proc_id}, {need:?}, {now})"), PRELUDE_FILE)?;
         Ok(serde_json::from_str(&json).expect("the prelude emits a JSON array"))
     }
@@ -157,7 +157,7 @@ impl Script {
 }
 
 /// Unknown targets and scenes in a list of actions.
-pub fn validate_actions(model: &Model, actions: &[Action]) -> Vec<String> {
+pub(crate) fn validate_actions(model: &Model, actions: &[Action]) -> Vec<String> {
     let mut problems = Vec::new();
     for action in actions {
         match action {
@@ -262,7 +262,7 @@ end
         let [Action::Adapt { targets, need: Some(need), kelvin: Some(kelvin), .. }] = actions.as_slice() else {
             panic!("{actions:?}");
         };
-        assert_eq!(targets, &["Küche/Spots", "Wohnzimmer/Licht"]);
+        assert_eq!(targets, &["Kitchen/Spots", "Living Room/Light"]);
         assert_eq!(*need, 1.0, "full demand at noon");
         assert!((3000.0..=4000.0).contains(kelvin), "{kelvin}");
     }

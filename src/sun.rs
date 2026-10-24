@@ -5,7 +5,7 @@
 use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SunPosition {
+pub(crate) struct SunPosition {
     /// Degrees above the horizon, negative below it. No refraction correction.
     pub elevation: f64,
     /// Degrees clockwise from north.
@@ -14,7 +14,7 @@ pub struct SunPosition {
 
 /// Sunrise and sunset of one day; `None` during polar day or night.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SunTimes {
+pub(crate) struct SunTimes {
     pub sunrise: DateTime<Utc>,
     pub sunset: DateTime<Utc>,
 }
@@ -60,7 +60,7 @@ fn solar_parameters(time: DateTime<Utc>) -> SolarParameters {
     SolarParameters { declination, equation_of_time }
 }
 
-pub fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
+pub(crate) fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
     let params = solar_parameters(time);
     let minutes = time.timestamp().rem_euclid(86_400) as f64 / 60.0;
     let true_solar_time = (minutes + params.equation_of_time + 4.0 * lon).rem_euclid(1440.0);
@@ -88,7 +88,7 @@ pub fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
 
 /// Sunrise and sunset on `date` (a calendar day in UTC terms; for local
 /// days near Europe this is the same day).
-pub fn times(lat: f64, lon: f64, date: NaiveDate) -> Option<SunTimes> {
+pub(crate) fn times(lat: f64, lon: f64, date: NaiveDate) -> Option<SunTimes> {
     let midnight = Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0)?);
     let approximate_noon = midnight + Duration::minutes((720.0 - 4.0 * lon) as i64);
     let params = solar_parameters(approximate_noon);
