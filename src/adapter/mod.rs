@@ -38,9 +38,16 @@ pub(crate) struct LightReport {
 
 #[derive(Debug, Clone)]
 pub(crate) enum AdapterEvent {
-    Light { device: DeviceRef, report: LightReport },
+    Light {
+        device: DeviceRef,
+        report: LightReport,
+    },
     /// `event` is one of [`DEVICE_EVENTS`]; `data` is the device's raw payload.
-    Device { device: DeviceRef, event: String, data: serde_json::Value },
+    Device {
+        device: DeviceRef,
+        event: String,
+        data: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -111,11 +118,17 @@ pub(crate) struct Adapters {
 impl Adapters {
     /// Connects every adapter in `model`. Adapters keep reconnecting in the
     /// background; state and events arrive on `events`.
-    pub(crate) async fn connect(model: &Model, state_dir: &Path, events: mpsc::UnboundedSender<AdapterEvent>) -> Result<Self> {
+    pub(crate) async fn connect(
+        model: &Model,
+        state_dir: &Path,
+        events: mpsc::UnboundedSender<AdapterEvent>,
+    ) -> Result<Self> {
         let mut adapters = HashMap::new();
         for config in &model.adapters {
             let adapter = match config {
-                AdapterConfig::Hue { name, host, key, .. } => {
+                AdapterConfig::Hue {
+                    name, host, key, ..
+                } => {
                     let key = match key {
                         Some(key) => key.clone(),
                         None => hue::load_key(state_dir, name)?.ok_or_else(|| {
@@ -124,9 +137,17 @@ impl Adapters {
                     };
                     Adapter::Hue(hue::Bridge::connect(name, host, &key, events.clone()))
                 }
-                AdapterConfig::Zigbee { name, mqtt, base_topic, .. } => {
-                    Adapter::Zigbee(zigbee::Zigbee::connect(name, mqtt, base_topic, events.clone())?)
-                }
+                AdapterConfig::Zigbee {
+                    name,
+                    mqtt,
+                    base_topic,
+                    ..
+                } => Adapter::Zigbee(zigbee::Zigbee::connect(
+                    name,
+                    mqtt,
+                    base_topic,
+                    events.clone(),
+                )?),
             };
             adapters.insert(config.name().to_string(), adapter);
         }
@@ -136,7 +157,9 @@ impl Adapters {
     /// No adapters; commands fail and are logged. For tests of the logic above.
     #[cfg(test)]
     pub(crate) fn none() -> Self {
-        Self { adapters: HashMap::new() }
+        Self {
+            adapters: HashMap::new(),
+        }
     }
 
     pub(crate) fn get(&self, name: &str) -> Option<&Adapter> {
@@ -144,15 +167,26 @@ impl Adapters {
     }
 
     pub(crate) async fn send(&self, device: &DeviceRef, command: &LightCommand) -> Result<()> {
-        let adapter = self.get(&device.adapter).ok_or_else(|| anyhow!("unknown adapter {:?}", device.adapter))?;
+        let adapter = self
+            .get(&device.adapter)
+            .ok_or_else(|| anyhow!("unknown adapter {:?}", device.adapter))?;
         adapter.send(&device.device, command).await
     }
 }
 
 /// Snippet to paste into the config for a discovered device.
 pub(crate) fn dsl_snippet(device: &DiscoveredDevice, model: &Model) -> String {
-    let several_of_kind = model.adapters.iter().filter(|a| a.kind() == device.device.kind).count() > 1;
-    let adapter = if several_of_kind { format!(", adapter: {:?}", device.device.adapter) } else { String::new() };
+    let several_of_kind = model
+        .adapters
+        .iter()
+        .filter(|a| a.kind() == device.device.kind)
+        .count()
+        > 1;
+    let adapter = if several_of_kind {
+        format!(", adapter: {:?}", device.device.adapter)
+    } else {
+        String::new()
+    };
     let keyword = match device.class {
         DeviceClass::Light => "light",
         DeviceClass::Sensor => "sensor",
@@ -186,7 +220,10 @@ mod tests {
     fn converts_colour_temperature() {
         assert_eq!(kelvin_to_mired(2500.0), 400.0);
         assert_eq!(mired_to_kelvin(250.0), 4000.0);
-        let range = MiredRange { min: 153.0, max: 454.0 };
+        let range = MiredRange {
+            min: 153.0,
+            max: 454.0,
+        };
         assert_eq!(range.clamp_kelvin(2000.0), 454.0);
     }
 }

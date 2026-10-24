@@ -46,7 +46,10 @@ fn main() {
         .flag_if_supported("-Wno-unused-parameter")
         .compile("knut_mruby_shim");
 
-    println!("cargo:rustc-link-search=native={}", host_dir.join("lib").display());
+    println!(
+        "cargo:rustc-link-search=native={}",
+        host_dir.join("lib").display()
+    );
     println!("cargo:rustc-link-lib=static=mruby");
     println!("cargo:rerun-if-changed=mruby/shim.c");
     println!("cargo:rerun-if-changed=mruby/build_config.rb");

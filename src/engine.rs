@@ -39,7 +39,11 @@ pub(crate) struct EntityState {
 
 impl Default for EntityState {
     fn default() -> Self {
-        Self { on: false, brightness: 100.0, kelvin: None }
+        Self {
+            on: false,
+            brightness: 100.0,
+            kelvin: None,
+        }
     }
 }
 
@@ -61,7 +65,10 @@ pub(crate) enum Change {
 /// State HomeKit should show.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Update {
-    Entity { path: String, state: EntityState },
+    Entity {
+        path: String,
+        state: EntityState,
+    },
     /// Whether every entity is in auto.
     Auto(bool),
 }
@@ -123,7 +130,10 @@ impl Engine {
         let mut groups_of_light: HashMap<String, Vec<String>> = HashMap::new();
         for group in model.groups.values() {
             for member in &group.members {
-                groups_of_light.entry(member.light.clone()).or_default().push(group.path.clone());
+                groups_of_light
+                    .entry(member.light.clone())
+                    .or_default()
+                    .push(group.path.clone());
             }
         }
         let exposed: HashSet<String> = model.exposed_entities().into_iter().collect();
@@ -151,7 +161,11 @@ impl Engine {
         self.store.state.auto.values().all(|auto| *auto)
     }
 
-    pub(crate) async fn run(mut self, mut inputs: mpsc::UnboundedReceiver<Input>, mut events: mpsc::UnboundedReceiver<AdapterEvent>) {
+    pub(crate) async fn run(
+        mut self,
+        mut inputs: mpsc::UnboundedReceiver<Input>,
+        mut events: mpsc::UnboundedReceiver<AdapterEvent>,
+    ) {
         self.publish_all();
         let mut last_tick = Local::now();
         // Give adapters a moment to report state before the first sun tick.
@@ -220,19 +234,46 @@ impl Engine {
                 self.apply(path, command).await;
             }
             Change::On(true) => {}
-            Change::On(false) => self.apply(path, LightCommand { on: Some(false), ..Default::default() }).await,
+            Change::On(false) => {
+                self.apply(
+                    path,
+                    LightCommand {
+                        on: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .await
+            }
             Change::Brightness(brightness) if brightness <= 0.0 => {
-                self.apply(path, LightCommand { on: Some(false), ..Default::default() }).await
+                self.apply(
+                    path,
+                    LightCommand {
+                        on: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .await
             }
             Change::Brightness(brightness) => {
                 self.set_auto(path, false);
-                let command = LightCommand { on: Some(true), brightness: Some(brightness), ..Default::default() };
+                let command = LightCommand {
+                    on: Some(true),
+                    brightness: Some(brightness),
+                    ..Default::default()
+                };
                 self.apply(path, command).await;
             }
             Change::Kelvin(kelvin) => {
                 self.set_auto(path, false);
                 if was_on {
-                    self.apply(path, LightCommand { kelvin: Some(kelvin), ..Default::default() }).await;
+                    self.apply(
+                        path,
+                        LightCommand {
+                            kelvin: Some(kelvin),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
                 } else {
                     self.update_state(path, |state| state.kelvin = Some(kelvin));
                     self.publish(path);
@@ -247,7 +288,9 @@ impl Engine {
     async fn handle_adapter_event(&mut self, event: AdapterEvent) {
         match event {
             AdapterEvent::Light { device, report } => {
-                let Some(light) = self.model.light_by_device(&device) else { return };
+                let Some(light) = self.model.light_by_device(&device) else {
+                    return;
+                };
                 let path = light.path.clone();
                 self.update_state(&path, |state| {
                     if let Some(on) = report.on {
@@ -265,8 +308,15 @@ impl Engine {
                     self.refresh_group(&group);
                 }
             }
-            AdapterEvent::Device { device, event, data } => {
-                let path = match (self.model.sensor_by_device(&device), self.model.light_by_device(&device)) {
+            AdapterEvent::Device {
+                device,
+                event,
+                data,
+            } => {
+                let path = match (
+                    self.model.sensor_by_device(&device),
+                    self.model.light_by_device(&device),
+                ) {
                     (Some(sensor), _) => sensor.path.clone(),
                     (None, Some(light)) => light.path.clone(),
                     (None, None) => return,
@@ -296,7 +346,9 @@ impl Engine {
 
     /// A group shows on while any member is on.
     fn refresh_group(&mut self, group: &str) {
-        let Some(members) = self.model.groups.get(group).map(|g| g.members.clone()) else { return };
+        let Some(members) = self.model.groups.get(group).map(|g| g.members.clone()) else {
+            return;
+        };
         let any_on = members.iter().any(|m| self.state(&m.light).on);
         if self.state(group).on != any_on {
             self.update_state(group, |state| state.on = any_on);
@@ -325,7 +377,10 @@ impl Engine {
                 TriggerKind::SunTick => {
                     if let Some((_, _, position, times)) = &sun {
                         let (sunrise, sunset) = match times {
-                            Some(times) => (times.sunrise.timestamp().to_string(), times.sunset.timestamp().to_string()),
+                            Some(times) => (
+                                times.sunrise.timestamp().to_string(),
+                                times.sunset.timestamp().to_string(),
+                            ),
                             None => ("nil".into(), "nil".into()),
                         };
                         due.push(fire(format!(
@@ -334,8 +389,13 @@ impl Engine {
                         )));
                     }
                 }
-                TriggerKind::SunEvent { event, offset_minutes } if !first => {
-                    let Some((lat, lon, position, times)) = &sun else { continue };
+                TriggerKind::SunEvent {
+                    event,
+                    offset_minutes,
+                } if !first => {
+                    let Some((lat, lon, position, times)) = &sun else {
+                        continue;
+                    };
                     let happened = dates.iter().any(|date| {
                         sun::times(*lat, *lon, *date).is_some_and(|day| {
                             let at = match event {
@@ -347,7 +407,10 @@ impl Engine {
                     });
                     if happened {
                         let (sunrise, sunset) = match times {
-                            Some(times) => (times.sunrise.timestamp().to_string(), times.sunset.timestamp().to_string()),
+                            Some(times) => (
+                                times.sunrise.timestamp().to_string(),
+                                times.sunset.timestamp().to_string(),
+                            ),
                             None => ("nil".into(), "nil".into()),
                         };
                         due.push(fire(format!(
@@ -386,26 +449,47 @@ impl Engine {
     }
 
     async fn activate_scene(&mut self, name: &str) {
-        self.execute(vec![Action::Activate { scene: name.to_string() }], Origin::Automation).await;
+        self.execute(
+            vec![Action::Activate {
+                scene: name.to_string(),
+            }],
+            Origin::Automation,
+        )
+        .await;
     }
 
     async fn execute(&mut self, actions: Vec<Action>, origin: Origin) {
-        let mut queue: VecDeque<(Action, Origin, usize)> = actions.into_iter().map(|a| (a, origin, 0)).collect();
+        let mut queue: VecDeque<(Action, Origin, usize)> =
+            actions.into_iter().map(|a| (a, origin, 0)).collect();
         while let Some((action, origin, depth)) = queue.pop_front() {
             match action {
-                Action::Set { targets, on, brightness, kelvin, transition } => {
+                Action::Set {
+                    targets,
+                    on,
+                    brightness,
+                    kelvin,
+                    transition,
+                } => {
                     for target in &targets {
-                        self.set(target, on, brightness, kelvin, transition, origin).await;
+                        self.set(target, on, brightness, kelvin, transition, origin)
+                            .await;
                     }
                 }
-                Action::Adapt { targets, need, kelvin, transition } => {
+                Action::Adapt {
+                    targets,
+                    need,
+                    kelvin,
+                    transition,
+                } => {
                     for target in &targets {
                         self.adapt(target, need, kelvin, transition).await;
                     }
                 }
                 Action::Activate { scene } => {
                     if depth >= MAX_SCENE_DEPTH {
-                        log::error!("scene {scene:?}: scenes nest deeper than {MAX_SCENE_DEPTH}; stopping");
+                        log::error!(
+                            "scene {scene:?}: scenes nest deeper than {MAX_SCENE_DEPTH}; stopping"
+                        );
                         continue;
                     }
                     let Some(found) = self.model.scene(&scene).cloned() else {
@@ -421,7 +505,12 @@ impl Engine {
                                 queue.insert(i, (action, origin, depth + 1));
                             }
                         }
-                        Err(error) => log::error!("scene {:?} at {}: {}", found.name, found.line, script::describe(&error)),
+                        Err(error) => log::error!(
+                            "scene {:?} at {}: {}",
+                            found.name,
+                            found.line,
+                            script::describe(&error)
+                        ),
                     }
                 }
                 Action::Log { message } => log::info!("script: {message}"),
@@ -443,7 +532,15 @@ impl Engine {
             return;
         }
         if on == Some(false) {
-            self.apply(path, LightCommand { on: Some(false), transition, ..Default::default() }).await;
+            self.apply(
+                path,
+                LightCommand {
+                    on: Some(false),
+                    transition,
+                    ..Default::default()
+                },
+            )
+            .await;
             return;
         }
         let has_values = brightness.is_some() || kelvin.is_some();
@@ -454,7 +551,12 @@ impl Engine {
             Origin::Scene { auto: false } if !was_on => self.set_auto(path, true),
             _ => {}
         }
-        let mut command = LightCommand { on: Some(true), brightness, kelvin, transition };
+        let mut command = LightCommand {
+            on: Some(true),
+            brightness,
+            kelvin,
+            transition,
+        };
         if !was_on {
             let auto = self.auto_values(path);
             command.brightness = command.brightness.or(auto.brightness);
@@ -463,7 +565,13 @@ impl Engine {
         self.apply(path, command).await;
     }
 
-    async fn adapt(&mut self, path: &str, need: Option<f64>, kelvin: Option<f64>, transition: Option<f64>) {
+    async fn adapt(
+        &mut self,
+        path: &str,
+        need: Option<f64>,
+        kelvin: Option<f64>,
+        transition: Option<f64>,
+    ) {
         if self.model.entity_kind(path).is_none() {
             log::error!("adapt: unknown light or group {path:?}");
             return;
@@ -480,17 +588,33 @@ impl Engine {
             return;
         }
         let unchanged = brightness.is_none_or(|b| (b - state.brightness).abs() < 0.5)
-            && kelvin.is_none_or(|k| state.kelvin.is_some_and(|current| (k - current).abs() < 10.0));
+            && kelvin.is_none_or(|k| {
+                state
+                    .kelvin
+                    .is_some_and(|current| (k - current).abs() < 10.0)
+            });
         if unchanged {
             return;
         }
-        self.apply(path, LightCommand { on: None, brightness, kelvin, transition }).await;
+        self.apply(
+            path,
+            LightCommand {
+                on: None,
+                brightness,
+                kelvin,
+                transition,
+            },
+        )
+        .await;
     }
 
     /// The value (0–100) for `need` (0–1) after subtracting the daylight of
     /// the entity's room.
     fn value_for_need(&self, path: &str, need: f64) -> f64 {
-        let room = path.split('/').next().and_then(|name| self.model.room(name));
+        let room = path
+            .split('/')
+            .next()
+            .and_then(|name| self.model.room(name));
         let daylight = match (room.and_then(|room| room.daylight.as_ref()), self.sun) {
             (Some(daylight), Some(sun)) => daylight.at(sun),
             _ => 0.0,
@@ -519,7 +643,11 @@ impl Engine {
             return LightCommand::default();
         }
         let target = self.auto_targets.get(path).cloned().unwrap_or_default();
-        LightCommand { brightness: target.brightness, kelvin: target.kelvin, ..Default::default() }
+        LightCommand {
+            brightness: target.brightness,
+            kelvin: target.kelvin,
+            ..Default::default()
+        }
     }
 
     fn set_auto(&mut self, path: &str, auto: bool) {
@@ -558,7 +686,10 @@ impl Engine {
                     _ => None,
                 };
                 let count = control::stage_count(stages, value, previous);
-                (ActiveStaging::Stages(count), control::staged_lights(stages, count, previous))
+                (
+                    ActiveStaging::Stages(count),
+                    control::staged_lights(stages, count, previous),
+                )
             }
             Staging::Custom { proc_id, line } => {
                 let on = self.custom_staging(group, *proc_id, line, value);
@@ -566,8 +697,14 @@ impl Engine {
                     Some(ActiveStaging::Lights(lights)) => lights.clone(),
                     _ => group.members.iter().map(|m| m.light.clone()).collect(),
                 };
-                let off = lit_before.into_iter().filter(|light| !on.contains(light)).collect();
-                (ActiveStaging::Lights(on.clone()), control::StagedLights { on, off })
+                let off = lit_before
+                    .into_iter()
+                    .filter(|light| !on.contains(light))
+                    .collect();
+                (
+                    ActiveStaging::Lights(on.clone()),
+                    control::StagedLights { on, off },
+                )
             }
         };
         if previous.as_ref() != Some(&active) {
@@ -582,7 +719,13 @@ impl Engine {
 
     /// The lights `group`'s staging block picks for `value` (0–100); all of
     /// them when the block fails.
-    fn custom_staging(&mut self, group: &Group, proc_id: usize, line: &str, value: f64) -> Vec<String> {
+    fn custom_staging(
+        &mut self,
+        group: &Group,
+        proc_id: usize,
+        line: &str,
+        value: f64,
+    ) -> Vec<String> {
         let picked = self
             .script
             .staging(proc_id, value / 100.0, Local::now().timestamp())
@@ -629,7 +772,10 @@ impl Engine {
 
     fn publish(&self, path: &str) {
         if self.exposed.contains(path) {
-            let _ = self.updates.send(Update::Entity { path: path.to_string(), state: self.state(path) });
+            let _ = self.updates.send(Update::Entity {
+                path: path.to_string(),
+                state: self.state(path),
+            });
         }
     }
 
@@ -742,7 +888,11 @@ end
         let store = Store::open(&dir).unwrap();
         let (tx, updates) = mpsc::unbounded_channel();
         let engine = Engine::new(Arc::new(model), script, Adapters::none(), store, tx);
-        Harness { engine, updates, dir }
+        Harness {
+            engine,
+            updates,
+            dir,
+        }
     }
 
     impl Harness {
@@ -757,7 +907,12 @@ end
         }
 
         async fn homekit(&mut self, path: &str, change: Change) {
-            self.engine.handle_input(Input::Entity { path: path.into(), change }).await;
+            self.engine
+                .handle_input(Input::Entity {
+                    path: path.into(),
+                    change,
+                })
+                .await;
         }
     }
 
@@ -767,15 +922,25 @@ end
         assert!(h.engine.all_auto());
 
         h.homekit("Küche/Spots", Change::On(true)).await;
-        assert!(h.engine.is_auto("Küche/Spots"), "switching on alone is not an override");
+        assert!(
+            h.engine.is_auto("Küche/Spots"),
+            "switching on alone is not an override"
+        );
 
         h.homekit("Küche/Spots", Change::Brightness(60.0)).await;
         assert!(!h.engine.is_auto("Küche/Spots"));
         assert_eq!(h.last_auto_update(), Some(false));
-        assert_eq!(h.engine.state("Küche/spot2").brightness, 30.0, "mapping applies to members");
+        assert_eq!(
+            h.engine.state("Küche/spot2").brightness,
+            30.0,
+            "mapping applies to members"
+        );
 
         h.homekit("Küche/Spots", Change::On(false)).await;
-        assert!(!h.engine.is_auto("Küche/Spots"), "switching off alone keeps the override");
+        assert!(
+            !h.engine.is_auto("Küche/Spots"),
+            "switching off alone keeps the override"
+        );
         h.homekit("Küche/Spots", Change::On(true)).await;
         assert!(h.engine.is_auto("Küche/Spots"));
         assert_eq!(h.last_auto_update(), Some(true));
@@ -784,21 +949,34 @@ end
     #[tokio::test]
     async fn adapt_moves_only_auto_entities_and_is_used_when_switching_on() {
         let mut h = harness("adapt");
-        let adapt = |kelvin| vec![Action::Adapt {
-            targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
-            need: None,
-            kelvin: Some(kelvin),
-            transition: Some(60.0),
-        }];
+        let adapt = |kelvin| {
+            vec![Action::Adapt {
+                targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
+                need: None,
+                kelvin: Some(kelvin),
+                transition: Some(60.0),
+            }]
+        };
 
         h.homekit("Flur/Licht", Change::On(true)).await;
         h.homekit("Flur/Licht", Change::Kelvin(3000.0)).await;
         h.engine.execute(adapt(2400.0), Origin::Automation).await;
-        assert_eq!(h.engine.state("Flur/Licht").kelvin, Some(3000.0), "overridden entity keeps its value");
-        assert!(!h.engine.state("Küche/Spots").on, "adapt does not switch anything on");
+        assert_eq!(
+            h.engine.state("Flur/Licht").kelvin,
+            Some(3000.0),
+            "overridden entity keeps its value"
+        );
+        assert!(
+            !h.engine.state("Küche/Spots").on,
+            "adapt does not switch anything on"
+        );
 
         h.homekit("Küche/Spots", Change::On(true)).await;
-        assert_eq!(h.engine.state("Küche/Spots").kelvin, Some(2400.0), "comes on at the current sun values");
+        assert_eq!(
+            h.engine.state("Küche/Spots").kelvin,
+            Some(2400.0),
+            "comes on at the current sun values"
+        );
         h.engine.execute(adapt(4000.0), Origin::Automation).await;
         assert_eq!(h.engine.state("Küche/spot1").kelvin, Some(4000.0));
     }
@@ -807,31 +985,58 @@ end
     async fn adapt_subtracts_room_daylight_from_the_need() {
         let mut h = harness("need");
         // Full sky, sun behind the south window: Küche gets 0.5 × 1.0 daylight.
-        h.engine.sun = Some(sun::SunPosition { elevation: 30.0, azimuth: 0.0 });
-        let adapt = |need| vec![Action::Adapt {
-            targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
-            need: Some(need),
-            kelvin: None,
-            transition: None,
-        }];
+        h.engine.sun = Some(sun::SunPosition {
+            elevation: 30.0,
+            azimuth: 0.0,
+        });
+        let adapt = |need| {
+            vec![Action::Adapt {
+                targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
+                need: Some(need),
+                kelvin: None,
+                transition: None,
+            }]
+        };
         let brightness = |h: &Harness, path| h.engine.state(path).brightness;
         h.homekit("Küche/Spots", Change::On(true)).await;
         h.homekit("Flur/Licht", Change::On(true)).await;
 
         h.engine.execute(adapt(0.8), Origin::Automation).await;
-        assert!((brightness(&h, "Küche/Spots") - 30.0).abs() < 1e-9, "daylight subtracted");
-        assert!((brightness(&h, "Küche/spot2") - 15.0).abs() < 1e-9, "then the mapping");
-        assert_eq!(brightness(&h, "Flur/Licht"), 80.0, "no daylight in the hall");
+        assert!(
+            (brightness(&h, "Küche/Spots") - 30.0).abs() < 1e-9,
+            "daylight subtracted"
+        );
+        assert!(
+            (brightness(&h, "Küche/spot2") - 15.0).abs() < 1e-9,
+            "then the mapping"
+        );
+        assert_eq!(
+            brightness(&h, "Flur/Licht"),
+            80.0,
+            "no daylight in the hall"
+        );
 
         h.engine.execute(adapt(0.3), Origin::Automation).await;
-        assert_eq!(brightness(&h, "Küche/Spots"), COMFORT_MINIMUM, "daylight exceeds the need");
+        assert_eq!(
+            brightness(&h, "Küche/Spots"),
+            COMFORT_MINIMUM,
+            "daylight exceeds the need"
+        );
         h.engine.execute(adapt(0.0), Origin::Automation).await;
         assert_eq!(brightness(&h, "Flur/Licht"), COMFORT_MINIMUM);
 
         h.homekit("Küche/Spots", Change::Brightness(40.0)).await;
-        assert_eq!(brightness(&h, "Küche/Spots"), 40.0, "an override is the need itself");
+        assert_eq!(
+            brightness(&h, "Küche/Spots"),
+            40.0,
+            "an override is the need itself"
+        );
         h.engine.execute(adapt(0.8), Origin::Automation).await;
-        assert_eq!(brightness(&h, "Küche/Spots"), 40.0, "and adapt leaves it alone");
+        assert_eq!(
+            brightness(&h, "Küche/Spots"),
+            40.0,
+            "and adapt leaves it alone"
+        );
     }
 
     #[tokio::test]
@@ -843,22 +1048,50 @@ end
         };
 
         h.homekit("Bad/Licht", Change::On(true)).await;
-        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (Some(100.0), Some(100.0), Some(100.0)));
+        assert_eq!(
+            (light(&h, "a"), light(&h, "b"), light(&h, "c")),
+            (Some(100.0), Some(100.0), Some(100.0))
+        );
 
         h.homekit("Bad/Licht", Change::Brightness(20.0)).await;
-        assert_eq!(h.engine.state("Bad/Licht").brightness, 20.0, "HomeKit shows the need");
-        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (None, Some(60.0), None), "an override is staged too");
+        assert_eq!(
+            h.engine.state("Bad/Licht").brightness,
+            20.0,
+            "HomeKit shows the need"
+        );
+        assert_eq!(
+            (light(&h, "a"), light(&h, "b"), light(&h, "c")),
+            (None, Some(60.0), None),
+            "an override is staged too"
+        );
 
         h.homekit("Bad/Licht", Change::On(false)).await;
         h.homekit("Bad/Licht", Change::On(true)).await;
         assert!(h.engine.is_auto("Bad/Licht"));
-        let adapt = |need| vec![Action::Adapt { targets: vec!["Bad/Licht".into()], need: Some(need), kelvin: None, transition: Some(60.0) }];
+        let adapt = |need| {
+            vec![Action::Adapt {
+                targets: vec!["Bad/Licht".into()],
+                need: Some(need),
+                kelvin: None,
+                transition: Some(60.0),
+            }]
+        };
         h.engine.execute(adapt(0.5), Origin::Automation).await;
-        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (Some(50.0), Some(50.0), Some(50.0)));
+        assert_eq!(
+            (light(&h, "a"), light(&h, "b"), light(&h, "c")),
+            (Some(50.0), Some(50.0), Some(50.0))
+        );
         h.engine.execute(adapt(0.26), Origin::Automation).await;
-        assert_eq!(light(&h, "a"), Some(26.0), "hysteresis keeps both stages above 75 per light");
+        assert_eq!(
+            light(&h, "a"),
+            Some(26.0),
+            "hysteresis keeps both stages above 75 per light"
+        );
         h.engine.execute(adapt(0.2), Origin::Automation).await;
-        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (None, Some(60.0), None));
+        assert_eq!(
+            (light(&h, "a"), light(&h, "b"), light(&h, "c")),
+            (None, Some(60.0), None)
+        );
     }
 
     #[tokio::test]
@@ -866,20 +1099,37 @@ end
         let mut h = harness("cross-fade");
         h.homekit("Bad/Licht", Change::Brightness(20.0)).await;
 
-        let mut command = LightCommand { brightness: Some(50.0), ..Default::default() };
+        let mut command = LightCommand {
+            brightness: Some(50.0),
+            ..Default::default()
+        };
         let staged = h.engine.stage("Bad/Licht", &mut command).unwrap();
         assert_eq!(staged.on.len(), 3, "the second stage comes on");
         assert_eq!(command.transition, Some(MIN_STAGE_TRANSITION));
         assert_eq!(command.on, Some(true));
 
-        let mut command = LightCommand { brightness: Some(45.0), transition: Some(60.0), ..Default::default() };
+        let mut command = LightCommand {
+            brightness: Some(45.0),
+            transition: Some(60.0),
+            ..Default::default()
+        };
         let staged = h.engine.stage("Bad/Licht", &mut command).unwrap();
         assert!(staged.off.is_empty());
-        assert_eq!(command.transition, Some(60.0), "longer transitions are kept");
+        assert_eq!(
+            command.transition,
+            Some(60.0),
+            "longer transitions are kept"
+        );
 
-        let mut off = LightCommand { on: Some(false), ..Default::default() };
+        let mut off = LightCommand {
+            on: Some(false),
+            ..Default::default()
+        };
         assert!(h.engine.stage("Bad/Licht", &mut off).is_none());
-        assert!(!h.engine.active_stages.contains_key("Bad/Licht"), "switching off forgets the stages");
+        assert!(
+            !h.engine.active_stages.contains_key("Bad/Licht"),
+            "switching off forgets the stages"
+        );
     }
 
     #[tokio::test]
@@ -889,17 +1139,35 @@ end
             let state = h.engine.state(&format!("Bad/{name}"));
             state.on.then_some(state.brightness)
         };
-        let adapt = |need| vec![Action::Adapt { targets: vec!["Bad/Spiegel".into()], need: Some(need), kelvin: None, transition: None }];
+        let adapt = |need| {
+            vec![Action::Adapt {
+                targets: vec!["Bad/Spiegel".into()],
+                need: Some(need),
+                kelvin: None,
+                transition: None,
+            }]
+        };
         h.homekit("Bad/Spiegel", Change::On(true)).await;
 
         h.engine.execute(adapt(0.3), Origin::Automation).await;
-        assert_eq!((lit(&h, "a"), lit(&h, "b")), (Some(60.0), None), "one of two lights carries 0.3 · 2");
+        assert_eq!(
+            (lit(&h, "a"), lit(&h, "b")),
+            (Some(60.0), None),
+            "one of two lights carries 0.3 · 2"
+        );
         h.engine.execute(adapt(0.8), Origin::Automation).await;
         assert_eq!((lit(&h, "a"), lit(&h, "b")), (Some(80.0), Some(80.0)));
-        assert_eq!(h.engine.active_stages["Bad/Spiegel"], ActiveStaging::Lights(vec!["Bad/a".into(), "Bad/b".into()]));
+        assert_eq!(
+            h.engine.active_stages["Bad/Spiegel"],
+            ActiveStaging::Lights(vec!["Bad/a".into(), "Bad/b".into()])
+        );
 
         h.homekit("Bad/Wanne", Change::Brightness(30.0)).await;
-        assert_eq!((lit(&h, "b"), lit(&h, "c")), (Some(30.0), Some(30.0)), "a failing block lights everything");
+        assert_eq!(
+            (lit(&h, "b"), lit(&h, "c")),
+            (Some(30.0), Some(30.0)),
+            "a failing block lights everything"
+        );
     }
 
     #[tokio::test]
@@ -920,25 +1188,58 @@ end
         assert_eq!(h.engine.state("Küche/Spots").brightness, 90.0);
 
         h.engine.handle_input(Input::Scene("Morgen".into())).await;
-        assert!(h.engine.is_auto("Küche/Spots"), "auto scenes put their entities back into auto");
+        assert!(
+            h.engine.is_auto("Küche/Spots"),
+            "auto scenes put their entities back into auto"
+        );
 
         h.engine.handle_input(Input::Scene("Kette".into())).await;
-        assert!(!h.engine.is_auto("Küche/Spots"), "nested scenes run with their own mode");
+        assert!(
+            !h.engine.is_auto("Küche/Spots"),
+            "nested scenes run with their own mode"
+        );
     }
 
     #[tokio::test]
     async fn device_events_fire_triggers_and_reports_update_groups() {
         let mut h = harness("events");
-        let sensor = DeviceRef { adapter: "z2m".into(), kind: AdapterKind::Zigbee, device: "0x11".into() };
-        let event = AdapterEvent::Device { device: sensor, event: "motion".into(), data: json!({"occupancy": true}) };
+        let sensor = DeviceRef {
+            adapter: "z2m".into(),
+            kind: AdapterKind::Zigbee,
+            device: "0x11".into(),
+        };
+        let event = AdapterEvent::Device {
+            device: sensor,
+            event: "motion".into(),
+            data: json!({"occupancy": true}),
+        };
         h.engine.handle_adapter_event(event).await;
         assert!(h.engine.state("Flur/Licht").on);
 
-        let spot = DeviceRef { adapter: "z2m".into(), kind: AdapterKind::Zigbee, device: "0x01".into() };
-        let report = LightReport { on: Some(true), brightness: Some(50.0), kelvin: None };
-        h.engine.handle_adapter_event(AdapterEvent::Light { device: spot, report }).await;
-        assert!(h.engine.state("Küche/Spots").on, "a group is on while any member is");
-        assert!(h.engine.is_auto("Küche/Spots"), "device reports never change auto mode");
+        let spot = DeviceRef {
+            adapter: "z2m".into(),
+            kind: AdapterKind::Zigbee,
+            device: "0x01".into(),
+        };
+        let report = LightReport {
+            on: Some(true),
+            brightness: Some(50.0),
+            kelvin: None,
+        };
+        h.engine
+            .handle_adapter_event(AdapterEvent::Light {
+                device: spot,
+                report,
+            })
+            .await;
+        assert!(
+            h.engine.state("Küche/Spots").on,
+            "a group is on while any member is"
+        );
+        assert!(
+            h.engine.is_auto("Küche/Spots"),
+            "device reports never change auto mode"
+        );
     }
 
     #[tokio::test]

@@ -26,7 +26,13 @@ pub fn check(config: &Path) -> Result<()> {
 pub async fn discover(config: &Path, state_dir: &Path) -> Result<()> {
     let (_, model) = load(config)?;
     for adapter in &model.adapters {
-        if let AdapterConfig::Hue { name, host, key: None, .. } = adapter {
+        if let AdapterConfig::Hue {
+            name,
+            host,
+            key: None,
+            ..
+        } = adapter
+        {
             if adapter::hue::load_key(state_dir, name)?.is_none() {
                 pair_hue(state_dir, name, host).await?;
             }
@@ -35,21 +41,34 @@ pub async fn discover(config: &Path, state_dir: &Path) -> Result<()> {
 
     let (events, _) = mpsc::unbounded_channel();
     let adapters = Adapters::connect(&model, state_dir, events).await?;
-    let referenced: HashSet<&model::DeviceRef> =
-        model.lights.values().map(|l| &l.device).chain(model.sensors.values().map(|s| &s.device)).collect();
+    let referenced: HashSet<&model::DeviceRef> = model
+        .lights
+        .values()
+        .map(|l| &l.device)
+        .chain(model.sensors.values().map(|s| &s.device))
+        .collect();
 
     let mut failed = false;
     for config in &model.adapters {
-        let adapter = adapters.get(config.name()).expect("every configured adapter is connected");
+        let adapter = adapters
+            .get(config.name())
+            .expect("every configured adapter is connected");
         println!("# {} {:?}", config.kind(), config.name());
         match adapter.discover().await {
             Ok(devices) => {
-                let new: Vec<_> = devices.into_iter().filter(|d| !referenced.contains(&d.device)).collect();
+                let new: Vec<_> = devices
+                    .into_iter()
+                    .filter(|d| !referenced.contains(&d.device))
+                    .collect();
                 if new.is_empty() {
                     println!("# every device is already in the config");
                 }
                 for device in new {
-                    println!("{:<60} # {}", adapter::dsl_snippet(&device, &model), device.description.trim());
+                    println!(
+                        "{:<60} # {}",
+                        adapter::dsl_snippet(&device, &model),
+                        device.description.trim()
+                    );
                 }
             }
             Err(error) => {
@@ -75,17 +94,34 @@ pub async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String
     }
     let command = control::parse_values(values)?;
     let group = model.groups.get(entity);
-    let staged = match (group.and_then(|group| group.staging.as_ref()), command.brightness) {
-        (Some(Staging::Stages(stages)), Some(brightness)) => {
-            Some(control::staged_lights(stages, control::stage_count(stages, brightness, None), None))
-        }
+    let staged = match (
+        group.and_then(|group| group.staging.as_ref()),
+        command.brightness,
+    ) {
+        (Some(Staging::Stages(stages)), Some(brightness)) => Some(control::staged_lights(
+            stages,
+            control::stage_count(stages, brightness, None),
+            None,
+        )),
         (Some(Staging::Custom { proc_id, line }), Some(brightness)) => {
             let group = group.expect("only groups have staging");
             let names = script
-                .staging(*proc_id, brightness / 100.0, chrono::Local::now().timestamp())
-                .map_err(|error| anyhow::anyhow!("staging block at {line}: {}", script::describe(&error)))?;
-            let on = control::picked_lights(group, &names).map_err(|error| anyhow::anyhow!("{line}: {error}"))?;
-            let off = group.members.iter().map(|m| m.light.clone()).filter(|light| !on.contains(light)).collect();
+                .staging(
+                    *proc_id,
+                    brightness / 100.0,
+                    chrono::Local::now().timestamp(),
+                )
+                .map_err(|error| {
+                    anyhow::anyhow!("staging block at {line}: {}", script::describe(&error))
+                })?;
+            let on = control::picked_lights(group, &names)
+                .map_err(|error| anyhow::anyhow!("{line}: {error}"))?;
+            let off = group
+                .members
+                .iter()
+                .map(|m| m.light.clone())
+                .filter(|light| !on.contains(light))
+                .collect();
             Some(control::StagedLights { on, off })
         }
         _ => None,
@@ -96,7 +132,10 @@ pub async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String
     let adapters = Adapters::connect(&model, state_dir, events).await?;
     let failed = control::send_all(&adapters, &commands).await;
     // MQTT publishes leave from the client's background task; give it time.
-    if commands.iter().any(|(_, device, _)| matches!(adapters.get(&device.adapter), Some(Adapter::Zigbee(_)))) {
+    if commands
+        .iter()
+        .any(|(_, device, _)| matches!(adapters.get(&device.adapter), Some(Adapter::Zigbee(_))))
+    {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     if !failed.is_empty() {
@@ -125,7 +164,9 @@ pub async fn run(config: &Path, state_dir: &Path) -> Result<()> {
 
     let (inputs_tx, inputs) = mpsc::unbounded_channel();
     let (updates_tx, updates) = mpsc::unbounded_channel();
-    homekit::start(&model, &mut store, state_dir, inputs_tx, updates).await.context("cannot start HomeKit")?;
+    homekit::start(&model, &mut store, state_dir, inputs_tx, updates)
+        .await
+        .context("cannot start HomeKit")?;
 
     let engine = engine::Engine::new(Arc::clone(&model), script, adapters, store, updates_tx);
     // mruby is single-threaded, so the engine stays on this thread.
@@ -152,7 +193,9 @@ fn load(config: &Path) -> Result<(Script, Model)> {
 }
 
 async fn pair_hue(state_dir: &Path, name: &str, host: &str) -> Result<()> {
-    eprintln!("hue {name:?} is not paired: press the link button on the bridge at {host} (waiting 30 s)");
+    eprintln!(
+        "hue {name:?} is not paired: press the link button on the bridge at {host} (waiting 30 s)"
+    );
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
         match adapter::hue::pair(state_dir, name, host).await {

@@ -16,7 +16,8 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
 use super::{
-    mired_to_kelvin, AdapterEvent, DeviceClass, DiscoveredDevice, LightCommand, LightReport, MiredRange,
+    mired_to_kelvin, AdapterEvent, DeviceClass, DiscoveredDevice, LightCommand, LightReport,
+    MiredRange,
 };
 use crate::model::{AdapterKind, DeviceRef};
 
@@ -101,7 +102,12 @@ struct ProductData {
 }
 
 impl Bridge {
-    pub(crate) fn connect(name: &str, host: &str, key: &str, events: mpsc::UnboundedSender<AdapterEvent>) -> Arc<Self> {
+    pub(crate) fn connect(
+        name: &str,
+        host: &str,
+        key: &str,
+        events: mpsc::UnboundedSender<AdapterEvent>,
+    ) -> Arc<Self> {
         let bridge = Arc::new(Self {
             name: name.to_string(),
             base_url: format!("https://{host}"),
@@ -139,7 +145,10 @@ impl Bridge {
             let range = light
                 .color_temperature
                 .and_then(|ct| ct.mirek_schema)
-                .map(|schema| MiredRange { min: schema.mirek_minimum, max: schema.mirek_maximum });
+                .map(|schema| MiredRange {
+                    min: schema.mirek_minimum,
+                    max: schema.mirek_maximum,
+                });
             ranges.insert(light.id, range);
         }
         Ok(())
@@ -151,26 +160,44 @@ impl Bridge {
                 log::warn!("{error:#}");
             }
         }
-        let range = self.colour_ranges.lock().unwrap().get(light_id).copied().flatten();
+        let range = self
+            .colour_ranges
+            .lock()
+            .unwrap()
+            .get(light_id)
+            .copied()
+            .flatten();
 
         let mut body = serde_json::Map::new();
         if let Some(on) = command.on {
             body.insert("on".into(), json!({ "on": on }));
         }
         if let Some(brightness) = command.brightness {
-            body.insert("dimming".into(), json!({ "brightness": brightness.clamp(1.0, 100.0) }));
+            body.insert(
+                "dimming".into(),
+                json!({ "brightness": brightness.clamp(1.0, 100.0) }),
+            );
         }
         if let (Some(kelvin), Some(range)) = (command.kelvin, range) {
-            body.insert("color_temperature".into(), json!({ "mirek": range.clamp_kelvin(kelvin).round() as u32 }));
+            body.insert(
+                "color_temperature".into(),
+                json!({ "mirek": range.clamp_kelvin(kelvin).round() as u32 }),
+            );
         }
         if let Some(transition) = command.transition {
-            body.insert("dynamics".into(), json!({ "duration": (transition.max(0.0) * 1000.0).round() as u64 }));
+            body.insert(
+                "dynamics".into(),
+                json!({ "duration": (transition.max(0.0) * 1000.0).round() as u64 }),
+            );
         }
 
         let _spacing = self.send_lock.lock().await;
         let response = self
             .http
-            .put(format!("{}/clip/v2/resource/light/{light_id}", self.base_url))
+            .put(format!(
+                "{}/clip/v2/resource/light/{light_id}",
+                self.base_url
+            ))
             .header("hue-application-key", &self.key)
             .json(&Value::Object(body))
             .send()
@@ -190,11 +217,18 @@ impl Bridge {
         let device_names: HashMap<&str, (&str, &str)> = devices
             .iter()
             .map(|d| {
-                let product = d.product_data.as_ref().map_or("", |p| p.product_name.as_str());
+                let product = d
+                    .product_data
+                    .as_ref()
+                    .map_or("", |p| p.product_name.as_str());
                 (d.id.as_str(), (d.metadata.name.as_str(), product))
             })
             .collect();
-        let device_ref = |id: &str| DeviceRef { adapter: self.name.clone(), kind: AdapterKind::Hue, device: id.to_string() };
+        let device_ref = |id: &str| DeviceRef {
+            adapter: self.name.clone(),
+            kind: AdapterKind::Hue,
+            device: id.to_string(),
+        };
 
         let mut found = Vec::new();
         for light in self.get::<LightResource>("light").await? {
@@ -208,7 +242,10 @@ impl Bridge {
         }
         for (resource, label) in [("motion", "motion sensor"), ("button", "button")] {
             for sensor in self.get::<SensorResource>(resource).await? {
-                let (name, product) = device_names.get(sensor.owner.rid.as_str()).copied().unwrap_or(("", ""));
+                let (name, product) = device_names
+                    .get(sensor.owner.rid.as_str())
+                    .copied()
+                    .unwrap_or(("", ""));
                 let name = match sensor.metadata.and_then(|m| m.control_id) {
                     Some(control) => format!("{name} {control}"),
                     None => name.to_string(),
@@ -228,7 +265,10 @@ impl Bridge {
         loop {
             match self.read_event_stream(&events).await {
                 Ok(()) => log::warn!("hue {}: event stream ended; reconnecting", self.name),
-                Err(error) => log::warn!("hue {}: event stream failed: {error:#}; reconnecting in 5 s", self.name),
+                Err(error) => log::warn!(
+                    "hue {}: event stream failed: {error:#}; reconnecting in 5 s",
+                    self.name
+                ),
             }
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
@@ -288,8 +328,14 @@ impl Bridge {
 }
 
 fn parse_resource_update(bridge: &str, resource: &Value) -> Vec<AdapterEvent> {
-    let Some(id) = resource["id"].as_str() else { return Vec::new() };
-    let device = DeviceRef { adapter: bridge.to_string(), kind: AdapterKind::Hue, device: id.to_string() };
+    let Some(id) = resource["id"].as_str() else {
+        return Vec::new();
+    };
+    let device = DeviceRef {
+        adapter: bridge.to_string(),
+        kind: AdapterKind::Hue,
+        device: id.to_string(),
+    };
     let device_event = |event: &str| AdapterEvent::Device {
         device: device.clone(),
         event: event.to_string(),
@@ -300,7 +346,9 @@ fn parse_resource_update(bridge: &str, resource: &Value) -> Vec<AdapterEvent> {
             let report = LightReport {
                 on: resource["on"]["on"].as_bool(),
                 brightness: resource["dimming"]["brightness"].as_f64(),
-                kelvin: resource["color_temperature"]["mirek"].as_f64().map(mired_to_kelvin),
+                kelvin: resource["color_temperature"]["mirek"]
+                    .as_f64()
+                    .map(mired_to_kelvin),
             };
             vec![AdapterEvent::Light { device, report }]
         }
@@ -317,7 +365,11 @@ fn parse_resource_update(bridge: &str, resource: &Value) -> Vec<AdapterEvent> {
             match action {
                 Some(action) => {
                     data["action"] = json!(action);
-                    let event = |name: &str| AdapterEvent::Device { device: device.clone(), event: name.into(), data: data.clone() };
+                    let event = |name: &str| AdapterEvent::Device {
+                        device: device.clone(),
+                        event: name.into(),
+                        data: data.clone(),
+                    };
                     vec![event("action"), event("change")]
                 }
                 None => Vec::new(),
@@ -360,13 +412,17 @@ pub(crate) async fn pair(state_dir: &Path, bridge: &str, host: &str) -> Result<S
         .with_context(|| format!("hue {bridge}: cannot reach {host}"))?
         .json()
         .await?;
-    let first = response.first().ok_or_else(|| anyhow!("hue {bridge}: empty pairing response"))?;
+    let first = response
+        .first()
+        .ok_or_else(|| anyhow!("hue {bridge}: empty pairing response"))?;
     if let Some(key) = first["success"]["username"].as_str() {
         std::fs::create_dir_all(state_dir).context("cannot create the state directory")?;
         std::fs::write(key_path(state_dir, bridge), key).context("cannot store hue key")?;
         return Ok(key.to_string());
     }
-    let description = first["error"]["description"].as_str().unwrap_or("unknown error");
+    let description = first["error"]["description"]
+        .as_str()
+        .unwrap_or("unknown error");
     bail!("hue {bridge}: {description}")
 }
 
@@ -379,7 +435,9 @@ mod tests {
     fn parses_light_and_motion_updates() {
         let light = json!({"id": "abc", "type": "light", "on": {"on": true}, "dimming": {"brightness": 42.0}});
         let events = parse_resource_update("bridge", &light);
-        let AdapterEvent::Light { report, .. } = &events[0] else { panic!() };
+        let AdapterEvent::Light { report, .. } = &events[0] else {
+            panic!()
+        };
         assert_eq!(report.on, Some(true));
         assert_eq!(report.brightness, Some(42.0));
 

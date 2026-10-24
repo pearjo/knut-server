@@ -15,7 +15,8 @@ use serde_json::{json, Value};
 use tokio::sync::{mpsc, watch};
 
 use super::{
-    mired_to_kelvin, AdapterEvent, DeviceClass, DiscoveredDevice, LightCommand, LightReport, MiredRange,
+    mired_to_kelvin, AdapterEvent, DeviceClass, DiscoveredDevice, LightCommand, LightReport,
+    MiredRange,
 };
 use crate::model::{AdapterKind, DeviceRef};
 
@@ -85,7 +86,10 @@ impl Device {
         let mut colour_temperature = None;
         let mut description = String::new();
         if let Some(definition) = &device.definition {
-            description = format!("{} {} – {}", definition.vendor, definition.model, definition.description);
+            description = format!(
+                "{} {} – {}",
+                definition.vendor, definition.model, definition.description
+            );
             for expose in &definition.exposes {
                 if expose.expose_type == "light" {
                     class = Some(DeviceClass::Light);
@@ -102,7 +106,10 @@ impl Device {
                         }
                     }
                 } else if class.is_none()
-                    && matches!(expose.name.as_deref(), Some("occupancy" | "action" | "contact" | "presence"))
+                    && matches!(
+                        expose.name.as_deref(),
+                        Some("occupancy" | "action" | "contact" | "presence")
+                    )
                 {
                     class = Some(DeviceClass::Sensor);
                 }
@@ -121,7 +128,12 @@ impl Device {
 }
 
 impl Zigbee {
-    pub(crate) fn connect(name: &str, url: &str, base_topic: &str, events: mpsc::UnboundedSender<AdapterEvent>) -> Result<Arc<Self>> {
+    pub(crate) fn connect(
+        name: &str,
+        url: &str,
+        base_topic: &str,
+        events: mpsc::UnboundedSender<AdapterEvent>,
+    ) -> Result<Arc<Self>> {
         let options = mqtt_options(url, name)?;
         let (client, mut event_loop) = AsyncClient::new(options, 256);
         let zigbee = Self::new(name, base_topic, client);
@@ -142,7 +154,10 @@ impl Zigbee {
                     }
                     Ok(_) => {}
                     Err(error) => {
-                        log::warn!("zigbee {}: MQTT connection error: {error}; retrying in 5 s", this.name);
+                        log::warn!(
+                            "zigbee {}: MQTT connection error: {error}; retrying in 5 s",
+                            this.name
+                        );
                         tokio::time::sleep(Duration::from_secs(5)).await;
                     }
                 }
@@ -167,7 +182,10 @@ impl Zigbee {
         payload: &[u8],
         events: &mpsc::UnboundedSender<AdapterEvent>,
     ) {
-        let Some(subtopic) = topic.strip_prefix(&self.base_topic).and_then(|t| t.strip_prefix('/')) else {
+        let Some(subtopic) = topic
+            .strip_prefix(&self.base_topic)
+            .and_then(|t| t.strip_prefix('/'))
+        else {
             return;
         };
         if subtopic == "bridge/devices" {
@@ -186,29 +204,54 @@ impl Zigbee {
                         self.request_light_states(devices.values());
                     }
                 }
-                Err(error) => log::warn!("zigbee {}: cannot parse bridge/devices: {error}", self.name),
+                Err(error) => {
+                    log::warn!("zigbee {}: cannot parse bridge/devices: {error}", self.name)
+                }
             }
             return;
         }
-        if subtopic.starts_with("bridge/") || subtopic.ends_with("/set") || subtopic.ends_with("/get") {
+        if subtopic.starts_with("bridge/")
+            || subtopic.ends_with("/set")
+            || subtopic.ends_with("/get")
+        {
             return;
         }
         if subtopic.ends_with("/availability") {
             return;
         }
 
-        let Ok(Value::Object(data)) = serde_json::from_slice::<Value>(payload) else { return };
+        let Ok(Value::Object(data)) = serde_json::from_slice::<Value>(payload) else {
+            return;
+        };
         let mut devices = self.devices.lock().unwrap();
-        let Some(device) = devices.values_mut().find(|d| d.friendly_name == subtopic) else { return };
-        let device_ref = DeviceRef { adapter: self.name.clone(), kind: AdapterKind::Zigbee, device: device.ieee.clone() };
+        let Some(device) = devices.values_mut().find(|d| d.friendly_name == subtopic) else {
+            return;
+        };
+        let device_ref = DeviceRef {
+            adapter: self.name.clone(),
+            kind: AdapterKind::Zigbee,
+            device: device.ieee.clone(),
+        };
 
         if device.class == Some(DeviceClass::Light) || data.contains_key("state") {
             let report = LightReport {
-                on: data.get("state").and_then(Value::as_str).map(|state| state.eq_ignore_ascii_case("ON")),
-                brightness: data.get("brightness").and_then(Value::as_f64).map(|b| b / MAX_BRIGHTNESS * 100.0),
-                kelvin: data.get("color_temp").and_then(Value::as_f64).map(mired_to_kelvin),
+                on: data
+                    .get("state")
+                    .and_then(Value::as_str)
+                    .map(|state| state.eq_ignore_ascii_case("ON")),
+                brightness: data
+                    .get("brightness")
+                    .and_then(Value::as_f64)
+                    .map(|b| b / MAX_BRIGHTNESS * 100.0),
+                kelvin: data
+                    .get("color_temp")
+                    .and_then(Value::as_f64)
+                    .map(mired_to_kelvin),
             };
-            let _ = events.send(AdapterEvent::Light { device: device_ref.clone(), report });
+            let _ = events.send(AdapterEvent::Light {
+                device: device_ref.clone(),
+                report,
+            });
         }
 
         let send_event = |event: &str| {
@@ -227,7 +270,11 @@ impl Zigbee {
             device.occupancy = Some(occupancy);
         }
         // zigbee2mqtt follows each action with an empty one to reset it.
-        if data.get("action").and_then(Value::as_str).is_some_and(|action| !action.is_empty()) {
+        if data
+            .get("action")
+            .and_then(Value::as_str)
+            .is_some_and(|action| !action.is_empty())
+        {
             send_event("action");
         }
         send_event("change");
@@ -238,8 +285,15 @@ impl Zigbee {
         let payload = json!({ "state": "", "brightness": "", "color_temp": "" }).to_string();
         for device in devices.filter(|d| d.class == Some(DeviceClass::Light)) {
             let topic = format!("{}/{}/get", self.base_topic, device.friendly_name);
-            if let Err(error) = self.client.try_publish(topic, QoS::AtMostOnce, false, payload.clone()) {
-                log::debug!("zigbee {}: cannot request state of {}: {error}", self.name, device.friendly_name);
+            if let Err(error) =
+                self.client
+                    .try_publish(topic, QoS::AtMostOnce, false, payload.clone())
+            {
+                log::debug!(
+                    "zigbee {}: cannot request state of {}: {error}",
+                    self.name,
+                    device.friendly_name
+                );
             }
         }
     }
@@ -250,7 +304,12 @@ impl Zigbee {
         let mut known = self.devices_known.subscribe();
         tokio::time::timeout(timeout, known.wait_for(|known| *known))
             .await
-            .map_err(|_| anyhow!("zigbee {}: no device list from zigbee2mqtt within {timeout:?}", self.name))??;
+            .map_err(|_| {
+                anyhow!(
+                    "zigbee {}: no device list from zigbee2mqtt within {timeout:?}",
+                    self.name
+                )
+            })??;
         Ok(())
     }
 
@@ -268,24 +327,35 @@ impl Zigbee {
             }
             let supports_brightness = device.is_none_or(|d| d.supports_brightness);
             if let (Some(brightness), true) = (command.brightness, supports_brightness) {
-                let value = (brightness.clamp(1.0, 100.0) / 100.0 * MAX_BRIGHTNESS).round().max(1.0);
+                let value = (brightness.clamp(1.0, 100.0) / 100.0 * MAX_BRIGHTNESS)
+                    .round()
+                    .max(1.0);
                 payload.insert("brightness".into(), json!(value as u32));
             }
             if let Some(kelvin) = command.kelvin {
                 match device.map(|d| d.colour_temperature) {
                     Some(Some(range)) => {
-                        payload.insert("color_temp".into(), json!(range.clamp_kelvin(kelvin).round() as u32));
+                        payload.insert(
+                            "color_temp".into(),
+                            json!(range.clamp_kelvin(kelvin).round() as u32),
+                        );
                     }
                     Some(None) => {}
                     None => {
-                        payload.insert("color_temp".into(), json!(super::kelvin_to_mired(kelvin).round() as u32));
+                        payload.insert(
+                            "color_temp".into(),
+                            json!(super::kelvin_to_mired(kelvin).round() as u32),
+                        );
                     }
                 }
             }
             if let Some(transition) = command.transition {
                 payload.insert("transition".into(), json!(transition.max(0.0)));
             }
-            (format!("{}/{friendly_name}/set", self.base_topic), Value::Object(payload).to_string())
+            (
+                format!("{}/{friendly_name}/set", self.base_topic),
+                Value::Object(payload).to_string(),
+            )
         };
         self.client
             .publish(topic, QoS::AtLeastOnce, false, payload)
@@ -300,7 +370,11 @@ impl Zigbee {
             .values()
             .filter_map(|device| {
                 Some(DiscoveredDevice {
-                    device: DeviceRef { adapter: self.name.clone(), kind: AdapterKind::Zigbee, device: device.ieee.clone() },
+                    device: DeviceRef {
+                        adapter: self.name.clone(),
+                        kind: AdapterKind::Zigbee,
+                        device: device.ieee.clone(),
+                    },
                     class: device.class?,
                     name: device.friendly_name.clone(),
                     description: device.description.clone(),
@@ -317,7 +391,9 @@ fn mqtt_options(url: &str, adapter: &str) -> Result<MqttOptions> {
     if url.scheme() != "mqtt" && url.scheme() != "tcp" {
         bail!("MQTT url must start with mqtt://, got {url}");
     }
-    let host = url.host_str().ok_or_else(|| anyhow!("MQTT url {url} has no host"))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow!("MQTT url {url} has no host"))?;
     let client_id = format!("knut-{adapter}-{}", std::process::id());
     let mut options = MqttOptions::new(client_id, host, url.port().unwrap_or(1883));
     options.set_keep_alive(Duration::from_secs(30));
@@ -361,9 +437,10 @@ mod tests {
         requests
             .try_iter()
             .filter_map(|request| match request {
-                Request::Publish(publish) => {
-                    Some((publish.topic.clone(), serde_json::from_slice(&publish.payload).unwrap()))
-                }
+                Request::Publish(publish) => Some((
+                    publish.topic.clone(),
+                    serde_json::from_slice(&publish.payload).unwrap(),
+                )),
                 _ => None,
             })
             .collect()
@@ -384,25 +461,65 @@ mod tests {
         assert_eq!(discovered.len(), 2);
         assert_eq!(discovered[0].class, DeviceClass::Light);
 
-        let command = LightCommand { on: Some(true), brightness: Some(50.0), kelvin: Some(2000.0), transition: Some(2.0) };
+        let command = LightCommand {
+            on: Some(true),
+            brightness: Some(50.0),
+            kelvin: Some(2000.0),
+            transition: Some(2.0),
+        };
         zigbee.send("0x01", &command).await.unwrap();
         let sent = published(&requests);
-        assert_eq!(sent[0].0, "zigbee2mqtt/kitchen/spot/set", "addressed by friendly name");
-        assert_eq!(sent[0].1, json!({"state": "ON", "brightness": 127, "color_temp": 454, "transition": 2.0}));
+        assert_eq!(
+            sent[0].0, "zigbee2mqtt/kitchen/spot/set",
+            "addressed by friendly name"
+        );
+        assert_eq!(
+            sent[0].1,
+            json!({"state": "ON", "brightness": 127, "color_temp": 454, "transition": 2.0})
+        );
 
-        zigbee.handle_message("zigbee2mqtt/kitchen/spot", br#"{"state":"ON","brightness":254,"color_temp":250}"#, &events_tx);
-        let Some(AdapterEvent::Light { device, report }) = events.recv().await else { panic!() };
+        zigbee.handle_message(
+            "zigbee2mqtt/kitchen/spot",
+            br#"{"state":"ON","brightness":254,"color_temp":250}"#,
+            &events_tx,
+        );
+        let Some(AdapterEvent::Light { device, report }) = events.recv().await else {
+            panic!()
+        };
         assert_eq!(device.device, "0x01");
-        assert_eq!(report, LightReport { on: Some(true), brightness: Some(100.0), kelvin: Some(4000.0) });
+        assert_eq!(
+            report,
+            LightReport {
+                on: Some(true),
+                brightness: Some(100.0),
+                kelvin: Some(4000.0)
+            }
+        );
 
-        zigbee.handle_message("zigbee2mqtt/hall motion", br#"{"occupancy":true}"#, &events_tx);
-        zigbee.handle_message("zigbee2mqtt/hall motion", br#"{"occupancy":false}"#, &events_tx);
-        zigbee.handle_message("zigbee2mqtt/hall motion", br#"{"occupancy":false}"#, &events_tx);
+        zigbee.handle_message(
+            "zigbee2mqtt/hall motion",
+            br#"{"occupancy":true}"#,
+            &events_tx,
+        );
+        zigbee.handle_message(
+            "zigbee2mqtt/hall motion",
+            br#"{"occupancy":false}"#,
+            &events_tx,
+        );
+        zigbee.handle_message(
+            "zigbee2mqtt/hall motion",
+            br#"{"occupancy":false}"#,
+            &events_tx,
+        );
         let mut names = Vec::new();
         while let Ok(AdapterEvent::Device { event, .. }) = events.try_recv() {
             names.push(event);
         }
-        assert_eq!(names, ["change", "motion", "change", "clear", "change", "change"], "clear only on a change");
+        assert_eq!(
+            names,
+            ["change", "motion", "change", "clear", "change", "change"],
+            "clear only on a change"
+        );
     }
 
     #[test]
@@ -424,6 +541,12 @@ mod tests {
         let device = Device::from_bridge(device);
         assert_eq!(device.class, Some(DeviceClass::Light));
         assert!(device.supports_brightness);
-        assert_eq!(device.colour_temperature, Some(MiredRange { min: 250.0, max: 454.0 }));
+        assert_eq!(
+            device.colour_temperature,
+            Some(MiredRange {
+                min: 250.0,
+                max: 454.0
+            })
+        );
     }
 }

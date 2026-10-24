@@ -32,9 +32,12 @@ impl Store {
             .with_context(|| format!("cannot create state directory {}", state_dir.display()))?;
         let path = state_dir.join("state.json");
         let state = match std::fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text).with_context(|| format!("{} is corrupt", path.display()))?,
+            Ok(text) => serde_json::from_str(&text)
+                .with_context(|| format!("{} is corrupt", path.display()))?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => State::default(),
-            Err(error) => return Err(error).with_context(|| format!("cannot read {}", path.display())),
+            Err(error) => {
+                return Err(error).with_context(|| format!("cannot read {}", path.display()))
+            }
         };
         Ok(Self { path, state })
     }
@@ -43,8 +46,10 @@ impl Store {
     pub(crate) fn save(&self) -> Result<()> {
         let temporary = self.path.with_extension("json.tmp");
         let text = serde_json::to_string_pretty(&self.state)?;
-        std::fs::write(&temporary, text).with_context(|| format!("cannot write {}", temporary.display()))?;
-        std::fs::rename(&temporary, &self.path).with_context(|| format!("cannot replace {}", self.path.display()))
+        std::fs::write(&temporary, text)
+            .with_context(|| format!("cannot write {}", temporary.display()))?;
+        std::fs::rename(&temporary, &self.path)
+            .with_context(|| format!("cannot replace {}", self.path.display()))
     }
 
     /// The accessory id for `key`, allocating a new one if needed. Id 1 is
@@ -53,7 +58,14 @@ impl Store {
         if let Some(id) = self.state.accessory_ids.get(key) {
             return *id;
         }
-        let id = self.state.accessory_ids.values().copied().max().unwrap_or(1) + 1;
+        let id = self
+            .state
+            .accessory_ids
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(1)
+            + 1;
         self.state.accessory_ids.insert(key.to_string(), id);
         id
     }

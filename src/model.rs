@@ -29,7 +29,15 @@ pub(crate) struct ScheduleDay {
 
 /// Weekday names in `Weekday::num_days_from_sunday` order, as the schedule
 /// is indexed.
-const WEEKDAY_NAMES: [&str; 7] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const WEEKDAY_NAMES: [&str; 7] = [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+];
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct HomeKitConfig {
@@ -212,10 +220,17 @@ const DIRECT_FADE_IN_ELEVATION: f64 = 5.0;
 impl Daylight {
     /// Daylight reaching the room, 0–1.
     pub(crate) fn at(&self, sun: SunPosition) -> f64 {
-        let sky = ease((sun.elevation - SKY_DARK_ELEVATION) / (SKY_FULL_ELEVATION - SKY_DARK_ELEVATION));
-        let windows = self.facing.iter().map(|facing| (sun.azimuth - facing).to_radians().cos().max(0.0)).sum::<f64>()
+        let sky =
+            ease((sun.elevation - SKY_DARK_ELEVATION) / (SKY_FULL_ELEVATION - SKY_DARK_ELEVATION));
+        let windows = self
+            .facing
+            .iter()
+            .map(|facing| (sun.azimuth - facing).to_radians().cos().max(0.0))
+            .sum::<f64>()
             / self.facing.len() as f64;
-        let direct = ease(sun.elevation / DIRECT_FADE_IN_ELEVATION) * sun.elevation.to_radians().cos() * windows;
+        let direct = ease(sun.elevation / DIRECT_FADE_IN_ELEVATION)
+            * sun.elevation.to_radians().cos()
+            * windows;
         (self.amount * (sky + direct)).min(1.0)
     }
 }
@@ -226,7 +241,16 @@ fn ease(x: f64) -> f64 {
 }
 
 fn compass_name(azimuth: f64) -> &'static str {
-    const NAMES: [&str; 8] = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+    const NAMES: [&str; 8] = [
+        "north",
+        "northeast",
+        "east",
+        "southeast",
+        "south",
+        "southwest",
+        "west",
+        "northwest",
+    ];
     NAMES[(azimuth / 45.0).round() as usize % 8]
 }
 
@@ -250,7 +274,10 @@ pub(crate) enum TriggerKind {
     /// Once per minute.
     SunTick,
     /// At sunrise or sunset, shifted by `offset_minutes`.
-    SunEvent { event: SunEvent, offset_minutes: i64 },
+    SunEvent {
+        event: SunEvent,
+        offset_minutes: i64,
+    },
     /// Every day at the given local times.
     Clock { times: Vec<chrono::NaiveTime> },
     /// An event reported by a sensor or light.
@@ -299,8 +326,16 @@ impl Model {
     /// Groups and individually exposed lights: everything HomeKit controls
     /// and that therefore has an auto/override mode.
     pub(crate) fn exposed_entities(&self) -> Vec<String> {
-        let groups = self.groups.values().filter(|g| g.exposed).map(|g| g.path.clone());
-        let lights = self.lights.values().filter(|l| l.exposed).map(|l| l.path.clone());
+        let groups = self
+            .groups
+            .values()
+            .filter(|g| g.exposed)
+            .map(|g| g.path.clone());
+        let lights = self
+            .lights
+            .values()
+            .filter(|l| l.exposed)
+            .map(|l| l.path.clone());
         groups.chain(lights).collect()
     }
 
@@ -317,7 +352,9 @@ impl Model {
     }
 
     pub(crate) fn sensor_by_device(&self, device: &DeviceRef) -> Option<&Sensor> {
-        self.sensors.values().find(|sensor| &sensor.device == device)
+        self.sensors
+            .values()
+            .find(|sensor| &sensor.device == device)
     }
 }
 
@@ -327,34 +364,62 @@ impl fmt::Display for Model {
             Some(location) => writeln!(f, "location  {:.4}, {:.4}", location.lat, location.lon)?,
             None => writeln!(f, "location  (none, sun triggers disabled)")?,
         }
-        writeln!(f, "homekit   {:?} on port {}", self.homekit.name, self.homekit.port)?;
+        writeln!(
+            f,
+            "homekit   {:?} on port {}",
+            self.homekit.name, self.homekit.port
+        )?;
         if let Some(schedule) = &self.schedule {
             writeln!(f)?;
             writeln!(f, "schedule")?;
             let clock = |minutes: u32| format!("{:02}:{:02}", minutes / 60 % 24, minutes % 60);
             for weekday in [1, 2, 3, 4, 5, 6, 0] {
                 let day = schedule[weekday];
-                let next_day = if day.bed >= 1440 { format!(" ({})", WEEKDAY_NAMES[(weekday + 1) % 7]) } else { String::new() };
+                let next_day = if day.bed >= 1440 {
+                    format!(" ({})", WEEKDAY_NAMES[(weekday + 1) % 7])
+                } else {
+                    String::new()
+                };
                 let name = WEEKDAY_NAMES[weekday];
-                writeln!(f, "  {name:<10} wake {}  bed {}{next_day}", clock(day.wake), clock(day.bed))?;
+                writeln!(
+                    f,
+                    "  {name:<10} wake {}  bed {}{next_day}",
+                    clock(day.wake),
+                    clock(day.bed)
+                )?;
             }
         }
         writeln!(f)?;
         writeln!(f, "adapters")?;
         for adapter in &self.adapters {
             match adapter {
-                AdapterConfig::Hue { name, host, .. } => writeln!(f, "  hue     {name:<12} {host}")?,
-                AdapterConfig::Zigbee { name, mqtt, base_topic, .. } => {
-                    writeln!(f, "  zigbee  {name:<12} {mqtt} ({base_topic})")?
+                AdapterConfig::Hue { name, host, .. } => {
+                    writeln!(f, "  hue     {name:<12} {host}")?
                 }
+                AdapterConfig::Zigbee {
+                    name,
+                    mqtt,
+                    base_topic,
+                    ..
+                } => writeln!(f, "  zigbee  {name:<12} {mqtt} ({base_topic})")?,
             }
         }
         for room in &self.rooms {
             writeln!(f)?;
             match &room.daylight {
                 Some(daylight) => {
-                    let facing: Vec<&str> = daylight.facing.iter().map(|azimuth| compass_name(*azimuth)).collect();
-                    writeln!(f, "room {}  daylight {} facing {}", room.name, daylight.amount, facing.join(", "))?
+                    let facing: Vec<&str> = daylight
+                        .facing
+                        .iter()
+                        .map(|azimuth| compass_name(*azimuth))
+                        .collect();
+                    writeln!(
+                        f,
+                        "room {}  daylight {} facing {}",
+                        room.name,
+                        daylight.amount,
+                        facing.join(", ")
+                    )?
                 }
                 None => writeln!(f, "room {}", room.name)?,
             }
@@ -377,12 +442,17 @@ impl fmt::Display for Model {
                 }
                 match &group.staging {
                     Some(Staging::Stages(stages)) => {
-                        let name = |path: &String| path.rsplit('/').next().unwrap_or(path).to_string();
-                        let stages: Vec<String> =
-                            stages.iter().map(|stage| stage.iter().map(name).collect::<Vec<_>>().join(", ")).collect();
+                        let name =
+                            |path: &String| path.rsplit('/').next().unwrap_or(path).to_string();
+                        let stages: Vec<String> = stages
+                            .iter()
+                            .map(|stage| stage.iter().map(name).collect::<Vec<_>>().join(", "))
+                            .collect();
                         writeln!(f, "    stages {}", stages.join(" | "))?;
                     }
-                    Some(Staging::Custom { line, .. }) => writeln!(f, "    staging block at {line}")?,
+                    Some(Staging::Custom { line, .. }) => {
+                        writeln!(f, "    staging block at {line}")?
+                    }
                     None => {}
                 }
             }
@@ -410,11 +480,17 @@ impl fmt::Display for Model {
             for trigger in &self.triggers {
                 let description = match &trigger.kind {
                     TriggerKind::SunTick => "Sun, every minute".to_string(),
-                    TriggerKind::SunEvent { event, offset_minutes } => {
+                    TriggerKind::SunEvent {
+                        event,
+                        offset_minutes,
+                    } => {
                         format!("Sun, {event:?} {offset_minutes:+} min")
                     }
                     TriggerKind::Clock { times } => {
-                        let times: Vec<String> = times.iter().map(|t| t.format("%H:%M").to_string()).collect();
+                        let times: Vec<String> = times
+                            .iter()
+                            .map(|t| t.format("%H:%M").to_string())
+                            .collect();
                         format!("Clock at {}", times.join(", "))
                     }
                     TriggerKind::Device { path, events } => format!("{path} {}", events.join(", ")),
@@ -539,13 +615,20 @@ impl RawModel {
 
     /// Resolves references and validates the whole model. `mapping_tables`
     /// holds the evaluated table for each id from [`Self::mapping_procs`].
-    pub(crate) fn build(self, mapping_tables: &HashMap<usize, Vec<f64>>) -> Result<Model, ValidationErrors> {
+    pub(crate) fn build(
+        self,
+        mapping_tables: &HashMap<usize, Vec<f64>>,
+    ) -> Result<Model, ValidationErrors> {
         let mut errors = Vec::new();
 
         let mut adapter_names = HashSet::new();
         for adapter in &self.adapters {
             if !adapter_names.insert(adapter.name().to_string()) {
-                errors.push(format!("{}: adapter {:?} is defined twice", adapter.line(), adapter.name()));
+                errors.push(format!(
+                    "{}: adapter {:?} is defined twice",
+                    adapter.line(),
+                    adapter.name()
+                ));
             }
         }
 
@@ -554,7 +637,12 @@ impl RawModel {
                 .adapters
                 .iter()
                 .filter(|adapter| adapter.kind() == device.adapter_kind)
-                .filter(|adapter| device.adapter.as_deref().is_none_or(|name| adapter.name() == name))
+                .filter(|adapter| {
+                    device
+                        .adapter
+                        .as_deref()
+                        .is_none_or(|name| adapter.name() == name)
+                })
                 .collect();
             match candidates.as_slice() {
                 [adapter] => Some(DeviceRef {
@@ -567,7 +655,10 @@ impl RawModel {
                         Some(name) => format!("{} adapter {name:?}", device.adapter_kind),
                         None => format!("{} adapter", device.adapter_kind),
                     };
-                    errors.push(format!("{}: {:?} needs a {wanted}, but none is defined", device.line, device.name));
+                    errors.push(format!(
+                        "{}: {:?} needs a {wanted}, but none is defined",
+                        device.line, device.name
+                    ));
                     None
                 }
                 _ => {
@@ -590,7 +681,10 @@ impl RawModel {
 
         for raw_room in &self.rooms {
             if !room_names.insert(raw_room.name.clone()) {
-                errors.push(format!("{}: room {:?} is defined twice", raw_room.line, raw_room.name));
+                errors.push(format!(
+                    "{}: room {:?} is defined twice",
+                    raw_room.line, raw_room.name
+                ));
                 continue;
             }
             let mut room = Room {
@@ -604,7 +698,10 @@ impl RawModel {
             let mut claim_name = |name: &str, line: &str, errors: &mut Vec<String>| {
                 let unique = names.insert(name.to_string());
                 if !unique {
-                    errors.push(format!("{line}: {name:?} is already used in room {:?}", raw_room.name));
+                    errors.push(format!(
+                        "{line}: {name:?} is already used in room {:?}",
+                        raw_room.name
+                    ));
                 }
                 unique
             };
@@ -613,7 +710,9 @@ impl RawModel {
                 if !claim_name(&raw.name, &raw.line, &mut errors) {
                     continue;
                 }
-                let Some(device) = resolve_adapter(raw, &mut errors) else { continue };
+                let Some(device) = resolve_adapter(raw, &mut errors) else {
+                    continue;
+                };
                 let path = format!("{}/{}", raw_room.name, raw.name);
                 if let Some(other) = devices_seen.insert(device.clone(), path.clone()) {
                     errors.push(format!("{}: {device} is already used by {other}", raw.line));
@@ -633,12 +732,18 @@ impl RawModel {
                 if !claim_name(&raw.name, &raw.line, &mut errors) {
                     continue;
                 }
-                let Some(device) = resolve_adapter(raw, &mut errors) else { continue };
+                let Some(device) = resolve_adapter(raw, &mut errors) else {
+                    continue;
+                };
                 let path = format!("{}/{}", raw_room.name, raw.name);
                 room.sensors.push(path.clone());
                 sensors.insert(
                     path.clone(),
-                    Sensor { name: raw.name.clone(), path, device },
+                    Sensor {
+                        name: raw.name.clone(),
+                        path,
+                        device,
+                    },
                 );
             }
             for raw in &raw_room.groups {
@@ -656,11 +761,17 @@ impl RawModel {
                         continue;
                     }
                     if members.iter().any(|m: &GroupMember| m.light == path) {
-                        errors.push(format!("{}: group {:?} lists {light:?} twice", raw.line, raw.name));
+                        errors.push(format!(
+                            "{}: group {:?} lists {light:?} twice",
+                            raw.line, raw.name
+                        ));
                         continue;
                     }
                     grouped_lights.insert(path.clone());
-                    members.push(GroupMember { light: path, mapping: None });
+                    members.push(GroupMember {
+                        light: path,
+                        mapping: None,
+                    });
                 }
                 for mapping in &raw.mappings {
                     let path = format!("{}/{}", raw_room.name, mapping.light);
@@ -672,18 +783,29 @@ impl RawModel {
                         continue;
                     };
                     if member.mapping.is_some() {
-                        errors.push(format!("{}: {:?} is mapped twice", mapping.line, mapping.light));
+                        errors.push(format!(
+                            "{}: {:?} is mapped twice",
+                            mapping.line, mapping.light
+                        ));
                     }
                     match mapping_tables.get(&mapping.proc) {
                         Some(table) => member.mapping = Some(BrightnessMapping::new(table.clone())),
-                        None => errors.push(format!("{}: brightness mapping could not be evaluated", mapping.line)),
+                        None => errors.push(format!(
+                            "{}: brightness mapping could not be evaluated",
+                            mapping.line
+                        )),
                     }
                 }
                 let stages = raw.stages.as_ref().map(|raw_stages| {
                     let stages: Vec<Vec<String>> = raw_stages
                         .lights
                         .iter()
-                        .map(|stage| stage.iter().map(|light| format!("{}/{light}", raw_room.name)).collect())
+                        .map(|stage| {
+                            stage
+                                .iter()
+                                .map(|light| format!("{}/{light}", raw_room.name))
+                                .collect()
+                        })
                         .collect();
                     let staged: Vec<&String> = stages.iter().flatten().collect();
                     for light in &staged {
@@ -696,19 +818,36 @@ impl RawModel {
                         }
                     }
                     for member in &members {
-                        if staged.iter().filter(|light| **light == &member.light).count() != 1 {
+                        if staged
+                            .iter()
+                            .filter(|light| **light == &member.light)
+                            .count()
+                            != 1
+                        {
                             let name = member.light.rsplit('/').next().unwrap_or(&member.light);
-                            errors.push(format!("{}: stages must list {name:?} exactly once", raw_stages.line));
+                            errors.push(format!(
+                                "{}: stages must list {name:?} exactly once",
+                                raw_stages.line
+                            ));
                         }
                     }
                     Staging::Stages(stages)
                 });
-                let custom = raw.staging.as_ref().map(|raw| Staging::Custom { proc_id: raw.proc, line: raw.line.clone() });
+                let custom = raw.staging.as_ref().map(|raw| Staging::Custom {
+                    proc_id: raw.proc,
+                    line: raw.line.clone(),
+                });
                 let path = format!("{}/{}", raw_room.name, raw.name);
                 room.groups.push(path.clone());
                 groups.insert(
                     path.clone(),
-                    Group { name: raw.name.clone(), path, exposed: raw.expose, members, staging: stages.or(custom) },
+                    Group {
+                        name: raw.name.clone(),
+                        path,
+                        exposed: raw.expose,
+                        members,
+                        staging: stages.or(custom),
+                    },
                 );
             }
             rooms.push(room);
@@ -728,16 +867,28 @@ impl RawModel {
         let mut scene_names = HashSet::new();
         for raw in self.scenes {
             if !scene_names.insert(raw.name.clone()) {
-                errors.push(format!("{}: scene {:?} is defined twice", raw.line, raw.name));
+                errors.push(format!(
+                    "{}: scene {:?} is defined twice",
+                    raw.line, raw.name
+                ));
                 continue;
             }
-            scenes.push(Scene { name: raw.name, auto: raw.auto, proc_id: raw.proc, line: raw.line });
+            scenes.push(Scene {
+                name: raw.name,
+                auto: raw.auto,
+                proc_id: raw.proc,
+                line: raw.line,
+            });
         }
 
         let mut triggers = Vec::new();
         for raw in self.triggers {
             match trigger_kind(&raw, &lights, &sensors, self.location.is_some()) {
-                Ok(kind) => triggers.push(Trigger { kind, proc_id: raw.proc, line: raw.line }),
+                Ok(kind) => triggers.push(Trigger {
+                    kind,
+                    proc_id: raw.proc,
+                    line: raw.line,
+                }),
                 Err(message) => errors.push(format!("{}: {message}", raw.line)),
             }
         }
@@ -751,7 +902,10 @@ impl RawModel {
         });
         if let Some(pin) = &homekit.pin {
             if is_trivial_pin(pin) {
-                errors.push(format!("{}: HomeKit rejects trivial setup codes like {pin}", homekit.line));
+                errors.push(format!(
+                    "{}: HomeKit rejects trivial setup codes like {pin}",
+                    homekit.line
+                ));
             }
         }
 
@@ -780,8 +934,15 @@ fn trigger_kind(
     has_location: bool,
 ) -> Result<TriggerKind, String> {
     let allow_options = |allowed: &[&str]| -> Result<(), String> {
-        match raw.options.keys().find(|key| !allowed.contains(&key.as_str())) {
-            Some(key) => Err(format!("unknown option {key}: for {:?} trigger", raw.source)),
+        match raw
+            .options
+            .keys()
+            .find(|key| !allowed.contains(&key.as_str()))
+        {
+            Some(key) => Err(format!(
+                "unknown option {key}: for {:?} trigger",
+                raw.source
+            )),
             None => Ok(()),
         }
     };
@@ -802,8 +963,14 @@ fn trigger_kind(
                     }
                     Ok(TriggerKind::SunTick)
                 }
-                [event] if event == "sunrise" => Ok(TriggerKind::SunEvent { event: SunEvent::Sunrise, offset_minutes }),
-                [event] if event == "sunset" => Ok(TriggerKind::SunEvent { event: SunEvent::Sunset, offset_minutes }),
+                [event] if event == "sunrise" => Ok(TriggerKind::SunEvent {
+                    event: SunEvent::Sunrise,
+                    offset_minutes,
+                }),
+                [event] if event == "sunset" => Ok(TriggerKind::SunEvent {
+                    event: SunEvent::Sunset,
+                    offset_minutes,
+                }),
                 _ => Err("Sun triggers take exactly one of :sun, :sunrise, :sunset".into()),
             }
         }
@@ -816,7 +983,11 @@ fn trigger_kind(
                 Some(serde_json::Value::String(time)) => vec![time.clone()],
                 Some(serde_json::Value::Array(times)) => times
                     .iter()
-                    .map(|time| time.as_str().map(str::to_owned).ok_or("at: must contain \"HH:MM\" strings"))
+                    .map(|time| {
+                        time.as_str()
+                            .map(str::to_owned)
+                            .ok_or("at: must contain \"HH:MM\" strings")
+                    })
                     .collect::<Result<_, _>>()?,
                 _ => return Err("Clock triggers need at: \"HH:MM\"".into()),
             };
@@ -845,7 +1016,10 @@ fn trigger_kind(
                     ));
                 }
             }
-            Ok(TriggerKind::Device { path: path.to_string(), events: raw.events.clone() })
+            Ok(TriggerKind::Device {
+                path: path.to_string(),
+                events: raw.events.clone(),
+            })
         }
     }
 }
@@ -873,24 +1047,49 @@ mod tests {
 
     #[test]
     fn daylight_follows_the_sun_and_the_windows() {
-        let east = Daylight { amount: 0.4, facing: vec![90.0] };
-        let west = Daylight { amount: 0.4, facing: vec![270.0] };
-        let north = Daylight { amount: 0.4, facing: vec![0.0] };
+        let east = Daylight {
+            amount: 0.4,
+            facing: vec![90.0],
+        };
+        let west = Daylight {
+            amount: 0.4,
+            facing: vec![270.0],
+        };
+        let north = Daylight {
+            amount: 0.4,
+            facing: vec![0.0],
+        };
 
         assert_eq!(east.at(sun(-10.0, 30.0)), 0.0, "night");
         let morning = sun(15.0, 100.0);
-        assert!(east.at(morning) > west.at(morning) + 0.2, "{} vs {}", east.at(morning), west.at(morning));
+        assert!(
+            east.at(morning) > west.at(morning) + 0.2,
+            "{} vs {}",
+            east.at(morning),
+            west.at(morning)
+        );
         let evening = sun(15.0, 260.0);
-        assert!(west.at(evening) > east.at(evening) + 0.2, "{} vs {}", west.at(evening), east.at(evening));
+        assert!(
+            west.at(evening) > east.at(evening) + 0.2,
+            "{} vs {}",
+            west.at(evening),
+            east.at(evening)
+        );
 
         let noon = sun(30.0, 180.0);
         assert_eq!(north.at(noon), 0.4, "sun behind the window: sky part only");
-        assert!((east.at(noon) - north.at(noon)).abs() < 1e-9, "sun exactly side-on");
+        assert!(
+            (east.at(noon) - north.at(noon)).abs() < 1e-9,
+            "sun exactly side-on"
+        );
     }
 
     #[test]
     fn daylight_has_no_jump_at_sunrise_and_is_capped() {
-        let east = Daylight { amount: 1.0, facing: vec![90.0] };
+        let east = Daylight {
+            amount: 1.0,
+            facing: vec![90.0],
+        };
         let step = east.at(sun(0.1, 90.0)) - east.at(sun(-0.1, 90.0));
         assert!(step < 0.01, "jump of {step} at sunrise");
         assert_eq!(east.at(sun(20.0, 90.0)), 1.0);
@@ -898,9 +1097,18 @@ mod tests {
 
     #[test]
     fn several_windows_average_their_direct_light() {
-        let south_west = Daylight { amount: 0.4, facing: vec![180.0, 270.0] };
-        let south = Daylight { amount: 0.4, facing: vec![180.0] };
+        let south_west = Daylight {
+            amount: 0.4,
+            facing: vec![180.0, 270.0],
+        };
+        let south = Daylight {
+            amount: 0.4,
+            facing: vec![180.0],
+        };
         let afternoon = sun(20.0, 225.0);
-        assert!((south_west.at(afternoon) - south.at(afternoon)).abs() < 1e-9, "both windows see the sun at 45°");
+        assert!(
+            (south_west.at(afternoon) - south.at(afternoon)).abs() < 1e-9,
+            "both windows see the sun at 45°"
+        );
     }
 }
