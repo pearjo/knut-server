@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 
 use crate::adapter::{AdapterEvent, Adapters, LightCommand};
 use crate::control;
-use crate::model::{Model, SunEvent, TriggerKind};
+use crate::model::{Group, Model, Staging, SunEvent, TriggerKind};
 use crate::script::{self, mruby::ruby_string, Action, Script};
 use crate::store::Store;
 use crate::sun;
@@ -73,6 +73,15 @@ enum Origin {
     Automation,
 }
 
+/// What staging has switched on in a group that is on.
+#[derive(Debug, Clone, PartialEq)]
+enum ActiveStaging {
+    /// The number of leading stages.
+    Stages(usize),
+    /// The lights a staging block picked.
+    Lights(Vec<String>),
+}
+
 /// The values the last `adapt` asked for, applied when an auto entity
 /// comes on.
 #[derive(Debug, Clone, Default)]
@@ -95,8 +104,8 @@ pub struct Engine {
     store_dirty: bool,
     /// As of the last tick; `None` without a location.
     sun: Option<sun::SunPosition>,
-    /// Leading stages in use per staged group that is on.
-    active_stages: HashMap<String, usize>,
+    /// Per staged group that is on.
+    active_stages: HashMap<String, ActiveStaging>,
 }
 
 impl Engine {
@@ -532,24 +541,57 @@ impl Engine {
     /// and remembers them. When the stages change, every light that is on
     /// gets brightness and colour temperature, and the change cross-fades.
     fn stage(&mut self, path: &str, command: &mut LightCommand) -> Option<control::StagedLights> {
-        let stages = self.model.groups.get(path)?.stages.as_ref()?;
+        let model = Arc::clone(&self.model);
+        let group = model.groups.get(path)?;
+        let staging = group.staging.as_ref()?;
         if command.on == Some(false) {
             self.active_stages.remove(path);
             return None;
         }
         let state = self.state(path);
         let value = command.brightness.unwrap_or(state.brightness);
-        let previous = self.active_stages.get(path).copied();
-        let count = control::stage_count(stages, value, previous);
-        if previous != Some(count) {
+        let previous = self.active_stages.get(path).cloned();
+        let (active, staged) = match staging {
+            Staging::Stages(stages) => {
+                let previous = match previous {
+                    Some(ActiveStaging::Stages(count)) => Some(count),
+                    _ => None,
+                };
+                let count = control::stage_count(stages, value, previous);
+                (ActiveStaging::Stages(count), control::staged_lights(stages, count, previous))
+            }
+            Staging::Custom { proc_id, line } => {
+                let on = self.custom_staging(group, *proc_id, line, value);
+                let lit_before = match &previous {
+                    Some(ActiveStaging::Lights(lights)) => lights.clone(),
+                    _ => group.members.iter().map(|m| m.light.clone()).collect(),
+                };
+                let off = lit_before.into_iter().filter(|light| !on.contains(light)).collect();
+                (ActiveStaging::Lights(on.clone()), control::StagedLights { on, off })
+            }
+        };
+        if previous.as_ref() != Some(&active) {
             command.on = Some(true);
             command.brightness = Some(value);
             command.kelvin = command.kelvin.or(state.kelvin);
             command.transition = Some(command.transition.unwrap_or(0.0).max(MIN_STAGE_TRANSITION));
         }
-        let staged = control::staged_lights(stages, count, previous);
-        self.active_stages.insert(path.to_string(), count);
+        self.active_stages.insert(path.to_string(), active);
         Some(staged)
+    }
+
+    /// The lights `group`'s staging block picks for `value` (0–100); all of
+    /// them when the block fails.
+    fn custom_staging(&mut self, group: &Group, proc_id: usize, line: &str, value: f64) -> Vec<String> {
+        let picked = self
+            .script
+            .staging(proc_id, value / 100.0, Local::now().timestamp())
+            .map_err(|error| script::describe(&error))
+            .and_then(|names| control::picked_lights(group, &names));
+        picked.unwrap_or_else(|error| {
+            log::error!("staging block at {line}: {error}; using all lights");
+            group.members.iter().map(|m| m.light.clone()).collect()
+        })
     }
 
     /// Sends `command` to the lights behind `path` and records the result.
@@ -657,6 +699,12 @@ room "Bad" do
   light "c", zigbee: "0x22"
   group "Licht", lights: [:a, :b, :c] do
     stages [:b], [:a, :c]
+  end
+  group "Spiegel", lights: [:a, :b] do
+    staging { |need, now| need > 0.5 ? [:a, :b] : [:a] }
+  end
+  group "Wanne", lights: [:b, :c] do
+    staging { |need, now| [:x] }
   end
 end
 scene "Hell", auto: false do
@@ -832,6 +880,26 @@ end
         let mut off = LightCommand { on: Some(false), ..Default::default() };
         assert!(h.engine.stage("Bad/Licht", &mut off).is_none());
         assert!(!h.engine.active_stages.contains_key("Bad/Licht"), "switching off forgets the stages");
+    }
+
+    #[tokio::test]
+    async fn staging_blocks_pick_the_lights() {
+        let mut h = harness("staging-block");
+        let lit = |h: &Harness, name: &str| {
+            let state = h.engine.state(&format!("Bad/{name}"));
+            state.on.then_some(state.brightness)
+        };
+        let adapt = |need| vec![Action::Adapt { targets: vec!["Bad/Spiegel".into()], need: Some(need), kelvin: None, transition: None }];
+        h.homekit("Bad/Spiegel", Change::On(true)).await;
+
+        h.engine.execute(adapt(0.3), Origin::Automation).await;
+        assert_eq!((lit(&h, "a"), lit(&h, "b")), (Some(60.0), None), "one of two lights carries 0.3 · 2");
+        h.engine.execute(adapt(0.8), Origin::Automation).await;
+        assert_eq!((lit(&h, "a"), lit(&h, "b")), (Some(80.0), Some(80.0)));
+        assert_eq!(h.engine.active_stages["Bad/Spiegel"], ActiveStaging::Lights(vec!["Bad/a".into(), "Bad/b".into()]));
+
+        h.homekit("Bad/Wanne", Change::Brightness(30.0)).await;
+        assert_eq!((lit(&h, "b"), lit(&h, "c")), (Some(30.0), Some(30.0)), "a failing block lights everything");
     }
 
     #[tokio::test]

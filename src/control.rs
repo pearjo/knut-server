@@ -4,7 +4,7 @@
 use anyhow::{bail, Result};
 
 use crate::adapter::{Adapters, LightCommand};
-use crate::model::{DeviceRef, Model};
+use crate::model::{DeviceRef, Group, Model};
 
 /// Staging adds the next stage once the lights that are on would go above
 /// this brightness…
@@ -44,6 +44,20 @@ pub fn stage_count(stages: &[Vec<String>], value: f64, active: Option<usize>) ->
 pub fn staged_lights(stages: &[Vec<String>], count: usize, previous: Option<usize>) -> StagedLights {
     let lit_before = previous.map_or(stages.len(), |previous| previous.max(count));
     StagedLights { on: stages[..count].concat(), off: stages[count..lit_before].concat() }
+}
+
+/// The paths of the lights a staging block picked by name, in member order.
+/// Every name must be a light of the group, and at least one must be given.
+pub fn picked_lights(group: &Group, names: &[String]) -> Result<Vec<String>, String> {
+    let room = group.path.rsplit_once('/').map_or("", |(room, _)| room);
+    let paths: Vec<String> = names.iter().map(|name| format!("{room}/{name}")).collect();
+    if let Some(stranger) = names.iter().zip(&paths).find(|(_, path)| !group.members.iter().any(|m| &m.light == *path)) {
+        return Err(format!("staging block picked {:?}, which is not a light of group {:?}", stranger.0, group.name));
+    }
+    if paths.is_empty() {
+        return Err(format!("staging block picked no lights of group {:?}", group.name));
+    }
+    Ok(group.members.iter().filter(|m| paths.contains(&m.light)).map(|m| m.light.clone()).collect())
 }
 
 /// Commands for every physical light behind `path`. A group's brightness is
@@ -148,6 +162,7 @@ fn parse_number(text: &str, original: &str) -> Result<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Staging;
     use crate::script::Script;
 
     #[test]
@@ -238,6 +253,17 @@ end
     }
 
     #[test]
+    fn picked_lights_must_belong_to_the_group() {
+        let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"a\", zigbee: \"1\"\n  light \"b\", zigbee: \"2\"\n  group \"G\", lights: [:a, :b]\nend\n";
+        let (_, model) = Script::load_str(config, "config.rb").unwrap();
+        let group = &model.groups["A/G"];
+        let names = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        assert_eq!(picked_lights(group, &names(&["b", "a"])), Ok(vec!["A/a".into(), "A/b".into()]), "member order");
+        assert_eq!(picked_lights(group, &names(&["c"])), Err("staging block picked \"c\", which is not a light of group \"G\"".into()));
+        assert_eq!(picked_lights(group, &[]), Err("staging block picked no lights of group \"G\"".into()));
+    }
+
+    #[test]
     fn staging_spreads_the_value_before_the_mapping() {
         let config = r#"
 zigbee "z2m", mqtt: "mqtt://localhost"
@@ -252,7 +278,7 @@ room "Küche" do
 end
 "#;
         let (_, model) = Script::load_str(config, "config.rb").unwrap();
-        let stages = model.groups["Küche/Spots"].stages.clone().unwrap();
+        let Some(Staging::Stages(stages)) = model.groups["Küche/Spots"].staging.clone() else { panic!("staged group") };
         let brightness_of = |value: f64, count: usize| {
             let command = LightCommand { on: Some(true), brightness: Some(value), ..Default::default() };
             let staged = staged_lights(&stages, count, None);

@@ -110,6 +110,16 @@ module Knut
       to_json(table)
     end
 
+    # Calls staging block `id` with `need` (0–1) and the time `now`; returns
+    # the names of the lights it picked.
+    def staging(id, need, now)
+      lights = @procs[id].call(need, Time.at(now))
+      unless lights.is_a?(Array)
+        raise ConfigError, "staging block returned #{lights.inspect}, expected an Array of lights like [:spot1]"
+      end
+      to_json(lights.map(&:to_s))
+    end
+
     def record(action)
       raise ConfigError, "#{action[:op]} can only be used inside a scene or trigger" unless @actions
       @actions << action
@@ -214,7 +224,7 @@ module Knut
     def group(name, lights:, expose: true, &block)
       Knut.name!(name, "group")
       Knut.fail("lights: must be a non-empty Array") unless lights.is_a?(Array) && !lights.empty?
-      group = { name: name, lights: lights.map(&:to_s), expose: expose, mappings: [], stages: nil, line: Knut.location }
+      group = { name: name, lights: lights.map(&:to_s), expose: expose, mappings: [], stages: nil, staging: nil, line: Knut.location }
       GroupBuilder.new(group).instance_eval(&block) if block
       @room[:groups] << group
     end
@@ -233,11 +243,19 @@ module Knut
     # stages [:spot2], [:spot1, :spot3]
     def stages(*stages)
       Knut.fail("stages are already set for group #{@group[:name].inspect}") if @group[:stages]
+      Knut.fail("a group takes either stages or staging, not both") if @group[:staging]
       Knut.fail("stages needs at least one stage, e.g. stages [:spot2], [:spot1, :spot3]") if stages.empty?
       unless stages.all? { |stage| stage.is_a?(Array) && !stage.empty? }
         Knut.fail("each stage must be a non-empty Array of lights, e.g. [:spot2]")
       end
       @group[:stages] = { lights: stages.map { |stage| stage.map(&:to_s) }, line: Knut.location }
+    end
+
+    # staging { |need, now| now.hour < 9 ? [:spot1, :spot2, :spot3] : [:spot2] }
+    def staging(&block)
+      Knut.fail("staging is already set for group #{@group[:name].inspect}") if @group[:staging]
+      Knut.fail("a group takes either stages or staging, not both") if @group[:stages]
+      @group[:staging] = { proc: Knut.register_proc(block), line: Knut.location }
     end
   end
 

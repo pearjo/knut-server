@@ -130,6 +130,13 @@ impl Script {
         Ok(serde_json::from_str(&json).expect("the prelude emits valid action JSON"))
     }
 
+    /// Runs the staging block `proc_id` for `need` (0–1) at the Unix time
+    /// `now` and returns the names of the lights it picked.
+    pub fn staging(&mut self, proc_id: usize, need: f64, now: i64) -> Result<Vec<String>, RubyError> {
+        let json = self.ruby.eval(&format!("Knut.staging({proc_id}, {need:?}, {now})"), PRELUDE_FILE)?;
+        Ok(serde_json::from_str(&json).expect("the prelude emits a JSON array"))
+    }
+
     /// Scenes are almost always static, so running them once at load time
     /// catches typos in their targets before the daemon starts.
     fn dry_run_scenes(&mut self, model: &Model) -> Vec<String> {
@@ -175,6 +182,8 @@ pub fn validate_actions(model: &Model, actions: &[Action]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Staging;
+    use chrono::TimeZone;
 
     const CONFIG: &str = r#"
 location lat: 52.99, lon: 10.58
@@ -422,7 +431,7 @@ $demand = curve(
         };
         let (_, model) = Script::load_str(&group("stages [:b], [:a, :c]"), "config.rb").unwrap_or_else(|e| panic!("{e}"));
         let paths = |names: &[&str]| names.iter().map(|n| format!("A/{n}")).collect::<Vec<_>>();
-        assert_eq!(model.groups["A/G"].stages, Some(vec![paths(&["b"]), paths(&["a", "c"])]));
+        assert_eq!(model.groups["A/G"].staging, Some(Staging::Stages(vec![paths(&["b"]), paths(&["a", "c"])])));
         assert!(model.to_string().contains("    stages b | a, c\n"), "{model}");
 
         let error = |stages: &str| Script::load_str(&group(stages), "config.rb").err().unwrap().to_string();
@@ -434,6 +443,29 @@ $demand = curve(
         assert!(stranger.contains("config.rb:7: stages refer to \"d\", which is not a light of group \"G\""), "{stranger}");
         let flat = error("stages :b, :a");
         assert!(flat.starts_with("config.rb:7: each stage must be a non-empty Array"), "{flat}");
+        let both = error("stages [:b], [:a, :c]\n    staging { |need, now| [:b] }");
+        assert!(both.starts_with("config.rb:8: a group takes either stages or staging, not both"), "{both}");
+        let both = error("staging { |need, now| [:b] }\n    stages [:b], [:a, :c]");
+        assert!(both.starts_with("config.rb:8: a group takes either stages or staging, not both"), "{both}");
+    }
+
+    #[test]
+    fn staging_blocks_return_light_names() {
+        let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"a\", zigbee: \"1\"\n  light \"b\", zigbee: \"2\"\n  group \"G\", lights: [:a, :b] do\n    staging { |need, now| now.hour < 9 || need > 0.5 ? [:a, :b] : [:b] }\n  end\n  group \"H\", lights: [:a, :b] do\n    staging { |need, now| :b }\n  end\nend\n";
+        let (mut script, model) = Script::load_str(config, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let proc_of = |group: &str| match &model.groups[group].staging {
+            Some(Staging::Custom { proc_id, .. }) => *proc_id,
+            other => panic!("{other:?}"),
+        };
+        assert!(model.to_string().contains("    staging block at config.rb:6\n"), "{model}");
+
+        let at = |hour| chrono::Local.with_ymd_and_hms(2026, 10, 22, hour, 0, 0).unwrap().timestamp();
+        assert_eq!(script.staging(proc_of("A/G"), 0.2, at(8)).unwrap(), ["a", "b"], "early morning");
+        assert_eq!(script.staging(proc_of("A/G"), 0.2, at(12)).unwrap(), ["b"], "low need at noon");
+        assert_eq!(script.staging(proc_of("A/G"), 0.8, at(12)).unwrap(), ["a", "b"], "high need at noon");
+
+        let error = script.staging(proc_of("A/H"), 0.5, at(12)).unwrap_err();
+        assert_eq!(describe(&error), "staging block returned :b, expected an Array of lights like [:spot1]");
     }
 
     #[test]
