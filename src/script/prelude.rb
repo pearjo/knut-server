@@ -171,8 +171,25 @@ module Knut
   end
 
   class RoomBuilder
+    # Window orientation as azimuth, degrees clockwise from north.
+    DIRECTIONS = { north: 0, northeast: 45, east: 90, southeast: 135, south: 180, southwest: 225, west: 270, northwest: 315 }
+
     def initialize(room)
       @room = room
+    end
+
+    # daylight 0.8, facing: :east  or  facing: [:south, :west]
+    def daylight(amount, facing:)
+      Knut.fail("daylight is already set for room #{@room[:name].inspect}") if @room[:daylight]
+      amount = Knut.number!(amount, "daylight")
+      Knut.fail("daylight must be between 0 and 1, got #{amount}") unless amount >= 0 && amount <= 1
+      directions = facing.is_a?(Array) ? facing : [facing]
+      Knut.fail("facing: needs at least one direction") if directions.empty?
+      unknown = directions.reject { |direction| DIRECTIONS.key?(direction) }
+      unless unknown.empty?
+        Knut.fail("unknown direction(s) for facing: #{unknown.map(&:inspect).join(", ")}, expected one of :#{DIRECTIONS.keys.join(", :")}")
+      end
+      @room[:daylight] = { amount: amount, facing: directions.map { |direction| DIRECTIONS[direction] } }
     end
 
     # light "spot1", zigbee: "0x…", expose: true
@@ -481,7 +498,7 @@ end
 def room(name, &block)
   Knut.name!(name, "room")
   Knut.fail("room #{name.inspect} needs a block") unless block
-  room = { name: name, lights: [], sensors: [], groups: [], line: Knut.location }
+  room = { name: name, lights: [], sensors: [], groups: [], daylight: nil, line: Knut.location }
   Knut::RoomBuilder.new(room).instance_eval(&block)
   Knut.model[:rooms] << room
 end
