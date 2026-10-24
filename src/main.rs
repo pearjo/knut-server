@@ -21,7 +21,7 @@ use clap::{Parser, Subcommand};
 use tokio::sync::mpsc;
 
 use adapter::{Adapter, Adapters};
-use model::{AdapterConfig, Model};
+use model::{AdapterConfig, Model, Staging};
 use script::Script;
 
 #[derive(Parser)]
@@ -153,15 +153,24 @@ async fn pair_hue(state_dir: &Path, name: &str, host: &str) -> Result<()> {
 }
 
 async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String]) -> Result<()> {
-    let (_, model) = load(config)?;
+    let (mut script, model) = load(config)?;
     if model.entity_kind(entity).is_none() {
         bail!("unknown light or group {entity:?}");
     }
     let command = control::parse_values(values)?;
-    let stages = model.groups.get(entity).and_then(|group| group.stages.as_ref());
-    let staged = match (stages, command.brightness) {
-        (Some(stages), Some(brightness)) => {
+    let group = model.groups.get(entity);
+    let staged = match (group.and_then(|group| group.staging.as_ref()), command.brightness) {
+        (Some(Staging::Stages(stages)), Some(brightness)) => {
             Some(control::staged_lights(stages, control::stage_count(stages, brightness, None), None))
+        }
+        (Some(Staging::Custom { proc_id, line }), Some(brightness)) => {
+            let group = group.expect("only groups have staging");
+            let names = script
+                .staging(*proc_id, brightness / 100.0, chrono::Local::now().timestamp())
+                .map_err(|error| anyhow::anyhow!("staging block at {line}: {}", script::describe(&error)))?;
+            let on = control::picked_lights(group, &names).map_err(|error| anyhow::anyhow!("{line}: {error}"))?;
+            let off = group.members.iter().map(|m| m.light.clone()).filter(|light| !on.contains(light)).collect();
+            Some(control::StagedLights { on, off })
         }
         _ => None,
     };

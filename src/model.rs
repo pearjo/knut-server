@@ -130,9 +130,17 @@ pub struct Group {
     pub path: String,
     pub exposed: bool,
     pub members: Vec<GroupMember>,
+    pub staging: Option<Staging>,
+}
+
+/// How a group decides which of its lights are on. See DESIGN.md, "Staging".
+#[derive(Debug, Clone, PartialEq)]
+pub enum Staging {
     /// Light paths per stage, in the order staging switches them on. Every
     /// member is in exactly one stage.
-    pub stages: Option<Vec<Vec<String>>>,
+    Stages(Vec<Vec<String>>),
+    /// A `staging { |need, now| … }` block that picks the lights itself.
+    Custom { proc_id: usize, line: Line },
 }
 
 #[derive(Debug, Clone)]
@@ -367,10 +375,15 @@ impl fmt::Display for Model {
                     let name = member.light.rsplit('/').next().unwrap_or(&member.light);
                     writeln!(f, "    - {name}{mapping}")?;
                 }
-                if let Some(stages) = &group.stages {
-                    let name = |path: &String| path.rsplit('/').next().unwrap_or(path).to_string();
-                    let stages: Vec<String> = stages.iter().map(|stage| stage.iter().map(name).collect::<Vec<_>>().join(", ")).collect();
-                    writeln!(f, "    stages {}", stages.join(" | "))?;
+                match &group.staging {
+                    Some(Staging::Stages(stages)) => {
+                        let name = |path: &String| path.rsplit('/').next().unwrap_or(path).to_string();
+                        let stages: Vec<String> =
+                            stages.iter().map(|stage| stage.iter().map(name).collect::<Vec<_>>().join(", ")).collect();
+                        writeln!(f, "    stages {}", stages.join(" | "))?;
+                    }
+                    Some(Staging::Custom { line, .. }) => writeln!(f, "    staging block at {line}")?,
+                    None => {}
                 }
             }
             for path in &room.lights {
@@ -473,12 +486,19 @@ struct RawGroup {
     expose: bool,
     mappings: Vec<RawMapping>,
     stages: Option<RawStages>,
+    staging: Option<RawStaging>,
     line: Line,
 }
 
 #[derive(Debug, Deserialize)]
 struct RawStages {
     lights: Vec<Vec<String>>,
+    line: Line,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawStaging {
+    proc: usize,
     line: Line,
 }
 
@@ -681,13 +701,14 @@ impl RawModel {
                             errors.push(format!("{}: stages must list {name:?} exactly once", raw_stages.line));
                         }
                     }
-                    stages
+                    Staging::Stages(stages)
                 });
+                let custom = raw.staging.as_ref().map(|raw| Staging::Custom { proc_id: raw.proc, line: raw.line.clone() });
                 let path = format!("{}/{}", raw_room.name, raw.name);
                 room.groups.push(path.clone());
                 groups.insert(
                     path.clone(),
-                    Group { name: raw.name.clone(), path, exposed: raw.expose, members, stages },
+                    Group { name: raw.name.clone(), path, exposed: raw.expose, members, staging: stages.or(custom) },
                 );
             }
             rooms.push(room);
