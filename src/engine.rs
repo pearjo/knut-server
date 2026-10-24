@@ -22,6 +22,9 @@ use crate::sun;
 const AUTO_RESUME_TRANSITION: f64 = 2.0;
 /// Scenes may activate scenes; this stops accidental loops.
 const MAX_SCENE_DEPTH: usize = 4;
+/// `adapt` never dims an entity below this value (0–100) while it is on:
+/// very low light levels are the one robust discomfort finding.
+const COMFORT_MINIMUM: f64 = 5.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntityState {
@@ -87,6 +90,8 @@ pub struct Engine {
     groups_of_light: HashMap<String, Vec<String>>,
     exposed: HashSet<String>,
     store_dirty: bool,
+    /// As of the last tick; `None` without a location.
+    sun: Option<sun::SunPosition>,
 }
 
 impl Engine {
@@ -123,6 +128,7 @@ impl Engine {
             groups_of_light,
             exposed,
             store_dirty: true,
+            sun: None,
         }
     }
 
@@ -296,6 +302,7 @@ impl Engine {
             let times = sun::times(location.lat, location.lon, now.date_naive());
             (location.lat, location.lon, position, times)
         });
+        self.sun = sun.as_ref().map(|(_, _, position, _)| *position);
 
         for trigger in &self.model.triggers {
             let fire = |args: String| (trigger.proc_id, args, trigger.line.clone());
@@ -376,9 +383,9 @@ impl Engine {
                         self.set(target, on, brightness, kelvin, transition, origin).await;
                     }
                 }
-                Action::Adapt { targets, brightness, kelvin, transition } => {
+                Action::Adapt { targets, need, kelvin, transition } => {
                     for target in &targets {
-                        self.adapt(target, brightness, kelvin, transition).await;
+                        self.adapt(target, need, kelvin, transition).await;
                     }
                 }
                 Action::Activate { scene } => {
@@ -441,7 +448,7 @@ impl Engine {
         self.apply(path, command).await;
     }
 
-    async fn adapt(&mut self, path: &str, brightness: Option<f64>, kelvin: Option<f64>, transition: Option<f64>) {
+    async fn adapt(&mut self, path: &str, need: Option<f64>, kelvin: Option<f64>, transition: Option<f64>) {
         if self.model.entity_kind(path).is_none() {
             log::error!("adapt: unknown light or group {path:?}");
             return;
@@ -449,6 +456,7 @@ impl Engine {
         if !self.is_auto(path) {
             return;
         }
+        let brightness = need.map(|need| self.value_for_need(path, need));
         let target = self.auto_targets.entry(path.to_string()).or_default();
         target.brightness = brightness.or(target.brightness);
         target.kelvin = kelvin.or(target.kelvin);
@@ -462,6 +470,17 @@ impl Engine {
             return;
         }
         self.apply(path, LightCommand { on: None, brightness, kelvin, transition }).await;
+    }
+
+    /// The value (0–100) for `need` (0–1) after subtracting the daylight of
+    /// the entity's room.
+    fn value_for_need(&self, path: &str, need: f64) -> f64 {
+        let room = path.split('/').next().and_then(|name| self.model.room(name));
+        let daylight = match (room.and_then(|room| room.daylight.as_ref()), self.sun) {
+            (Some(daylight), Some(sun)) => daylight.at(sun),
+            _ => 0.0,
+        };
+        (100.0 * (need - daylight)).clamp(COMFORT_MINIMUM, 100.0)
     }
 
     // -----------------------------------------------------------------------
@@ -590,6 +609,7 @@ mod tests {
     const CONFIG: &str = r#"
 zigbee "z2m", mqtt: "mqtt://localhost"
 room "Küche" do
+  daylight 0.5, facing: :south
   light "spot1", zigbee: "0x01"
   light "spot2", zigbee: "0x02"
   group "Spots", lights: [:spot1, :spot2] do
@@ -679,7 +699,7 @@ end
         let mut h = harness("adapt");
         let adapt = |kelvin| vec![Action::Adapt {
             targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
-            brightness: None,
+            need: None,
             kelvin: Some(kelvin),
             transition: Some(60.0),
         }];
@@ -694,6 +714,37 @@ end
         assert_eq!(h.engine.state("Küche/Spots").kelvin, Some(2400.0), "comes on at the current sun values");
         h.engine.execute(adapt(4000.0), Origin::Automation).await;
         assert_eq!(h.engine.state("Küche/spot1").kelvin, Some(4000.0));
+    }
+
+    #[tokio::test]
+    async fn adapt_subtracts_room_daylight_from_the_need() {
+        let mut h = harness("need");
+        // Full sky, sun behind the south window: Küche gets 0.5 × 1.0 daylight.
+        h.engine.sun = Some(sun::SunPosition { elevation: 30.0, azimuth: 0.0 });
+        let adapt = |need| vec![Action::Adapt {
+            targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
+            need: Some(need),
+            kelvin: None,
+            transition: None,
+        }];
+        let brightness = |h: &Harness, path| h.engine.state(path).brightness;
+        h.homekit("Küche/Spots", Change::On(true)).await;
+        h.homekit("Flur/Licht", Change::On(true)).await;
+
+        h.engine.execute(adapt(0.8), Origin::Automation).await;
+        assert!((brightness(&h, "Küche/Spots") - 30.0).abs() < 1e-9, "daylight subtracted");
+        assert!((brightness(&h, "Küche/spot2") - 15.0).abs() < 1e-9, "then the mapping");
+        assert_eq!(brightness(&h, "Flur/Licht"), 80.0, "no daylight in the hall");
+
+        h.engine.execute(adapt(0.3), Origin::Automation).await;
+        assert_eq!(brightness(&h, "Küche/Spots"), COMFORT_MINIMUM, "daylight exceeds the need");
+        h.engine.execute(adapt(0.0), Origin::Automation).await;
+        assert_eq!(brightness(&h, "Flur/Licht"), COMFORT_MINIMUM);
+
+        h.homekit("Küche/Spots", Change::Brightness(40.0)).await;
+        assert_eq!(brightness(&h, "Küche/Spots"), 40.0, "an override is the need itself");
+        h.engine.execute(adapt(0.8), Origin::Automation).await;
+        assert_eq!(brightness(&h, "Küche/Spots"), 40.0, "and adapt leaves it alone");
     }
 
     #[tokio::test]

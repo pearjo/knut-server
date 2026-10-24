@@ -293,6 +293,10 @@ impl Model {
         groups.chain(lights).collect()
     }
 
+    pub fn room(&self, name: &str) -> Option<&Room> {
+        self.rooms.iter().find(|room| room.name == name)
+    }
+
     pub fn scene(&self, name: &str) -> Option<&Scene> {
         self.scenes.iter().find(|scene| scene.name == name)
     }
