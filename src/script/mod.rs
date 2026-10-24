@@ -740,4 +740,67 @@ $demand = curve(
             .to_string();
         assert!(error.contains("unknown light or group \"A/b\""), "{error}");
     }
+
+    /// Every method a config can call has to be described in the DSL
+    /// reference, so the reference cannot fall behind the prelude.
+    #[test]
+    fn the_dsl_reference_covers_every_dsl_method() {
+        let reference = include_str!("../../docs/dsl.md");
+        let undocumented: Vec<String> = dsl_methods()
+            .into_iter()
+            .filter(|method| !mentions(reference, method))
+            .collect();
+        assert!(
+            undocumented.is_empty(),
+            "docs/dsl.md does not describe {undocumented:?}"
+        );
+    }
+
+    /// The methods the prelude adds to the top level, plus the public
+    /// methods of the objects a config works with.
+    fn dsl_methods() -> Vec<String> {
+        const TOP_LEVEL: &str = "(Object.public_instance_methods(false) + \
+            Object.private_instance_methods(false)).map(&:to_s).sort.join(' ')";
+        const OBJECTS: &str = "[Knut::RoomBuilder, Knut::GroupBuilder, Knut::ScheduleBuilder, \
+            Knut::Curve, Knut::Sun, Knut::Event, Knut::EntityState]\
+            .flat_map { |object| object.public_instance_methods(false) }\
+            .map(&:to_s).sort.join(' ')";
+        // Ruby's own hooks, not part of the language.
+        const HOOKS: [&str; 4] = [
+            "initialize",
+            "inspect",
+            "method_missing",
+            "respond_to_missing?",
+        ];
+
+        let mut ruby = Mruby::new();
+        let before_prelude = ruby.eval(TOP_LEVEL, "test.rb").unwrap();
+        ruby.eval(PRELUDE, PRELUDE_FILE).unwrap();
+        let after_prelude = ruby.eval(TOP_LEVEL, "test.rb").unwrap();
+        let objects = ruby.eval(OBJECTS, "test.rb").unwrap();
+
+        let existing: Vec<&str> = before_prelude.split(' ').collect();
+        let top_level = after_prelude
+            .split(' ')
+            .filter(|method| !existing.contains(method));
+        top_level
+            .chain(objects.split(' '))
+            .filter(|method| !HOOKS.contains(method))
+            // Operators such as `[]` are documented by example (`event[:key]`).
+            .filter(|method| method.starts_with(|c: char| c.is_alphabetic()))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Whether `text` names `method` in code, as `` `method `` or `.method`.
+    fn mentions(text: &str, method: &str) -> bool {
+        let is_name_char = |c: char| c.is_alphanumeric() || "_?!".contains(c);
+        ["`", "."].iter().any(|prefix| {
+            let needle = format!("{prefix}{method}");
+            text.match_indices(&needle).any(|(start, _)| {
+                let next = text[start + needle.len()..].chars().next();
+                !next.is_some_and(is_name_char)
+            })
+        })
+    }
 }

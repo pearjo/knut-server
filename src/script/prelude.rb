@@ -313,18 +313,7 @@ module Knut
     def initialize(keyframes, schedule)
       @keyframes = keyframes
       @schedule = schedule
-    end
-
-    # On every weekday the keyframe times must go round the clock exactly
-    # once, in the order given.
-    def check!
-      (@schedule ? (0..6).to_a : [0]).each do |wday|
-        times = times_on(wday)
-        next if gaps(times).none?(&:zero?) && gaps(times).inject(:+) == 1440
-        where = @schedule ? " on #{ScheduleBuilder::DAYS[wday]}" : ""
-        clock = times.map { |time| format("%02d:%02d", time % 1440 / 60, time % 60) }
-        Knut.fail("curve keyframes#{where} are not in clock order: #{clock.join(", ")}")
-      end
+      check!
     end
 
     def at(now)
@@ -347,6 +336,18 @@ module Knut
     end
 
     private
+
+    # On every weekday the keyframe times must go round the clock exactly
+    # once, in the order given.
+    def check!
+      (@schedule ? (0..6).to_a : [0]).each do |wday|
+        times = times_on(wday)
+        next if gaps(times).none?(&:zero?) && gaps(times).inject(:+) == 1440
+        where = @schedule ? " on #{ScheduleBuilder::DAYS[wday]}" : ""
+        clock = times.map { |time| format("%02d:%02d", time % 1440 / 60, time % 60) }
+        Knut.fail("curve keyframes#{where} are not in clock order: #{clock.join(", ")}")
+      end
+    end
 
     def times_on(wday)
       day = @schedule && @schedule[wday]
@@ -518,9 +519,7 @@ def curve(*keyframes)
   if !schedule && keyframes.any? { |time, _| time.is_a?(Knut::Anchor) }
     Knut.fail("curves with :wake or :bed need a schedule before them")
   end
-  curve = Knut::Curve.new(keyframes, schedule)
-  curve.check!
-  curve
+  Knut::Curve.new(keyframes, schedule)
 end
 
 def room(name, &block)

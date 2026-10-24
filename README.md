@@ -88,31 +88,10 @@ on "Sun", :sun do |sun, now|                   # every minute
 end
 ```
 
-- **Lights** take exactly one of `zigbee:` (IEEE address) or `hue:` (light
-  resource id), plus `adapter: "name"` when several adapters of that kind
-  exist. Lights in a group are hidden from HomeKit unless `expose: true`.
-  Lights in no group are exposed.
-- **Brightness mappings** get the group brightness 1–100 and return the
-  light's. The result is clamped to 1–100.
-- **Actions** in scenes and triggers: `set`, `turn_on`, `turn_off`, `adapt`,
-  `activate`, `log`. **Queries:** `all_groups`, `all_lights`, `on?(path)`, and
-  `state(path)` with `.on?`, `.brightness`, `.kelvin`, `.auto?`.
-- `set` with `brightness:` or `kelvin:` also switches on, unless `on: false`.
-- **The sun object** has `sun.elevation`, `sun.azimuth`, `sun.sunrise`,
-  `sun.sunset` (`Time`, or `nil` during polar day or night) and `sun.up?`.
-- **Device events:** `event.action`, `event[:occupancy]` and every other key
-  of the device's payload.
-
-### Auto mode
-
-DESIGN.md has the full rules. The parts that are not spelled out there:
-
-- `adapt` only moves entities that are in auto. For an entity that is off, it
-  remembers the values, and the entity comes on with them.
-- Actions from triggers never change auto mode. Only HomeKit, scenes and the
-  Auto switch do.
-- `turn_on` in an `auto: false` scene acts like switching on in HomeKit: if
-  the entity was off, it goes back into auto.
+[docs/dsl.md](docs/dsl.md) describes every part of the configuration
+language; [examples/config.rb](examples/config.rb) is a complete example
+with schedule, curves, daylight and staging. The rules of auto mode are in
+[DESIGN.md](DESIGN.md#auto-mode).
 
 ## CLI
 

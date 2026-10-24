@@ -201,6 +201,12 @@ end
 - Overridden groups still use staging and brightness mapping; only the need comes
   from the user instead of the curves.
 - `adapt` only adjusts groups that are on and in auto; it never switches a group on.
+  For an entity that is off, it remembers the values, and the entity comes on with
+  them.
+- Actions from triggers never change auto mode. Only HomeKit, scenes and the Auto
+  switch do.
+- `turn_on` in an `auto: false` scene acts like switching on in HomeKit: if the
+  entity was off, it goes back into auto.
 - Apple's own Adaptive Lighting must stay disabled on Knut's lights.
 - Native Home app scenes arrive as ordinary characteristic writes and therefore
   count as hard overrides.
@@ -224,24 +230,8 @@ and `need:`, `kelvin:` or both; `brightness:` is rejected in favour of `need:`.
 
 ## Other DSL
 
-```ruby
-location lat: 52.99, lon: 10.58
-
-hue    "bridge", host: "192.168.1.20"
-zigbee "z2m",    mqtt: "mqtt://localhost:1883"
-
-scene "Movie Night", auto: false do
-  set "Living Room/Light", brightness: 20, kelvin: 2200
-end
-
-scene "Morning", auto: true do
-  turn_on "Kitchen/Spots", "Hallway/Light"
-end
-
-on "Clock", at: "06:30" do
-  activate "Morning"
-end
-```
+Locations, adapters, scenes, triggers, actions and queries are described in
+the DSL reference, [docs/dsl.md](docs/dsl.md).
 
 ## HomeKit
 
