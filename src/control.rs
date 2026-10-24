@@ -26,7 +26,9 @@ pub(crate) struct StagedLights {
 /// value are chosen.
 pub(crate) fn stage_count(stages: &[Vec<String>], value: f64, active: Option<usize>) -> usize {
     let total: usize = stages.iter().map(Vec::len).sum();
-    let per_light = |count: usize| value * total as f64 / stages[..count].iter().map(Vec::len).sum::<usize>() as f64;
+    let per_light = |count: usize| {
+        value * total as f64 / stages[..count].iter().map(Vec::len).sum::<usize>() as f64
+    };
     let mut count = active.unwrap_or(1).clamp(1, stages.len());
     while count < stages.len() && per_light(count) > STAGE_UP {
         count += 1;
@@ -41,9 +43,16 @@ pub(crate) fn stage_count(stages: &[Vec<String>], value: f64, active: Option<usi
 
 /// The lights of the first `count` stages, and those to switch off: the
 /// stages just dropped from `previous`, or all others without it.
-pub(crate) fn staged_lights(stages: &[Vec<String>], count: usize, previous: Option<usize>) -> StagedLights {
+pub(crate) fn staged_lights(
+    stages: &[Vec<String>],
+    count: usize,
+    previous: Option<usize>,
+) -> StagedLights {
     let lit_before = previous.map_or(stages.len(), |previous| previous.max(count));
-    StagedLights { on: stages[..count].concat(), off: stages[count..lit_before].concat() }
+    StagedLights {
+        on: stages[..count].concat(),
+        off: stages[count..lit_before].concat(),
+    }
 }
 
 /// The paths of the lights a staging block picked by name, in member order.
@@ -51,13 +60,28 @@ pub(crate) fn staged_lights(stages: &[Vec<String>], count: usize, previous: Opti
 pub(crate) fn picked_lights(group: &Group, names: &[String]) -> Result<Vec<String>, String> {
     let room = group.path.rsplit_once('/').map_or("", |(room, _)| room);
     let paths: Vec<String> = names.iter().map(|name| format!("{room}/{name}")).collect();
-    if let Some(stranger) = names.iter().zip(&paths).find(|(_, path)| !group.members.iter().any(|m| &m.light == *path)) {
-        return Err(format!("staging block picked {:?}, which is not a light of group {:?}", stranger.0, group.name));
+    if let Some(stranger) = names
+        .iter()
+        .zip(&paths)
+        .find(|(_, path)| !group.members.iter().any(|m| &m.light == *path))
+    {
+        return Err(format!(
+            "staging block picked {:?}, which is not a light of group {:?}",
+            stranger.0, group.name
+        ));
     }
     if paths.is_empty() {
-        return Err(format!("staging block picked no lights of group {:?}", group.name));
+        return Err(format!(
+            "staging block picked no lights of group {:?}",
+            group.name
+        ));
     }
-    Ok(group.members.iter().filter(|m| paths.contains(&m.light)).map(|m| m.light.clone()).collect())
+    Ok(group
+        .members
+        .iter()
+        .filter(|m| paths.contains(&m.light))
+        .map(|m| m.light.clone())
+        .collect())
 }
 
 /// Commands for every physical light behind `path`. A group's brightness is
@@ -71,16 +95,19 @@ pub(crate) fn commands_for(
 ) -> Vec<(String, DeviceRef, LightCommand)> {
     if let Some(group) = model.groups.get(path) {
         let lit = staged.map_or(group.members.len(), |staged| staged.on.len());
-        let spread = |brightness: f64| (brightness * group.members.len() as f64 / lit as f64).min(100.0);
+        let spread =
+            |brightness: f64| (brightness * group.members.len() as f64 / lit as f64).min(100.0);
         return group
             .members
             .iter()
             .filter_map(|member| {
                 let light = model.lights.get(&member.light)?;
                 let light_command = match staged {
-                    Some(staged) if staged.off.contains(&member.light) => {
-                        LightCommand { on: Some(false), transition: command.transition, ..Default::default() }
-                    }
+                    Some(staged) if staged.off.contains(&member.light) => LightCommand {
+                        on: Some(false),
+                        transition: command.transition,
+                        ..Default::default()
+                    },
                     Some(staged) if !staged.on.contains(&member.light) => return None,
                     _ => LightCommand {
                         brightness: command.brightness.map(|b| member.brightness_for(spread(b))),
@@ -99,7 +126,10 @@ pub(crate) fn commands_for(
 
 /// Sends commands to all lights at once, so a group changes together.
 /// Returns the paths of the lights whose command failed.
-pub(crate) async fn send_all(adapters: &Adapters, commands: &[(String, DeviceRef, LightCommand)]) -> Vec<String> {
+pub(crate) async fn send_all(
+    adapters: &Adapters,
+    commands: &[(String, DeviceRef, LightCommand)],
+) -> Vec<String> {
     let sends = commands.iter().map(|(path, device, command)| async move {
         match adapters.send(device, command).await {
             Ok(()) => None,
@@ -109,7 +139,11 @@ pub(crate) async fn send_all(adapters: &Adapters, commands: &[(String, DeviceRef
             }
         }
     });
-    futures::future::join_all(sends).await.into_iter().flatten().collect()
+    futures::future::join_all(sends)
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 /// Parses `knut set` values: `on`, `off`, a brightness like `40` or `40%`,
@@ -117,7 +151,9 @@ pub(crate) async fn send_all(adapters: &Adapters, commands: &[(String, DeviceRef
 pub(crate) fn parse_values(values: &[String]) -> Result<LightCommand> {
     let mut command = LightCommand::default();
     if values.is_empty() {
-        bail!("expected a value: on, off, a brightness like 40%, or a colour temperature like 2700K");
+        bail!(
+            "expected a value: on, off, a brightness like 40%, or a colour temperature like 2700K"
+        );
     }
     for value in values {
         let value = value.trim();
@@ -167,8 +203,15 @@ mod tests {
 
     #[test]
     fn parses_set_values() {
-        let values = |v: &[&str]| parse_values(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        assert_eq!(values(&["off"]).unwrap(), LightCommand { on: Some(false), ..Default::default() });
+        let values =
+            |v: &[&str]| parse_values(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            values(&["off"]).unwrap(),
+            LightCommand {
+                on: Some(false),
+                ..Default::default()
+            }
+        );
         let command = values(&["40%", "2700K", "transition=2"]).unwrap();
         assert_eq!(command.on, Some(true));
         assert_eq!(command.brightness, Some(40.0));
@@ -191,14 +234,23 @@ room "Küche" do
 end
 "#;
         let (_, model) = Script::load_str(config, "config.rb").unwrap();
-        let command = LightCommand { on: Some(true), brightness: Some(50.0), ..Default::default() };
+        let command = LightCommand {
+            on: Some(true),
+            brightness: Some(50.0),
+            ..Default::default()
+        };
         let commands = commands_for(&model, "Küche/Spots", &command, None);
         assert_eq!(commands.len(), 2);
         assert_eq!(commands[0].2.brightness, Some(50.0));
         assert_eq!(commands[1].2.brightness, Some(40.0));
 
-        let off = LightCommand { on: Some(false), ..Default::default() };
-        assert!(commands_for(&model, "Küche/Spots", &off, None).iter().all(|(_, _, c)| c.brightness.is_none()));
+        let off = LightCommand {
+            on: Some(false),
+            ..Default::default()
+        };
+        assert!(commands_for(&model, "Küche/Spots", &off, None)
+            .iter()
+            .all(|(_, _, c)| c.brightness.is_none()));
     }
 
     fn stages(sizes: &[usize]) -> Vec<Vec<String>> {
@@ -221,7 +273,11 @@ end
         let one_then_two = stages(&[1, 2]);
         // One of three lights carries up to 95 / 3 ≈ 31.7.
         for (value, expected) in [(5.0, 1), (31.0, 1), (32.0, 2), (100.0, 2)] {
-            assert_eq!(stage_count(&one_then_two, value, None), expected, "value {value}");
+            assert_eq!(
+                stage_count(&one_then_two, value, None),
+                expected,
+                "value {value}"
+            );
         }
         let three = stages(&[1, 1, 1]);
         for (value, expected) in [(30.0, 1), (40.0, 2), (63.0, 2), (64.0, 3)] {
@@ -247,9 +303,27 @@ end
     fn staged_lights_only_switch_off_what_was_on() {
         let all = stages(&[1, 2, 1]);
         let names = |names: &[&str]| names.iter().map(|n| format!("R/{n}")).collect::<Vec<_>>();
-        assert_eq!(staged_lights(&all, 1, None), StagedLights { on: names(&["l1"]), off: names(&["l2", "l3", "l4"]) });
-        assert_eq!(staged_lights(&all, 1, Some(2)), StagedLights { on: names(&["l1"]), off: names(&["l2", "l3"]) });
-        assert_eq!(staged_lights(&all, 2, Some(1)), StagedLights { on: names(&["l1", "l2", "l3"]), off: vec![] });
+        assert_eq!(
+            staged_lights(&all, 1, None),
+            StagedLights {
+                on: names(&["l1"]),
+                off: names(&["l2", "l3", "l4"])
+            }
+        );
+        assert_eq!(
+            staged_lights(&all, 1, Some(2)),
+            StagedLights {
+                on: names(&["l1"]),
+                off: names(&["l2", "l3"])
+            }
+        );
+        assert_eq!(
+            staged_lights(&all, 2, Some(1)),
+            StagedLights {
+                on: names(&["l1", "l2", "l3"]),
+                off: vec![]
+            }
+        );
     }
 
     #[test]
@@ -258,9 +332,19 @@ end
         let (_, model) = Script::load_str(config, "config.rb").unwrap();
         let group = &model.groups["A/G"];
         let names = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
-        assert_eq!(picked_lights(group, &names(&["b", "a"])), Ok(vec!["A/a".into(), "A/b".into()]), "member order");
-        assert_eq!(picked_lights(group, &names(&["c"])), Err("staging block picked \"c\", which is not a light of group \"G\"".into()));
-        assert_eq!(picked_lights(group, &[]), Err("staging block picked no lights of group \"G\"".into()));
+        assert_eq!(
+            picked_lights(group, &names(&["b", "a"])),
+            Ok(vec!["A/a".into(), "A/b".into()]),
+            "member order"
+        );
+        assert_eq!(
+            picked_lights(group, &names(&["c"])),
+            Err("staging block picked \"c\", which is not a light of group \"G\"".into())
+        );
+        assert_eq!(
+            picked_lights(group, &[]),
+            Err("staging block picked no lights of group \"G\"".into())
+        );
     }
 
     #[test]
@@ -278,20 +362,42 @@ room "Küche" do
 end
 "#;
         let (_, model) = Script::load_str(config, "config.rb").unwrap();
-        let Some(Staging::Stages(stages)) = model.groups["Küche/Spots"].staging.clone() else { panic!("staged group") };
+        let Some(Staging::Stages(stages)) = model.groups["Küche/Spots"].staging.clone() else {
+            panic!("staged group")
+        };
         let brightness_of = |value: f64, count: usize| {
-            let command = LightCommand { on: Some(true), brightness: Some(value), ..Default::default() };
+            let command = LightCommand {
+                on: Some(true),
+                brightness: Some(value),
+                ..Default::default()
+            };
             let staged = staged_lights(&stages, count, None);
             commands_for(&model, "Küche/Spots", &command, Some(&staged))
                 .into_iter()
-                .map(|(path, _, c)| (path.rsplit('/').next().unwrap().to_string(), c.on, c.brightness))
+                .map(|(path, _, c)| {
+                    (
+                        path.rsplit('/').next().unwrap().to_string(),
+                        c.on,
+                        c.brightness,
+                    )
+                })
                 .collect::<Vec<_>>()
         };
         let on = |name: &str, brightness| (name.to_string(), Some(true), Some(brightness));
         let off = |name: &str| (name.to_string(), Some(false), None);
         // value · n / k = 20 · 3 / 1 = 60, then spot2's mapping halves it.
-        assert_eq!(brightness_of(20.0, 1), [off("spot1"), on("spot2", 30.0), off("spot3")]);
-        assert_eq!(brightness_of(50.0, 1), [off("spot1"), on("spot2", 50.0), off("spot3")], "capped at 100 before mapping");
-        assert_eq!(brightness_of(60.0, 2), [on("spot1", 60.0), on("spot2", 30.0), on("spot3", 60.0)]);
+        assert_eq!(
+            brightness_of(20.0, 1),
+            [off("spot1"), on("spot2", 30.0), off("spot3")]
+        );
+        assert_eq!(
+            brightness_of(50.0, 1),
+            [off("spot1"), on("spot2", 50.0), off("spot3")],
+            "capped at 100 before mapping"
+        );
+        assert_eq!(
+            brightness_of(60.0, 2),
+            [on("spot1", 60.0), on("spot2", 30.0), on("spot3", 60.0)]
+        );
     }
 }

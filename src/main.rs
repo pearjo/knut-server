@@ -10,11 +10,22 @@ use clap::{Parser, Subcommand};
 #[command(version, about = "Knut, a small smart-home daemon for Apple Home")]
 struct Cli {
     /// The Ruby config.
-    #[arg(short, long, global = true, env = "KNUT_CONFIG", default_value = "/etc/knut/config.rb")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        env = "KNUT_CONFIG",
+        default_value = "/etc/knut/config.rb"
+    )]
     config: PathBuf,
 
     /// Where pairing keys and auto/override state are kept.
-    #[arg(long, global = true, env = "KNUT_STATE_DIR", default_value = "/var/lib/knut")]
+    #[arg(
+        long,
+        global = true,
+        env = "KNUT_STATE_DIR",
+        default_value = "/var/lib/knut"
+    )]
     state_dir: PathBuf,
 
     #[command(subcommand)]
@@ -48,13 +59,18 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,hap=warn,libmdns=error")).init();
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,hap=warn,libmdns=error"),
+    )
+    .init();
 
     let runtime = tokio::runtime::Runtime::new().expect("cannot start the async runtime");
     let result = match cli.command {
         Command::Check { config } => knut::check(config.as_deref().unwrap_or(&cli.config)),
         Command::Discover => runtime.block_on(knut::discover(&cli.config, &cli.state_dir)),
-        Command::Set { entity, values } => runtime.block_on(knut::set(&cli.config, &cli.state_dir, &entity, &values)),
+        Command::Set { entity, values } => {
+            runtime.block_on(knut::set(&cli.config, &cli.state_dir, &entity, &values))
+        }
         Command::Run => runtime.block_on(knut::run(&cli.config, &cli.state_dir)),
         Command::Unpair => knut::unpair(&cli.state_dir),
     };

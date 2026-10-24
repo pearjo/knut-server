@@ -46,18 +46,23 @@ fn solar_parameters(time: DateTime<Utc>) -> SolarParameters {
     let true_longitude = mean_longitude + equation_of_centre;
     let omega = (125.04 - 1934.136 * t).to_radians();
     let apparent_longitude = true_longitude - 0.00569 - 0.00478 * omega.sin();
-    let mean_obliquity = 23.0 + (26.0 + (21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60.0) / 60.0;
+    let mean_obliquity =
+        23.0 + (26.0 + (21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60.0) / 60.0;
     let obliquity = (mean_obliquity + 0.00256 * omega.cos()).to_radians();
     let declination = (obliquity.sin() * apparent_longitude.to_radians().sin()).asin();
 
     let y = (obliquity / 2.0).tan().powi(2);
     let l = mean_longitude.to_radians();
     let equation_of_time = 4.0
-        * (y * (2.0 * l).sin() - 2.0 * eccentricity * m.sin() + 4.0 * eccentricity * y * m.sin() * (2.0 * l).cos()
+        * (y * (2.0 * l).sin() - 2.0 * eccentricity * m.sin()
+            + 4.0 * eccentricity * y * m.sin() * (2.0 * l).cos()
             - 0.5 * y * y * (4.0 * l).sin()
             - 1.25 * eccentricity * eccentricity * (2.0 * m).sin())
         .to_degrees();
-    SolarParameters { declination, equation_of_time }
+    SolarParameters {
+        declination,
+        equation_of_time,
+    }
 }
 
 pub(crate) fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
@@ -75,7 +80,9 @@ pub(crate) fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
     let azimuth = if azimuth_denominator.abs() < 1e-9 {
         180.0
     } else {
-        let cos_azimuth = ((lat_r.sin() * zenith.cos() - params.declination.sin()) / azimuth_denominator).clamp(-1.0, 1.0);
+        let cos_azimuth = ((lat_r.sin() * zenith.cos() - params.declination.sin())
+            / azimuth_denominator)
+            .clamp(-1.0, 1.0);
         let angle = cos_azimuth.acos().to_degrees();
         if hour_angle > 0.0 {
             (angle + 180.0).rem_euclid(360.0)
@@ -83,7 +90,10 @@ pub(crate) fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
             (540.0 - angle).rem_euclid(360.0)
         }
     };
-    SunPosition { elevation: 90.0 - zenith.to_degrees(), azimuth }
+    SunPosition {
+        elevation: 90.0 - zenith.to_degrees(),
+        azimuth,
+    }
 }
 
 /// Sunrise and sunset on `date` (a calendar day in UTC terms; for local
@@ -94,7 +104,8 @@ pub(crate) fn times(lat: f64, lon: f64, date: NaiveDate) -> Option<SunTimes> {
     let params = solar_parameters(approximate_noon);
 
     let lat_r = lat.to_radians();
-    let cos_hour_angle = HORIZON_ZENITH.to_radians().cos() / (lat_r.cos() * params.declination.cos())
+    let cos_hour_angle = HORIZON_ZENITH.to_radians().cos()
+        / (lat_r.cos() * params.declination.cos())
         - lat_r.tan() * params.declination.tan();
     if !(-1.0..=1.0).contains(&cos_hour_angle) {
         return None;
@@ -102,7 +113,10 @@ pub(crate) fn times(lat: f64, lon: f64, date: NaiveDate) -> Option<SunTimes> {
     let hour_angle = cos_hour_angle.acos().to_degrees();
     let solar_noon = 720.0 - 4.0 * lon - params.equation_of_time;
     let at = |minutes: f64| midnight + Duration::seconds((minutes * 60.0).round() as i64);
-    Some(SunTimes { sunrise: at(solar_noon - 4.0 * hour_angle), sunset: at(solar_noon + 4.0 * hour_angle) })
+    Some(SunTimes {
+        sunrise: at(solar_noon - 4.0 * hour_angle),
+        sunset: at(solar_noon + 4.0 * hour_angle),
+    })
 }
 
 #[cfg(test)]
@@ -118,8 +132,14 @@ mod tests {
         let times = times(LAT, LON, date).unwrap();
         let sunrise = times.sunrise.format("%H:%M").to_string();
         let sunset = times.sunset.format("%H:%M").to_string();
-        assert!(("02:45".."03:00").contains(&sunrise.as_str()), "sunrise {sunrise} UTC");
-        assert!(("19:40".."19:55").contains(&sunset.as_str()), "sunset {sunset} UTC");
+        assert!(
+            ("02:45".."03:00").contains(&sunrise.as_str()),
+            "sunrise {sunrise} UTC"
+        );
+        assert!(
+            ("19:40".."19:55").contains(&sunset.as_str()),
+            "sunset {sunset} UTC"
+        );
 
         let noon = times.sunrise + (times.sunset - times.sunrise) / 2;
         let sun = position(LAT, LON, noon);

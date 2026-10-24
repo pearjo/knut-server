@@ -71,7 +71,9 @@ impl Mruby {
         let text = if out.is_null() {
             String::from("out of memory")
         } else {
-            let text = unsafe { CStr::from_ptr(out) }.to_string_lossy().into_owned();
+            let text = unsafe { CStr::from_ptr(out) }
+                .to_string_lossy()
+                .into_owned();
             unsafe { knut_mrb_free(out) };
             text
         };

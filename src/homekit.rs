@@ -42,8 +42,12 @@ struct Exposed {
 impl Exposed {
     async fn set(&self, service: HapType, characteristic: HapType, value: Value) {
         let mut accessory = self.accessory.lock().await;
-        let Some(service) = accessory.get_mut_service(service) else { return };
-        let Some(characteristic) = service.get_mut_characteristic(characteristic) else { return };
+        let Some(service) = accessory.get_mut_service(service) else {
+            return;
+        };
+        let Some(characteristic) = service.get_mut_characteristic(characteristic) else {
+            return;
+        };
         // The accessory lock keeps HomeKit writes out while the flag is set.
         self.pushing.store(true, Ordering::SeqCst);
         let result = characteristic.set_value(value).await;
@@ -107,22 +111,41 @@ pub(crate) async fn start(
     // "No Response"; dropping them from the cache and bumping the
     // configuration number makes controllers reload the accessory list.
     let cached = storage.load_aid_cache().await.unwrap_or_default();
-    let stale: Vec<u64> = cached.iter().copied().filter(|id| !accessory_ids.contains(id) && *id != 1).collect();
+    let stale: Vec<u64> = cached
+        .iter()
+        .copied()
+        .filter(|id| !accessory_ids.contains(id) && *id != 1)
+        .collect();
     if !stale.is_empty() {
-        let kept: Vec<u64> = cached.into_iter().filter(|id| !stale.contains(id)).collect();
+        let kept: Vec<u64> = cached
+            .into_iter()
+            .filter(|id| !stale.contains(id))
+            .collect();
         storage.save_aid_cache(&kept).await.map_err(hap_error)?;
         config.configuration_number += 1;
     }
     storage.save_config(&config).await.map_err(hap_error)?;
-    log::info!("HomeKit: {:?} on {}:{}, setup code {}", config.name, config.host, config.port, format_pin(&pin));
+    log::info!(
+        "HomeKit: {:?} on {}:{}, setup code {}",
+        config.name,
+        config.host,
+        config.port,
+        format_pin(&pin)
+    );
     let pairings = storage.count_pairings().await.map_err(hap_error)?;
     if pairings > 0 {
         log::info!("HomeKit: paired with {pairings} controller(s), not offered for pairing (`knut unpair` resets)");
     }
 
     let server = IpServer::new(config, storage).await.map_err(hap_error)?;
-    let mut bridge = BridgeAccessory::new(1, information(&model.homekit.name, "bridge")).map_err(hap_error)?;
-    bridge.protocol_information.version.set_value(json!("1.1.0")).await.map_err(hap_error)?;
+    let mut bridge =
+        BridgeAccessory::new(1, information(&model.homekit.name, "bridge")).map_err(hap_error)?;
+    bridge
+        .protocol_information
+        .version
+        .set_value(json!("1.1.0"))
+        .await
+        .map_err(hap_error)?;
     server.add_accessory(bridge).await.map_err(hap_error)?;
 
     let mut entities: HashMap<String, Exposed> = HashMap::new();
@@ -130,7 +153,13 @@ pub(crate) async fn start(
         let pushing = Arc::new(AtomicBool::new(false));
         let accessory = lightbulb(id, &path, &pushing, &inputs)?;
         let pointer = server.add_accessory(accessory).await.map_err(hap_error)?;
-        entities.insert(path, Exposed { accessory: pointer, pushing });
+        entities.insert(
+            path,
+            Exposed {
+                accessory: pointer,
+                pushing,
+            },
+        );
     }
 
     let (reset_tx, mut reset_rx) = mpsc::unbounded_channel::<u64>();
@@ -140,7 +169,10 @@ pub(crate) async fn start(
         let pushing = Arc::new(AtomicBool::new(false));
         let accessory = switch(id, scene.as_deref(), &pushing, &inputs, &reset_tx)?;
         let pointer = server.add_accessory(accessory).await.map_err(hap_error)?;
-        let exposed = Exposed { accessory: pointer, pushing };
+        let exposed = Exposed {
+            accessory: pointer,
+            pushing,
+        };
         match scene {
             Some(_) => {
                 scene_switches.insert(id, exposed);
@@ -197,7 +229,8 @@ pub(crate) fn unpair(state_dir: &Path) -> Result<()> {
     let homekit_dir = state_dir.join("homekit");
     let config = homekit_dir.join("config.json");
     if config.exists() {
-        std::fs::remove_file(&config).with_context(|| format!("cannot remove {}", config.display()))?;
+        std::fs::remove_file(&config)
+            .with_context(|| format!("cannot remove {}", config.display()))?;
     }
     let pairings = homekit_dir.join("pairings");
     let mut removed = 0;
@@ -210,8 +243,14 @@ pub(crate) fn unpair(state_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn lightbulb(id: u64, path: &str, pushing: &Arc<AtomicBool>, inputs: &mpsc::UnboundedSender<Input>) -> Result<LightbulbAccessory> {
-    let mut accessory = LightbulbAccessory::new(id, information(&display_name(path), path)).map_err(hap_error)?;
+fn lightbulb(
+    id: u64,
+    path: &str,
+    pushing: &Arc<AtomicBool>,
+    inputs: &mpsc::UnboundedSender<Input>,
+) -> Result<LightbulbAccessory> {
+    let mut accessory =
+        LightbulbAccessory::new(id, information(&display_name(path), path)).map_err(hap_error)?;
     let service = &mut accessory.lightbulb;
     // Without these characteristics the Home app cannot offer Adaptive
     // Lighting, which would fight Knut's own auto mode.
@@ -230,15 +269,20 @@ fn lightbulb(id: u64, path: &str, pushing: &Arc<AtomicBool>, inputs: &mpsc::Unbo
         let path = path.to_string();
         move |value: f64| {
             if !pushing.load(Ordering::SeqCst) {
-                let _ = inputs.send(Input::Entity { path: path.clone(), change: change(value) });
+                let _ = inputs.send(Input::Entity {
+                    path: path.clone(),
+                    change: change(value),
+                });
             }
         }
     };
     let on = send(|value| Change::On(value > 0.5));
-    service.power_state.on_update(Some(move |_: &bool, new: &bool| {
-        on(if *new { 1.0 } else { 0.0 });
-        Ok(())
-    }));
+    service
+        .power_state
+        .on_update(Some(move |_: &bool, new: &bool| {
+            on(if *new { 1.0 } else { 0.0 });
+            Ok(())
+        }));
     if let Some(brightness) = service.brightness.as_mut() {
         let send_brightness = send(Change::Brightness);
         brightness.on_update(Some(move |_: &i32, new: &i32| {
@@ -247,8 +291,12 @@ fn lightbulb(id: u64, path: &str, pushing: &Arc<AtomicBool>, inputs: &mpsc::Unbo
         }));
     }
     if let Some(colour_temperature) = service.color_temperature.as_mut() {
-        colour_temperature.set_min_value(Some(json!(MIRED_MIN))).map_err(hap_error)?;
-        colour_temperature.set_max_value(Some(json!(MIRED_MAX))).map_err(hap_error)?;
+        colour_temperature
+            .set_min_value(Some(json!(MIRED_MIN)))
+            .map_err(hap_error)?;
+        colour_temperature
+            .set_max_value(Some(json!(MIRED_MAX)))
+            .map_err(hap_error)?;
         let send_kelvin = send(Change::Kelvin);
         colour_temperature.on_update(Some(move |_: &i32, new: &i32| {
             send_kelvin(mired_to_kelvin(*new as f64));
@@ -273,22 +321,25 @@ fn switch(
     let inputs = inputs.clone();
     let reset = reset.clone();
     let scene = scene.map(str::to_owned);
-    accessory.switch.power_state.on_update(Some(move |_: &bool, new: &bool| {
-        if pushing.load(Ordering::SeqCst) {
-            return Ok(());
-        }
-        match &scene {
-            Some(scene) if *new => {
-                let _ = inputs.send(Input::Scene(scene.clone()));
-                let _ = reset.send(id);
+    accessory
+        .switch
+        .power_state
+        .on_update(Some(move |_: &bool, new: &bool| {
+            if pushing.load(Ordering::SeqCst) {
+                return Ok(());
             }
-            Some(_) => {}
-            None => {
-                let _ = inputs.send(Input::AutoSwitch(*new));
+            match &scene {
+                Some(scene) if *new => {
+                    let _ = inputs.send(Input::Scene(scene.clone()));
+                    let _ = reset.send(id);
+                }
+                Some(_) => {}
+                None => {
+                    let _ = inputs.send(Input::AutoSwitch(*new));
+                }
             }
-        }
-        Ok(())
-    }));
+            Ok(())
+        }));
     Ok(accessory)
 }
 
@@ -301,8 +352,14 @@ fn information(name: &str, serial: &str) -> AccessoryInformation {
         // Required by HAP, as plain numbers: the Home app rejects the bridge
         // as "out of compliance" for a version like "2.0.0-dev".
         firmware_revision: Some(
-            concat!(env!("CARGO_PKG_VERSION_MAJOR"), ".", env!("CARGO_PKG_VERSION_MINOR"), ".", env!("CARGO_PKG_VERSION_PATCH"))
-                .into(),
+            concat!(
+                env!("CARGO_PKG_VERSION_MAJOR"),
+                ".",
+                env!("CARGO_PKG_VERSION_MINOR"),
+                ".",
+                env!("CARGO_PKG_VERSION_PATCH")
+            )
+            .into(),
         ),
         ..Default::default()
     }
@@ -318,12 +375,22 @@ fn display_name(path: &str) -> String {
 fn homekit_name(name: &str) -> String {
     let allowed: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     let words: Vec<&str> = allowed.split_whitespace().collect();
     let joined = words.join(" ");
     let trimmed = joined.trim_matches(|c: char| !c.is_alphanumeric());
-    if trimmed.is_empty() { "Knut".to_string() } else { trimmed.to_string() }
+    if trimmed.is_empty() {
+        "Knut".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// The configured setup code, or one generated once and kept in the store.
@@ -335,7 +402,9 @@ fn setup_code(model: &Model, store: &mut Store) -> Result<String> {
         return Ok(pin.clone());
     }
     let pin = loop {
-        let digits: String = (0..8).map(|_| char::from(b'0' + (rand_byte() % 10))).collect();
+        let digits: String = (0..8)
+            .map(|_| char::from(b'0' + (rand_byte() % 10)))
+            .collect();
         if Pin::new(pin_digits(&digits)?).is_ok() {
             break digits;
         }
@@ -346,8 +415,14 @@ fn setup_code(model: &Model, store: &mut Store) -> Result<String> {
 }
 
 fn pin_digits(pin: &str) -> Result<[u8; 8]> {
-    let digits: Vec<u8> = pin.bytes().filter(u8::is_ascii_digit).map(|b| b - b'0').collect();
-    digits.try_into().map_err(|_| anyhow!("the HomeKit setup code needs 8 digits"))
+    let digits: Vec<u8> = pin
+        .bytes()
+        .filter(u8::is_ascii_digit)
+        .map(|b| b - b'0')
+        .collect();
+    digits
+        .try_into()
+        .map_err(|_| anyhow!("the HomeKit setup code needs 8 digits"))
 }
 
 /// The code as the Home app asks for it, e.g. "1112-2333".
@@ -385,7 +460,10 @@ mod tests {
     fn makes_names_acceptable_to_the_home_app() {
         assert_eq!(homekit_name("Küche Spots"), "Küche Spots");
         assert_eq!(homekit_name("Joe's Büro Licht"), "Joe's Büro Licht");
-        assert_eq!(homekit_name("Wohnzimmer - Decke (alt)"), "Wohnzimmer Decke alt");
+        assert_eq!(
+            homekit_name("Wohnzimmer - Decke (alt)"),
+            "Wohnzimmer Decke alt"
+        );
         assert_eq!(homekit_name("'Flur'"), "Flur");
         assert_eq!(homekit_name("--"), "Knut");
     }
