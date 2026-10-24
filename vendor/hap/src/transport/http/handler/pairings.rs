@@ -213,13 +213,22 @@ async fn handle_remove(
 
     let uuid_str = str::from_utf8(&pairing_id)?;
     let pairing_uuid = Uuid::parse_str(uuid_str)?;
-    storage.lock().await.delete_pairing(&pairing_uuid).await?;
-
-    event_emitter
-        .lock()
-        .await
-        .emit(&Event::ControllerUnpaired { id: pairing_uuid })
-        .await;
+    // The storage lock must be released before the event: its listeners use the storage.
+    let removed = storage.lock().await.delete_pairing(&pairing_uuid).await;
+    match removed {
+        Ok(()) => {
+            event_emitter
+                .lock()
+                .await
+                .emit(&Event::ControllerUnpaired { id: pairing_uuid })
+                .await;
+        },
+        // Removing a pairing that does not exist succeeds; nothing changed.
+        Err(error) if error.is_not_found() => {
+            info!("pairings M1: pairing {} to remove does not exist", uuid_str);
+        },
+        Err(error) => return Err(error.into()),
+    }
 
     info!("pairings M2: sending remove pairing response");
 
@@ -332,5 +341,67 @@ mod tests {
         let separators = listed.windows(2).filter(|w| w == &[Type::Separator as u8, 0]).count();
         assert_eq!(separators, 1);
         assert!(!listed.ends_with(&[Type::Separator as u8, 0]));
+    }
+
+    /// The Home app removes a home hub's pairing again when it cleans up,
+    /// also when the accessory never had it.
+    #[tokio::test]
+    async fn removing_a_missing_pairing_succeeds() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.scratch/hap-test-remove");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut storage = FileStorage::new(&dir).await.unwrap();
+        let iphone_id = Uuid::parse_str(IPHONE).unwrap();
+        let iphone = Pairing::new(iphone_id, IPHONE.to_string(), Permissions::Admin, [1; 32]);
+        storage.save_pairing(&iphone).await.unwrap();
+
+        let storage: pointer::Storage = Arc::new(Mutex::new(Box::new(storage)));
+        let controller_id: pointer::ControllerId = Arc::new(RwLock::new(Some(iphone_id)));
+        let event_emitter: pointer::EventEmitter = Arc::new(Mutex::new(EventEmitter::new()));
+
+        let response = handle_remove(controller_id, storage.clone(), event_emitter, APPLE_TV.as_bytes().to_vec())
+            .await
+            .unwrap();
+
+        assert_eq!(response.encode(), vec![Value::State(StepNumber::Res as u8)].encode());
+        assert_eq!(storage.lock().await.count_pairings().await.unwrap(), 1, "the iPhone stays paired");
+    }
+
+    /// The server's listener counts the pairings when one is removed, so the
+    /// handler must not hold the storage while it sends the event.
+    #[tokio::test]
+    async fn removing_a_pairing_releases_the_storage_before_the_event() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.scratch/hap-test-remove-event");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut storage = FileStorage::new(&dir).await.unwrap();
+        let iphone_id = Uuid::parse_str(IPHONE).unwrap();
+        let apple_tv_id = Uuid::parse_str(APPLE_TV).unwrap();
+        storage
+            .save_pairing(&Pairing::new(iphone_id, IPHONE.to_string(), Permissions::Admin, [1; 32]))
+            .await
+            .unwrap();
+        storage
+            .save_pairing(&Pairing::new(apple_tv_id, APPLE_TV.to_string(), Permissions::Admin, [2; 32]))
+            .await
+            .unwrap();
+
+        let storage: pointer::Storage = Arc::new(Mutex::new(Box::new(storage)));
+        let controller_id: pointer::ControllerId = Arc::new(RwLock::new(Some(iphone_id)));
+        let mut emitter = EventEmitter::new();
+        let listener_storage = storage.clone();
+        emitter.add_listener(Box::new(move |_| {
+            let storage = listener_storage.clone();
+            Box::pin(async move {
+                storage.lock().await.count_pairings().await.unwrap();
+            })
+        }));
+        let event_emitter: pointer::EventEmitter = Arc::new(Mutex::new(emitter));
+
+        let removal = handle_remove(controller_id, storage.clone(), event_emitter, APPLE_TV.as_bytes().to_vec());
+        tokio::time::timeout(std::time::Duration::from_secs(5), removal)
+            .await
+            .expect("removing a pairing deadlocks")
+            .unwrap();
+
+        assert_eq!(storage.lock().await.count_pairings().await.unwrap(), 1);
     }
 }

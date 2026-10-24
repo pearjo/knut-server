@@ -224,7 +224,15 @@ async fn handle_finish(
             let uuid_str = str::from_utf8(device_pairing_id)?;
             let pairing_uuid = Uuid::parse_str(uuid_str)?;
             debug!("device pairing UUID: {:?}", &pairing_uuid);
-            let pairing = storage.lock().await.load_pairing(&pairing_uuid).await?;
+            let pairing = match storage.lock().await.load_pairing(&pairing_uuid).await {
+                Ok(pairing) => pairing,
+                // HAP: a controller that is not paired gets an authentication error.
+                Err(error) if error.is_not_found() => {
+                    info!("pair verify M4: unknown controller {} tried to connect", uuid_str);
+                    return Err(tlv::Error::Authentication);
+                },
+                Err(error) => return Err(error.into()),
+            };
             debug!("loaded pairing: {:?}", &pairing);
 
             let mut device_info: Vec<u8> = Vec::new();

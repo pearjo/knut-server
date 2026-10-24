@@ -14,7 +14,11 @@ target/release/knut check examples/config.rb
 
 `run.py` starts `target/release/knut` with a fresh state, pairs with the test
 controller in `.scratch/homekit/.venv` and prints the accessory database.
-`discover.py` lists the HAP bridges on the LAN.
+`discover.py` lists the HAP bridges on the LAN. `hub.py` plays a home hub:
+it adds and removes a second controller and connects as a known and an
+unknown controller, printing the ERROR lines Knut logs after each step.
+Run the vendored hap's tests with `cargo test -p hap` (it needs Knut's
+tokio features).
 
 ## Pre-flight checklist
 

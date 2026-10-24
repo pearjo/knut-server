@@ -63,6 +63,13 @@ pub enum Error {
     MpscSend(#[from] mpsc::SendError<()>),
 }
 
+impl Error {
+    /// Whether the error means that a stored item, such as a pairing, does not exist.
+    pub(crate) fn is_not_found(&self) -> bool {
+        matches!(self, Error::Io(error) if error.kind() == io::ErrorKind::NotFound)
+    }
+}
+
 impl From<aead::Error> for Error {
     fn from(_: aead::Error) -> Self { Error::Aead }
 }
