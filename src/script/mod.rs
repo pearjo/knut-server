@@ -414,6 +414,29 @@ $demand = curve(
     }
 
     #[test]
+    fn reads_and_checks_stages() {
+        let group = |stages: &str| {
+            format!(
+                "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"a\", zigbee: \"1\"\n  light \"b\", zigbee: \"2\"\n  light \"c\", zigbee: \"3\"\n  group \"G\", lights: [:a, :b, :c] do\n    {stages}\n  end\nend\n"
+            )
+        };
+        let (_, model) = Script::load_str(&group("stages [:b], [:a, :c]"), "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let paths = |names: &[&str]| names.iter().map(|n| format!("A/{n}")).collect::<Vec<_>>();
+        assert_eq!(model.groups["A/G"].stages, Some(vec![paths(&["b"]), paths(&["a", "c"])]));
+        assert!(model.to_string().contains("    stages b | a, c\n"), "{model}");
+
+        let error = |stages: &str| Script::load_str(&group(stages), "config.rb").err().unwrap().to_string();
+        let missing = error("stages [:b], [:a]");
+        assert!(missing.starts_with("config.rb:7: stages must list \"c\" exactly once"), "{missing}");
+        let twice = error("stages [:b], [:a, :b, :c]");
+        assert!(twice.contains("config.rb:7: stages must list \"b\" exactly once"), "{twice}");
+        let stranger = error("stages [:b], [:a, :c, :d]");
+        assert!(stranger.contains("config.rb:7: stages refer to \"d\", which is not a light of group \"G\""), "{stranger}");
+        let flat = error("stages :b, :a");
+        assert!(flat.starts_with("config.rb:7: each stage must be a non-empty Array"), "{flat}");
+    }
+
+    #[test]
     fn reports_errors_with_config_lines() {
         let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"l\", zigbee: \"1\"\n  group \"G\", lights: [:nope]\nend\n";
         let error = Script::load_str(config, "config.rb").err().unwrap().to_string();

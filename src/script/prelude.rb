@@ -214,7 +214,7 @@ module Knut
     def group(name, lights:, expose: true, &block)
       Knut.name!(name, "group")
       Knut.fail("lights: must be a non-empty Array") unless lights.is_a?(Array) && !lights.empty?
-      group = { name: name, lights: lights.map(&:to_s), expose: expose, mappings: [], line: Knut.location }
+      group = { name: name, lights: lights.map(&:to_s), expose: expose, mappings: [], stages: nil, line: Knut.location }
       GroupBuilder.new(group).instance_eval(&block) if block
       @room[:groups] << group
     end
@@ -228,6 +228,16 @@ module Knut
     def map(light, brightness:)
       Knut.fail("brightness: must be a lambda, e.g. ->(x) { x * 0.8 }") unless brightness.respond_to?(:call)
       @group[:mappings] << { light: light.to_s, proc: Knut.register_proc(brightness), line: Knut.location }
+    end
+
+    # stages [:spot2], [:spot1, :spot3]
+    def stages(*stages)
+      Knut.fail("stages are already set for group #{@group[:name].inspect}") if @group[:stages]
+      Knut.fail("stages needs at least one stage, e.g. stages [:spot2], [:spot1, :spot3]") if stages.empty?
+      unless stages.all? { |stage| stage.is_a?(Array) && !stage.empty? }
+        Knut.fail("each stage must be a non-empty Array of lights, e.g. [:spot2]")
+      end
+      @group[:stages] = { lights: stages.map { |stage| stage.map(&:to_s) }, line: Knut.location }
     end
   end
 

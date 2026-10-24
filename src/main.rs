@@ -158,7 +158,14 @@ async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String]) -
         bail!("unknown light or group {entity:?}");
     }
     let command = control::parse_values(values)?;
-    let commands = control::commands_for(&model, entity, &command);
+    let stages = model.groups.get(entity).and_then(|group| group.stages.as_ref());
+    let staged = match (stages, command.brightness) {
+        (Some(stages), Some(brightness)) => {
+            Some(control::staged_lights(stages, control::stage_count(stages, brightness, None), None))
+        }
+        _ => None,
+    };
+    let commands = control::commands_for(&model, entity, &command, staged.as_ref());
 
     let (events, _) = mpsc::unbounded_channel();
     let adapters = Adapters::connect(&model, state_dir, events).await?;
