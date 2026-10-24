@@ -289,6 +289,102 @@ end
         assert!(unknown.starts_with("config.rb:2: unknown option(s) for weekdays: sleep"), "{unknown}");
     }
 
+    const CURVE_CONFIG: &str = r#"
+schedule do
+  weekdays wake: "06:30", bed: "23:00"
+  friday   bed: "00:30"
+  saturday wake: "08:30", bed: "00:30"
+  sunday   wake: "08:30", bed: "23:00"
+end
+$demand = curve(
+  [:bed + 1.h,   0.0],
+  [:wake,        0.0],
+  [:wake + 30.m, 1.0],
+  ["17:00",      1.0],
+  [:bed - 3.h,   0.6],
+  [:bed - 1.h,   0.25])
+"#;
+
+    /// `$demand` from [`CURVE_CONFIG`] at local time "YYYY-MM-DD HH:MM".
+    fn demand_at(script: &mut Script, time: &str) -> f64 {
+        let (date, clock) = time.split_once(' ').unwrap();
+        // Parsed so that "08" doesn't reach Ruby as an octal literal.
+        let number = |text: &str| text.parse::<u32>().unwrap();
+        let [year, month, day]: [u32; 3] = date.split('-').map(number).collect::<Vec<_>>().try_into().unwrap();
+        let (hour, minute) = clock.split_once(':').map(|(h, m)| (number(h), number(m))).unwrap();
+        let code = format!("$demand.at(Time.local({year}, {month}, {day}, {hour}, {minute}))");
+        script.ruby.eval(&code, "test").unwrap().parse().unwrap()
+    }
+
+    fn assert_near(actual: f64, expected: f64, what: &str) {
+        assert!((actual - expected).abs() < 1e-6, "{what}: {actual}, expected {expected}");
+    }
+
+    #[test]
+    fn curves_hit_keyframes_and_ease_between_them() {
+        let (mut script, _) = Script::load_str(CURVE_CONFIG, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        // 2026-10-22 is a Thursday.
+        for (time, expected) in [
+            ("2026-10-22 06:30", 0.0),
+            ("2026-10-22 07:00", 1.0),
+            ("2026-10-22 17:00", 1.0),
+            ("2026-10-22 20:00", 0.6),
+            ("2026-10-22 22:00", 0.25),
+            ("2026-10-23 00:00", 0.0),
+            ("2026-10-22 03:00", 0.0),
+            ("2026-10-22 12:00", 1.0),
+            ("2026-10-22 06:45", 0.5),
+        ] {
+            assert_near(demand_at(&mut script, time), expected, time);
+        }
+    }
+
+    #[test]
+    fn curve_anchors_move_with_the_schedule() {
+        let (mut script, _) = Script::load_str(CURVE_CONFIG, "config.rb").unwrap();
+        // Friday's bedtime is Saturday 00:30: at midnight the evening ramp from
+        // 23:30 (0.25) to 01:30 (0.0) is a quarter done.
+        let eased = 0.25 * (1.0 + (std::f64::consts::PI / 4.0).cos()) / 2.0;
+        assert_near(demand_at(&mut script, "2026-10-24 00:00"), eased, "Friday night, past midnight");
+        assert_near(demand_at(&mut script, "2026-10-24 01:30"), 0.0, "Friday's bed + 1 h");
+        assert_near(demand_at(&mut script, "2026-10-24 08:30"), 0.0, "Saturday's wake");
+        assert_near(demand_at(&mut script, "2026-10-24 09:00"), 1.0, "Saturday's wake + 30 min");
+        assert_near(demand_at(&mut script, "2026-10-23 07:00"), 1.0, "Friday's wake + 30 min");
+    }
+
+    #[test]
+    fn curves_stay_between_neighbouring_keyframes() {
+        let (mut script, _) = Script::load_str(CURVE_CONFIG, "config.rb").unwrap();
+        // Thursday 22:00 (0.25) to Friday 00:00 (0.0), every 5 minutes.
+        let mut previous = f64::INFINITY;
+        for step in 0..=24 {
+            let minutes = 22 * 60 + step * 5;
+            let time = if minutes < 1440 {
+                format!("2026-10-22 {:02}:{:02}", minutes / 60, minutes % 60)
+            } else {
+                format!("2026-10-23 {:02}:{:02}", (minutes - 1440) / 60, minutes % 60)
+            };
+            let value = demand_at(&mut script, &time);
+            assert!((0.0..=0.25).contains(&value) && value <= previous, "{time}: {value} after {previous}");
+            previous = value;
+        }
+    }
+
+    #[test]
+    fn reports_curve_errors() {
+        let error = |config: &str| Script::load_str(config, "config.rb").err().unwrap().to_string();
+        let crossing = error(
+            "schedule do\n  weekdays wake: \"06:30\", bed: \"23:00\"\n  monday bed: \"19:00\"\n  saturday wake: \"08:30\", bed: \"23:00\"\n  sunday wake: \"08:30\", bed: \"23:00\"\nend\ncurve([:wake, 0], [\"17:00\", 1], [:bed - 3.h, 0.5])\n",
+        );
+        assert!(crossing.starts_with("config.rb:7: curve keyframes on monday are not in clock order: 06:30, 17:00, 16:00"), "{crossing}");
+        let unscheduled = error("curve([:wake, 0], [\"17:00\", 1])\n");
+        assert!(unscheduled.starts_with("config.rb:1: curves with :wake or :bed need a schedule"), "{unscheduled}");
+        let anchor = error("curve([:noon + 1.h, 0], [\"17:00\", 1])\n");
+        assert!(anchor.starts_with("config.rb:1: only :wake and :bed"), "{anchor}");
+        let bad_time = error("curve([\"7:00\", 0], [\"17:00\", 1])\n");
+        assert!(bad_time.starts_with("config.rb:1: keyframe time must be an \"HH:MM\" time"), "{bad_time}");
+    }
+
     #[test]
     fn reports_errors_with_config_lines() {
         let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"l\", zigbee: \"1\"\n  group \"G\", lights: [:nope]\nend\n";

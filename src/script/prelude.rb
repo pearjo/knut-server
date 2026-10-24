@@ -19,9 +19,10 @@ module Knut
   class << self
     attr_reader :model, :actions, :state
 
-    # "config.rb:12" of the innermost DSL call in the user's config.
+    # "config.rb:12" of the innermost DSL call in the user's config. Frames
+    # in mruby's own Ruby code (iterators like `map`) are skipped too.
     def location
-      frame = caller.find { |line| !line.start_with?(PRELUDE_FILE) }
+      frame = caller.find { |line| !line.start_with?(PRELUDE_FILE) && !line.include?("/mrblib/") }
       return "?" unless frame
       suffix = frame.index(":in ")
       suffix ? frame[0, suffix] : frame
@@ -55,6 +56,19 @@ module Knut
       hours, minutes = value[0, 2].to_i, value[3, 2].to_i if digits
       fail("#{what} must be an \"HH:MM\" time, got #{value.inspect}") unless digits && hours < 24 && minutes < 60
       hours * 60 + minutes
+    end
+
+    # [time, value] with time as minutes after midnight or an Anchor.
+    def keyframe!(keyframe)
+      fail("keyframes must be [time, value] pairs, got #{keyframe.inspect}") unless keyframe.is_a?(Array) && keyframe.size == 2
+      time, value = keyframe
+      time = case time
+             when String then clock_minutes!(time, "keyframe time")
+             when Symbol then Anchor.new(time, 0)
+             when Anchor then time
+             else fail("keyframe time must be \"HH:MM\", :wake, :bed or e.g. :bed - 1.h, got #{time.inspect}")
+             end
+      [time, number!(value, "keyframe value")]
     end
 
     # Splits `zigbee: "0x..", adapter: "z2m"` style options into the
@@ -218,8 +232,6 @@ module Knut
 
     private
 
-    # Validates before iterating: errors raised inside mruby's Ruby-level
-    # iterators would be attributed to those instead of the config line.
     def set(wdays, what, times)
       unknown = times.keys - [:wake, :bed]
       Knut.fail("unknown option(s) for #{what}: #{unknown.join(", ")}") unless unknown.empty?
@@ -230,6 +242,75 @@ module Knut
         @days[wday][:wake] = wake if wake
         @days[wday][:bed] = bed if bed
       end
+    end
+  end
+
+  ANCHORS = [:wake, :bed]
+
+  # A keyframe time relative to the day's wake or bed time: :bed - 1.h
+  class Anchor
+    def initialize(name, offset)
+      Knut.fail("only :wake and :bed can be used as times, got #{name.inspect}") unless ANCHORS.include?(name)
+      Knut.fail("offsets must be whole minutes like 30.m or 3.h, got #{offset.inspect}") unless offset.is_a?(Integer)
+      @name = name
+      @offset = offset
+    end
+
+    # Minutes after midnight of the schedule day `day`.
+    def minutes(day)
+      day[@name] + @offset
+    end
+  end
+
+  # A periodic 24 h curve through [time, value] keyframes; neighbouring
+  # keyframes are joined with cosine easing.
+  class Curve
+    def initialize(keyframes, schedule)
+      @keyframes = keyframes
+      @schedule = schedule
+    end
+
+    # On every weekday the keyframe times must go round the clock exactly
+    # once, in the order given.
+    def check!
+      (@schedule ? (0..6).to_a : [0]).each do |wday|
+        times = times_on(wday)
+        next if gaps(times).none?(&:zero?) && gaps(times).inject(:+) == 1440
+        where = @schedule ? " on #{ScheduleBuilder::DAYS[wday]}" : ""
+        clock = times.map { |time| format("%02d:%02d", time % 1440 / 60, time % 60) }
+        Knut.fail("curve keyframes#{where} are not in clock order: #{clock.join(", ")}")
+      end
+    end
+
+    def at(now)
+      wday = now.wday
+      minutes = now.hour * 60 + now.min + now.sec / 60.0
+      if @schedule
+        previous = (wday - 1) % 7
+        # Until the middle of the night the previous day's wake and bed
+        # times apply, so a bedtime after midnight belongs to its evening.
+        middle_of_night = (@schedule[previous][:bed] - 1440 + @schedule[wday][:wake]) / 2.0
+        wday = previous if minutes < middle_of_night
+      end
+      times = times_on(wday)
+      lengths = gaps(times)
+      i = (0...times.size).find { |index| (minutes - times[index]) % 1440 < lengths[index] }
+      from = @keyframes[i][1]
+      to = @keyframes[(i + 1) % @keyframes.size][1]
+      progress = ((minutes - times[i]) % 1440) / lengths[i]
+      from + (to - from) * (1 - Math.cos(Math::PI * progress)) / 2
+    end
+
+    private
+
+    def times_on(wday)
+      day = @schedule && @schedule[wday]
+      @keyframes.map { |time, _| time.is_a?(Anchor) ? time.minutes(day) : time }
+    end
+
+    # Minutes from each keyframe to the next, going round the clock.
+    def gaps(times)
+      times.each_with_index.map { |time, i| (times[(i + 1) % times.size] - time) % 1440 }
     end
   end
 
@@ -308,6 +389,28 @@ module Knut
   end
 end
 
+# Durations for curve keyframes, in minutes: 30.m, 3.h
+class Integer
+  def m
+    self
+  end
+
+  def h
+    self * 60
+  end
+end
+
+# :wake + 30.m, :bed - 1.h
+class Symbol
+  def +(minutes)
+    Knut::Anchor.new(self, minutes)
+  end
+
+  def -(minutes)
+    Knut::Anchor.new(self, -minutes)
+  end
+end
+
 # ---------------------------------------------------------------------------
 # Configuration
 
@@ -359,6 +462,20 @@ def schedule(&block)
     bed = day[:bed] < day[:wake] ? day[:bed] + 1440 : day[:bed]
     { wake: day[:wake], bed: bed }
   end
+end
+
+# demand = curve([:wake, 0.0], [:wake + 30.m, 1.0], ["17:00", 1.0], [:bed - 1.h, 0.25])
+# demand.at(now)
+def curve(*keyframes)
+  Knut.fail("curve needs at least two [time, value] keyframes") if keyframes.size < 2
+  keyframes = keyframes.map { |keyframe| Knut.keyframe!(keyframe) }
+  schedule = Knut.model[:schedule]
+  if !schedule && keyframes.any? { |time, _| time.is_a?(Knut::Anchor) }
+    Knut.fail("curves with :wake or :bed need a schedule before them")
+  end
+  curve = Knut::Curve.new(keyframes, schedule)
+  curve.check!
+  curve
 end
 
 def room(name, &block)
