@@ -11,7 +11,7 @@ module Knut
   PRELUDE_FILE = "(knut)"
   ADAPTER_KINDS = [:hue, :zigbee]
 
-  @model = { location: nil, homekit: nil, adapters: [], rooms: [], scenes: [], triggers: [] }
+  @model = { location: nil, homekit: nil, schedule: nil, adapters: [], rooms: [], scenes: [], triggers: [] }
   @procs = []
   @actions = nil
   @state = {}
@@ -46,6 +46,15 @@ module Knut
     def number!(value, what)
       fail("#{what} must be a number, got #{value.inspect}") unless value.is_a?(Numeric)
       value.to_f
+    end
+
+    # "06:30" → 390, minutes after midnight.
+    def clock_minutes!(value, what)
+      digits = value.is_a?(String) && value.size == 5 && value[2] == ":" &&
+        (value[0, 2] + value[3, 2]).each_char.all? { |c| c >= "0" && c <= "9" }
+      hours, minutes = value[0, 2].to_i, value[3, 2].to_i if digits
+      fail("#{what} must be an \"HH:MM\" time, got #{value.inspect}") unless digits && hours < 24 && minutes < 60
+      hours * 60 + minutes
     end
 
     # Splits `zigbee: "0x..", adapter: "z2m"` style options into the
@@ -191,6 +200,39 @@ module Knut
     end
   end
 
+  class ScheduleBuilder
+    # In Time#wday order.
+    DAYS = [:sunday, :monday, :tuesday, :wednesday, :thursday, :friday, :saturday]
+
+    def initialize(days)
+      @days = days
+    end
+
+    def weekdays(**times)
+      set([1, 2, 3, 4, 5], "weekdays", times)
+    end
+
+    DAYS.each_with_index do |name, wday|
+      define_method(name) { |**times| set([wday], name.to_s, times) }
+    end
+
+    private
+
+    # Validates before iterating: errors raised inside mruby's Ruby-level
+    # iterators would be attributed to those instead of the config line.
+    def set(wdays, what, times)
+      unknown = times.keys - [:wake, :bed]
+      Knut.fail("unknown option(s) for #{what}: #{unknown.join(", ")}") unless unknown.empty?
+      Knut.fail("#{what} needs wake:, bed: or both") if times.empty?
+      wake = times[:wake] && Knut.clock_minutes!(times[:wake], "#{what} wake:")
+      bed = times[:bed] && Knut.clock_minutes!(times[:bed], "#{what} bed:")
+      wdays.each do |wday|
+        @days[wday][:wake] = wake if wake
+        @days[wday][:bed] = bed if bed
+      end
+    end
+  end
+
   class Sun
     attr_reader :elevation, :azimuth, :sunrise, :sunset
 
@@ -299,6 +341,24 @@ end
 def zigbee(name, mqtt:, base_topic: "zigbee2mqtt")
   Knut.name!(name, "zigbee")
   Knut.model[:adapters] << { kind: "zigbee", name: name, mqtt: mqtt.to_s, base_topic: base_topic.to_s, line: Knut.location }
+end
+
+# schedule do
+#   weekdays wake: "06:30", bed: "23:00"
+#   friday   bed: "00:30"
+# end
+def schedule(&block)
+  Knut.fail("schedule is already set") if Knut.model[:schedule]
+  Knut.fail("schedule needs a block") unless block
+  days = Array.new(7) { {} }
+  Knut::ScheduleBuilder.new(days).instance_eval(&block)
+  incomplete = days.index { |day| !(day[:wake] && day[:bed]) }
+  Knut.fail("schedule: #{Knut::ScheduleBuilder::DAYS[incomplete]} needs wake: and bed:") if incomplete
+  Knut.model[:schedule] = days.map do |day|
+    # A bedtime before the wake time is after midnight and belongs to this day.
+    bed = day[:bed] < day[:wake] ? day[:bed] + 1440 : day[:bed]
+    { wake: day[:wake], bed: bed }
+  end
 end
 
 def room(name, &block)

@@ -253,6 +253,43 @@ end
     }
 
     #[test]
+    fn resolves_the_weekday_schedule() {
+        let config = r#"
+schedule do
+  weekdays wake: "06:30", bed: "23:00"
+  friday   bed: "00:30"
+  saturday wake: "08:30", bed: "00:30"
+  sunday   wake: "08:30", bed: "23:00"
+end
+"#;
+        let (_, model) = Script::load_str(config, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let schedule = model.schedule.unwrap();
+        let day = |wake, bed| crate::model::ScheduleDay { wake, bed };
+        assert_eq!(schedule[1], day(390, 1380), "monday");
+        assert_eq!(schedule[4], day(390, 1380), "thursday");
+        assert_eq!(schedule[5], day(390, 1470), "friday's bedtime is saturday 00:30");
+        assert_eq!(schedule[6], day(510, 1470), "saturday");
+        assert_eq!(schedule[0], day(510, 1380), "sunday");
+
+        let printed = model.to_string();
+        assert!(printed.contains("friday     wake 06:30  bed 00:30 (saturday)"), "{printed}");
+        assert!(printed.contains("sunday     wake 08:30  bed 23:00\n"), "{printed}");
+    }
+
+    #[test]
+    fn reports_schedule_errors() {
+        let error = |config: &str| Script::load_str(config, "config.rb").err().unwrap().to_string();
+        let missing = error("schedule do\n  weekdays wake: \"06:30\", bed: \"23:00\"\nend\n");
+        assert!(missing.starts_with("config.rb:1: schedule: sunday needs wake: and bed:"), "{missing}");
+        let bad_time = error("schedule do\n  monday wake: \"6:30\"\nend\n");
+        assert!(bad_time.starts_with("config.rb:2: monday wake: must be an \"HH:MM\" time"), "{bad_time}");
+        let late = error("schedule do\n  monday bed: \"24:00\"\nend\n");
+        assert!(late.contains("must be an \"HH:MM\" time"), "{late}");
+        let unknown = error("schedule do\n  weekdays sleep: \"23:00\"\nend\n");
+        assert!(unknown.starts_with("config.rb:2: unknown option(s) for weekdays: sleep"), "{unknown}");
+    }
+
+    #[test]
     fn reports_errors_with_config_lines() {
         let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"l\", zigbee: \"1\"\n  group \"G\", lights: [:nope]\nend\n";
         let error = Script::load_str(config, "config.rb").err().unwrap().to_string();
