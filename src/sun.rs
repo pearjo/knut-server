@@ -128,6 +128,31 @@ mod tests {
     }
 
     #[test]
+    fn positions_at_equinoxes_and_solstices() {
+        // Reference values from almanac declination and equation of time with
+        // the closed-form spherical triangle, independent of the NOAA series.
+        let cases = [
+            ("2026-03-20T05:10:00Z", -2.41, 87.06),
+            ("2026-03-20T11:25:00Z", 36.95, 179.94),
+            ("2026-03-20T14:00:00Z", 28.01, 225.09),
+            ("2026-06-21T03:00:00Z", 0.13, 48.87),
+            ("2026-06-21T11:44:00Z", 60.08, 191.42),
+            ("2026-06-21T15:00:00Z", 39.27, 256.64),
+            ("2026-09-23T05:00:00Z", -1.58, 88.04),
+            ("2026-09-23T11:10:00Z", 36.83, 179.98),
+            ("2026-09-23T14:00:00Z", 26.15, 228.79),
+            ("2026-12-21T07:30:00Z", -0.71, 130.12),
+            ("2026-12-21T11:16:00Z", 13.57, 180.05),
+            ("2026-12-21T14:00:00Z", 5.67, 217.27),
+        ];
+        for (time, elevation, azimuth) in cases {
+            let sun = position(LAT, LON, time.parse().unwrap());
+            assert!((sun.elevation - elevation).abs() < 0.5, "{time}: {sun:?}");
+            assert!((sun.azimuth - azimuth).abs() < 0.5, "{time}: {sun:?}");
+        }
+    }
+
+    #[test]
     fn elevation_is_near_zero_at_sunrise() {
         let date = NaiveDate::from_ymd_opt(2026, 12, 21).unwrap();
         let times = times(LAT, LON, date).unwrap();
