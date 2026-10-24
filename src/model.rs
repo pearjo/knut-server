@@ -130,6 +130,9 @@ pub struct Group {
     pub path: String,
     pub exposed: bool,
     pub members: Vec<GroupMember>,
+    /// Light paths per stage, in the order staging switches them on. Every
+    /// member is in exactly one stage.
+    pub stages: Option<Vec<Vec<String>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -364,6 +367,11 @@ impl fmt::Display for Model {
                     let name = member.light.rsplit('/').next().unwrap_or(&member.light);
                     writeln!(f, "    - {name}{mapping}")?;
                 }
+                if let Some(stages) = &group.stages {
+                    let name = |path: &String| path.rsplit('/').next().unwrap_or(path).to_string();
+                    let stages: Vec<String> = stages.iter().map(|stage| stage.iter().map(name).collect::<Vec<_>>().join(", ")).collect();
+                    writeln!(f, "    stages {}", stages.join(" | "))?;
+                }
             }
             for path in &room.lights {
                 let light = &self.lights[path];
@@ -464,6 +472,13 @@ struct RawGroup {
     lights: Vec<String>,
     expose: bool,
     mappings: Vec<RawMapping>,
+    stages: Option<RawStages>,
+    line: Line,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawStages {
+    lights: Vec<Vec<String>>,
     line: Line,
 }
 
@@ -644,11 +659,35 @@ impl RawModel {
                         None => errors.push(format!("{}: brightness mapping could not be evaluated", mapping.line)),
                     }
                 }
+                let stages = raw.stages.as_ref().map(|raw_stages| {
+                    let stages: Vec<Vec<String>> = raw_stages
+                        .lights
+                        .iter()
+                        .map(|stage| stage.iter().map(|light| format!("{}/{light}", raw_room.name)).collect())
+                        .collect();
+                    let staged: Vec<&String> = stages.iter().flatten().collect();
+                    for light in &staged {
+                        if !members.iter().any(|m| &m.light == *light) {
+                            let name = light.rsplit('/').next().unwrap_or(light);
+                            errors.push(format!(
+                                "{}: stages refer to {name:?}, which is not a light of group {:?}",
+                                raw_stages.line, raw.name
+                            ));
+                        }
+                    }
+                    for member in &members {
+                        if staged.iter().filter(|light| **light == &member.light).count() != 1 {
+                            let name = member.light.rsplit('/').next().unwrap_or(&member.light);
+                            errors.push(format!("{}: stages must list {name:?} exactly once", raw_stages.line));
+                        }
+                    }
+                    stages
+                });
                 let path = format!("{}/{}", raw_room.name, raw.name);
                 room.groups.push(path.clone());
                 groups.insert(
                     path.clone(),
-                    Group { name: raw.name.clone(), path, exposed: raw.expose, members },
+                    Group { name: raw.name.clone(), path, exposed: raw.expose, members, stages },
                 );
             }
             rooms.push(room);

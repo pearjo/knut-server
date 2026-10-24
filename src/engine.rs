@@ -25,6 +25,9 @@ const MAX_SCENE_DEPTH: usize = 4;
 /// `adapt` never dims an entity below this value (0–100) while it is on:
 /// very low light levels are the one robust discomfort finding.
 const COMFORT_MINIMUM: f64 = 5.0;
+/// Seconds a stage change takes at least, so stages cross-fade rather than
+/// switch even for commands without a transition.
+const MIN_STAGE_TRANSITION: f64 = 1.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntityState {
@@ -92,6 +95,8 @@ pub struct Engine {
     store_dirty: bool,
     /// As of the last tick; `None` without a location.
     sun: Option<sun::SunPosition>,
+    /// Leading stages in use per staged group that is on.
+    active_stages: HashMap<String, usize>,
 }
 
 impl Engine {
@@ -129,6 +134,7 @@ impl Engine {
             exposed,
             store_dirty: true,
             sun: None,
+            active_stages: HashMap::new(),
         }
     }
 
@@ -522,9 +528,34 @@ impl Engine {
         }
     }
 
+    /// For a staged group that stays on: picks the stages for `command`
+    /// and remembers them. When the stages change, every light that is on
+    /// gets brightness and colour temperature, and the change cross-fades.
+    fn stage(&mut self, path: &str, command: &mut LightCommand) -> Option<control::StagedLights> {
+        let stages = self.model.groups.get(path)?.stages.as_ref()?;
+        if command.on == Some(false) {
+            self.active_stages.remove(path);
+            return None;
+        }
+        let state = self.state(path);
+        let value = command.brightness.unwrap_or(state.brightness);
+        let previous = self.active_stages.get(path).copied();
+        let count = control::stage_count(stages, value, previous);
+        if previous != Some(count) {
+            command.on = Some(true);
+            command.brightness = Some(value);
+            command.kelvin = command.kelvin.or(state.kelvin);
+            command.transition = Some(command.transition.unwrap_or(0.0).max(MIN_STAGE_TRANSITION));
+        }
+        let staged = control::staged_lights(stages, count, previous);
+        self.active_stages.insert(path.to_string(), count);
+        Some(staged)
+    }
+
     /// Sends `command` to the lights behind `path` and records the result.
-    async fn apply(&mut self, path: &str, command: LightCommand) {
-        let commands = control::commands_for(&self.model, path, &command);
+    async fn apply(&mut self, path: &str, mut command: LightCommand) {
+        let staged = self.stage(path, &mut command);
+        let commands = control::commands_for(&self.model, path, &command, staged.as_ref());
         let record = |state: &mut EntityState, command: &LightCommand| {
             if let Some(on) = command.on {
                 state.on = on;
@@ -619,6 +650,14 @@ end
 room "Flur" do
   light "Licht", zigbee: "0x10"
   sensor "Bewegung", zigbee: "0x11"
+end
+room "Bad" do
+  light "a", zigbee: "0x20"
+  light "b", zigbee: "0x21"
+  light "c", zigbee: "0x22"
+  group "Licht", lights: [:a, :b, :c] do
+    stages [:b], [:a, :c]
+  end
 end
 scene "Hell", auto: false do
   set "Küche/Spots", brightness: 90
@@ -745,6 +784,54 @@ end
         assert_eq!(brightness(&h, "Küche/Spots"), 40.0, "an override is the need itself");
         h.engine.execute(adapt(0.8), Origin::Automation).await;
         assert_eq!(brightness(&h, "Küche/Spots"), 40.0, "and adapt leaves it alone");
+    }
+
+    #[tokio::test]
+    async fn staging_follows_overrides_and_adapt() {
+        let mut h = harness("staging");
+        let light = |h: &Harness, name: &str| {
+            let state = h.engine.state(&format!("Bad/{name}"));
+            state.on.then_some(state.brightness)
+        };
+
+        h.homekit("Bad/Licht", Change::On(true)).await;
+        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (Some(100.0), Some(100.0), Some(100.0)));
+
+        h.homekit("Bad/Licht", Change::Brightness(20.0)).await;
+        assert_eq!(h.engine.state("Bad/Licht").brightness, 20.0, "HomeKit shows the need");
+        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (None, Some(60.0), None), "an override is staged too");
+
+        h.homekit("Bad/Licht", Change::On(false)).await;
+        h.homekit("Bad/Licht", Change::On(true)).await;
+        assert!(h.engine.is_auto("Bad/Licht"));
+        let adapt = |need| vec![Action::Adapt { targets: vec!["Bad/Licht".into()], need: Some(need), kelvin: None, transition: Some(60.0) }];
+        h.engine.execute(adapt(0.5), Origin::Automation).await;
+        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (Some(50.0), Some(50.0), Some(50.0)));
+        h.engine.execute(adapt(0.26), Origin::Automation).await;
+        assert_eq!(light(&h, "a"), Some(26.0), "hysteresis keeps both stages above 75 per light");
+        h.engine.execute(adapt(0.2), Origin::Automation).await;
+        assert_eq!((light(&h, "a"), light(&h, "b"), light(&h, "c")), (None, Some(60.0), None));
+    }
+
+    #[tokio::test]
+    async fn stage_changes_cross_fade() {
+        let mut h = harness("cross-fade");
+        h.homekit("Bad/Licht", Change::Brightness(20.0)).await;
+
+        let mut command = LightCommand { brightness: Some(50.0), ..Default::default() };
+        let staged = h.engine.stage("Bad/Licht", &mut command).unwrap();
+        assert_eq!(staged.on.len(), 3, "the second stage comes on");
+        assert_eq!(command.transition, Some(MIN_STAGE_TRANSITION));
+        assert_eq!(command.on, Some(true));
+
+        let mut command = LightCommand { brightness: Some(45.0), transition: Some(60.0), ..Default::default() };
+        let staged = h.engine.stage("Bad/Licht", &mut command).unwrap();
+        assert!(staged.off.is_empty());
+        assert_eq!(command.transition, Some(60.0), "longer transitions are kept");
+
+        let mut off = LightCommand { on: Some(false), ..Default::default() };
+        assert!(h.engine.stage("Bad/Licht", &mut off).is_none());
+        assert!(!h.engine.active_stages.contains_key("Bad/Licht"), "switching off forgets the stages");
     }
 
     #[tokio::test]
