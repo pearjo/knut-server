@@ -36,7 +36,9 @@ Patches:
   and an already paired bridge turns "Not Responding".
 - Pair verify answers a controller without a pairing with an authentication
   error and logs its id at info level. Upstream answered "unknown error" and
-  logged the missing pairing file as an ERROR (`Io(… NotFound …)`); a home
-  hub that was never added connects like that.
+  logged the missing pairing file as an ERROR (`Io(… NotFound …)`). A home
+  hub (Apple TV) that is not paired yet connects like that; only the
+  authentication error gets it added by the home, with "unknown error" it
+  keeps retrying and is never added.
 - Remove Pairing succeeds when the pairing does not exist. Upstream failed
   with "unknown error" on the missing file.
