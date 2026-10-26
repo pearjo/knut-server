@@ -321,58 +321,31 @@ mod tests {
     use crate::model::Staging;
     use chrono::TimeZone;
 
-    const CONFIG: &str = r#"
-location lat: 52.99, lon: 10.58
+    const HOME: &str = include_str!("../../tests/fixtures/home.rb");
 
-hue    "bridge", host: "192.168.1.20"
-zigbee "z2m",    mqtt: "mqtt://localhost:1883"
+    fn load(config: &str) -> (Script, Model) {
+        Script::load_str(config, "config.rb").unwrap_or_else(|error| panic!("{error}"))
+    }
 
-room "Küche" do
-  light "spot1", zigbee: "0x01"
-  light "spot2", zigbee: "0x02"
-  light "spot3", zigbee: "0x03"
-  light "decke", hue: "4f3c"
-
-  group "Spots", lights: [:spot1, :spot2, :spot3] do
-    map :spot3, brightness: ->(x) { x * 0.8 }
-  end
-end
-
-room "Flur" do
-  light "Licht", zigbee: "0x10"
-  sensor "Bewegung", zigbee: "0x11"
-end
-
-scene "Filmabend", auto: false do
-  set "Küche/Spots", brightness: 20, kelvin: 2200
-end
-
-scene "Morgen", auto: true do
-  turn_on "Küche/Spots", "Flur/Licht"
-end
-
-on "Clock", at: "06:30" do
-  activate "Morgen"
-end
-
-on "Flur/Bewegung", :motion do |event, now|
-  turn_on "Flur/Licht" unless on?("Flur/Licht")
-end
-
-on "Sun", :sun do |sun, now|
-  adapt all_groups, kelvin: sun.elevation > 10 ? 4000 : 2400, transition: 60
-end
-"#;
+    /// The message a config that fails to load reports.
+    fn load_error(config: &str) -> String {
+        match Script::load_str(config, "config.rb") {
+            Ok(_) => panic!("the config loaded:\n{config}"),
+            Err(error) => error.to_string(),
+        }
+    }
 
     #[test]
-    fn loads_the_design_example() {
-        let (mut script, model) =
-            Script::load_str(CONFIG, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+    fn loads_rooms_groups_and_triggers() {
+        let (mut script, model) = load(HOME);
         assert_eq!(model.groups.len(), 1);
-        let spots = &model.groups["Küche/Spots"];
+        let spots = &model.groups["Kitchen/Spots"];
         assert_eq!(spots.members[2].brightness_for(50.0), 40.0);
-        assert!(!model.lights["Küche/spot1"].exposed);
-        assert!(model.lights["Küche/decke"].exposed);
+        assert!(
+            !model.lights["Kitchen/spot1"].exposed,
+            "grouped lights are hidden"
+        );
+        assert!(model.lights["Kitchen/ceiling"].exposed);
         assert_eq!(model.triggers.len(), 3);
 
         let sun = &model.triggers[2];
@@ -386,7 +359,7 @@ end
         assert_eq!(
             actions,
             vec![Action::Adapt {
-                targets: vec!["Küche/Spots".into()],
+                targets: vec!["Kitchen/Spots".into()],
                 need: None,
                 kelvin: Some(4000.0),
                 transition: Some(60.0),
@@ -396,9 +369,7 @@ end
 
     #[test]
     fn the_example_config_adapts_by_need_and_warmth() {
-        let (mut script, model) =
-            Script::load_str(include_str!("../../examples/config.rb"), "config.rb")
-                .unwrap_or_else(|e| panic!("{e}"));
+        let (mut script, model) = load(include_str!("../../examples/config.rb"));
         let sun = model
             .triggers
             .iter()
@@ -426,17 +397,17 @@ end
 
     #[test]
     fn trigger_blocks_see_state() {
-        let (mut script, model) = Script::load_str(CONFIG, "config.rb").unwrap();
+        let (mut script, model) = load(HOME);
         let motion = &model.triggers[1];
         let args = BlockArgs::Device {
-            path: "Flur/Bewegung".into(),
+            path: "Hallway/Motion".into(),
             event: "motion".into(),
             data: serde_json::json!({"occupancy": true}),
             now: chrono::Local::now(),
         };
-        let on = serde_json::json!({"Flur/Licht": {"on": true}});
+        let on = serde_json::json!({"Hallway/Light": {"on": true}});
         assert!(script.run(motion.proc_id, &args, &on).unwrap().is_empty());
-        let off = serde_json::json!({"Flur/Licht": {"on": false}});
+        let off = serde_json::json!({"Hallway/Light": {"on": false}});
         assert_eq!(script.run(motion.proc_id, &args, &off).unwrap().len(), 1);
     }
 
@@ -461,7 +432,7 @@ schedule do
   sunday   wake: "08:30", bed: "23:00"
 end
 "#;
-        let (_, model) = Script::load_str(config, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let (_, model) = load(config);
         let schedule = model.schedule.unwrap();
         let day = |wake, bed| crate::model::ScheduleDay { wake, bed };
         assert_eq!(schedule[1], day(390, 1380), "monday");
@@ -487,48 +458,44 @@ end
 
     #[test]
     fn reports_schedule_errors() {
-        let error = |config: &str| {
-            Script::load_str(config, "config.rb")
-                .err()
-                .unwrap()
-                .to_string()
-        };
-        let missing = error("schedule do\n  weekdays wake: \"06:30\", bed: \"23:00\"\nend\n");
+        let missing = load_error(
+            r#"schedule do
+  weekdays wake: "06:30", bed: "23:00"
+end"#,
+        );
         assert!(
             missing.starts_with("config.rb:1: schedule: sunday needs wake: and bed:"),
             "{missing}"
         );
-        let bad_time = error("schedule do\n  monday wake: \"6:30\"\nend\n");
+        let bad_time = load_error(
+            r#"schedule do
+  monday wake: "6:30"
+end"#,
+        );
         assert!(
             bad_time.starts_with("config.rb:2: monday wake: must be an \"HH:MM\" time"),
             "{bad_time}"
         );
-        let late = error("schedule do\n  monday bed: \"24:00\"\nend\n");
+        let late = load_error(
+            r#"schedule do
+  monday bed: "24:00"
+end"#,
+        );
         assert!(late.contains("must be an \"HH:MM\" time"), "{late}");
-        let unknown = error("schedule do\n  weekdays sleep: \"23:00\"\nend\n");
+        let unknown = load_error(
+            r#"schedule do
+  weekdays sleep: "23:00"
+end"#,
+        );
         assert!(
             unknown.starts_with("config.rb:2: unknown option(s) for weekdays: sleep"),
             "{unknown}"
         );
     }
 
-    const CURVE_CONFIG: &str = r#"
-schedule do
-  weekdays wake: "06:30", bed: "23:00"
-  friday   bed: "00:30"
-  saturday wake: "08:30", bed: "00:30"
-  sunday   wake: "08:30", bed: "23:00"
-end
-$demand = curve(
-  [:bed + 1.h,   0.0],
-  [:wake,        0.0],
-  [:wake + 30.m, 1.0],
-  ["17:00",      1.0],
-  [:bed - 3.h,   0.6],
-  [:bed - 1.h,   0.25])
-"#;
+    const CURVES: &str = include_str!("../../tests/fixtures/curves.rb");
 
-    /// `$demand` from [`CURVE_CONFIG`] at local time "YYYY-MM-DD HH:MM".
+    /// `$demand` from [`CURVES`] at local time "YYYY-MM-DD HH:MM".
     fn demand_at(script: &mut Script, time: &str) -> f64 {
         let (date, clock) = time.split_once(' ').unwrap();
         // Parsed so that "08" doesn't reach Ruby as an octal literal.
@@ -556,8 +523,7 @@ $demand = curve(
 
     #[test]
     fn curves_hit_keyframes_and_ease_between_them() {
-        let (mut script, _) =
-            Script::load_str(CURVE_CONFIG, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let (mut script, _) = load(CURVES);
         // 2026-10-22 is a Thursday.
         for (time, expected) in [
             ("2026-10-22 06:30", 0.0),
@@ -576,7 +542,7 @@ $demand = curve(
 
     #[test]
     fn curve_anchors_move_with_the_schedule() {
-        let (mut script, _) = Script::load_str(CURVE_CONFIG, "config.rb").unwrap();
+        let (mut script, _) = load(CURVES);
         // Friday's bedtime is Saturday 00:30: at midnight the evening ramp from
         // 23:30 (0.25) to 01:30 (0.0) is a quarter done.
         let eased = 0.25 * (1.0 + (std::f64::consts::PI / 4.0).cos()) / 2.0;
@@ -609,7 +575,7 @@ $demand = curve(
 
     #[test]
     fn curves_stay_between_neighbouring_keyframes() {
-        let (mut script, _) = Script::load_str(CURVE_CONFIG, "config.rb").unwrap();
+        let (mut script, _) = load(CURVES);
         // Thursday 22:00 (0.25) to Friday 00:00 (0.0), every 5 minutes.
         let mut previous = f64::INFINITY;
         for step in 0..=24 {
@@ -634,27 +600,33 @@ $demand = curve(
 
     #[test]
     fn reports_curve_errors() {
-        let error = |config: &str| {
-            Script::load_str(config, "config.rb")
-                .err()
-                .unwrap()
-                .to_string()
-        };
-        let crossing = error(
-            "schedule do\n  weekdays wake: \"06:30\", bed: \"23:00\"\n  monday bed: \"19:00\"\n  saturday wake: \"08:30\", bed: \"23:00\"\n  sunday wake: \"08:30\", bed: \"23:00\"\nend\ncurve([:wake, 0], [\"17:00\", 1], [:bed - 3.h, 0.5])\n",
+        // Monday's early bedtime puts :bed - 3.h before 17:00.
+        let crossing = load_error(
+            r#"schedule do
+  weekdays wake: "06:30", bed: "23:00"
+  monday   bed: "19:00"
+  saturday wake: "08:30", bed: "23:00"
+  sunday   wake: "08:30", bed: "23:00"
+end
+curve([:wake, 0], ["17:00", 1], [:bed - 3.h, 0.5])"#,
         );
-        assert!(crossing.starts_with("config.rb:7: curve keyframes on monday are not in clock order: 06:30, 17:00, 16:00"), "{crossing}");
-        let unscheduled = error("curve([:wake, 0], [\"17:00\", 1])\n");
+        assert!(
+            crossing.starts_with(
+                "config.rb:7: curve keyframes on monday are not in clock order: 06:30, 17:00, 16:00"
+            ),
+            "{crossing}"
+        );
+        let unscheduled = load_error(r#"curve([:wake, 0], ["17:00", 1])"#);
         assert!(
             unscheduled.starts_with("config.rb:1: curves with :wake or :bed need a schedule"),
             "{unscheduled}"
         );
-        let anchor = error("curve([:noon + 1.h, 0], [\"17:00\", 1])\n");
+        let anchor = load_error(r#"curve([:noon + 1.h, 0], ["17:00", 1])"#);
         assert!(
             anchor.starts_with("config.rb:1: only :wake and :bed"),
             "{anchor}"
         );
-        let bad_time = error("curve([\"7:00\", 0], [\"17:00\", 1])\n");
+        let bad_time = load_error(r#"curve(["7:00", 0], ["17:00", 1])"#);
         assert!(
             bad_time.starts_with("config.rb:1: keyframe time must be an \"HH:MM\" time"),
             "{bad_time}"
@@ -663,8 +635,16 @@ $demand = curve(
 
     #[test]
     fn reads_room_daylight() {
-        let config = "room \"Küche\" do\n  daylight 0.8, facing: :east\nend\nroom \"Wohnzimmer\" do\n  daylight 0.4, facing: [:south, :west]\nend\nroom \"Flur\" do\nend\n";
-        let (_, model) = Script::load_str(config, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let (_, model) = load(
+            r#"room "Kitchen" do
+  daylight 0.8, facing: :east
+end
+room "Living Room" do
+  daylight 0.4, facing: [:south, :west]
+end
+room "Hallway" do
+end"#,
+        );
         let daylight = |room: usize| model.rooms[room].daylight.clone();
         assert_eq!(
             daylight(0),
@@ -684,28 +664,33 @@ $demand = curve(
         assert!(
             model
                 .to_string()
-                .contains("room Wohnzimmer  daylight 0.4 facing south, west\n"),
+                .contains("room Living Room  daylight 0.4 facing south, west\n"),
             "{model}"
         );
 
-        let error = |config: &str| {
-            Script::load_str(config, "config.rb")
-                .err()
-                .unwrap()
-                .to_string()
-        };
-        let too_much = error("room \"A\" do\n  daylight 1.5, facing: :east\nend\n");
+        let too_much = load_error(
+            r#"room "A" do
+  daylight 1.5, facing: :east
+end"#,
+        );
         assert!(
             too_much.starts_with("config.rb:2: daylight must be between 0 and 1"),
             "{too_much}"
         );
-        let unknown = error("room \"A\" do\n  daylight 0.5, facing: [:east, :up]\nend\n");
+        let unknown = load_error(
+            r#"room "A" do
+  daylight 0.5, facing: [:east, :up]
+end"#,
+        );
         assert!(
             unknown.starts_with("config.rb:2: unknown direction(s) for facing: :up"),
             "{unknown}"
         );
-        let twice = error(
-            "room \"A\" do\n  daylight 0.5, facing: :east\n  daylight 0.5, facing: :west\nend\n",
+        let twice = load_error(
+            r#"room "A" do
+  daylight 0.5, facing: :east
+  daylight 0.5, facing: :west
+end"#,
         );
         assert!(
             twice.starts_with("config.rb:3: daylight is already set"),
@@ -715,8 +700,11 @@ $demand = curve(
 
     #[test]
     fn adapt_points_brightness_users_to_need() {
-        let config = "on \"Clock\", at: \"06:30\" do\n  adapt all_groups, brightness: 50\nend\n";
-        let (mut script, model) = Script::load_str(config, "config.rb").unwrap();
+        let (mut script, model) = load(
+            r#"on "Clock", at: "06:30" do
+  adapt all_groups, brightness: 50
+end"#,
+        );
         let error = script
             .run(
                 model.triggers[0].proc_id,
@@ -734,13 +722,21 @@ $demand = curve(
 
     #[test]
     fn reads_and_checks_stages() {
+        // `stages` lands on line 7.
         let group = |stages: &str| {
             format!(
-                "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"a\", zigbee: \"1\"\n  light \"b\", zigbee: \"2\"\n  light \"c\", zigbee: \"3\"\n  group \"G\", lights: [:a, :b, :c] do\n    {stages}\n  end\nend\n"
+                r#"zigbee "z2m", mqtt: "mqtt://x"
+room "A" do
+  light "a", zigbee: "1"
+  light "b", zigbee: "2"
+  light "c", zigbee: "3"
+  group "G", lights: [:a, :b, :c] do
+    {stages}
+  end
+end"#
             )
         };
-        let (_, model) = Script::load_str(&group("stages [:b], [:a, :c]"), "config.rb")
-            .unwrap_or_else(|e| panic!("{e}"));
+        let (_, model) = load(&group("stages [:b], [:a, :c]"));
         let paths = |names: &[&str]| names.iter().map(|n| format!("A/{n}")).collect::<Vec<_>>();
         assert_eq!(
             model.groups["A/G"].staging,
@@ -751,12 +747,7 @@ $demand = curve(
             "{model}"
         );
 
-        let error = |stages: &str| {
-            Script::load_str(&group(stages), "config.rb")
-                .err()
-                .unwrap()
-                .to_string()
-        };
+        let error = |stages: &str| load_error(&group(stages));
         let missing = error("stages [:b], [:a]");
         assert!(
             missing.starts_with("config.rb:7: stages must list \"c\" exactly once"),
@@ -793,9 +784,7 @@ $demand = curve(
 
     #[test]
     fn staging_blocks_return_light_names() {
-        let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"a\", zigbee: \"1\"\n  light \"b\", zigbee: \"2\"\n  group \"G\", lights: [:a, :b] do\n    staging { |need, now| now.hour < 9 || need > 0.5 ? [:a, :b] : [:b] }\n  end\n  group \"H\", lights: [:a, :b] do\n    staging { |need, now| :b }\n  end\nend\n";
-        let (mut script, model) =
-            Script::load_str(config, "config.rb").unwrap_or_else(|e| panic!("{e}"));
+        let (mut script, model) = load(include_str!("../../tests/fixtures/staging_blocks.rb"));
         let proc_of = |group: &str| match &model.groups[group].staging {
             Some(Staging::Custom { proc_id, .. }) => *proc_id,
             other => panic!("{other:?}"),
@@ -803,7 +792,7 @@ $demand = curve(
         assert!(
             model
                 .to_string()
-                .contains("    staging block at config.rb:6\n"),
+                .contains("    staging block at config.rb:11\n"),
             "{model}"
         );
 
@@ -838,25 +827,32 @@ $demand = curve(
 
     #[test]
     fn reports_errors_with_config_lines() {
-        let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"l\", zigbee: \"1\"\n  group \"G\", lights: [:nope]\nend\n";
-        let error = Script::load_str(config, "config.rb")
-            .err()
-            .unwrap()
-            .to_string();
-        assert!(error.contains("config.rb:4"), "{error}");
-        assert!(error.contains("nope"), "{error}");
+        let unknown_light = load_error(
+            r#"zigbee "z2m", mqtt: "mqtt://x"
+room "A" do
+  light "l", zigbee: "1"
+  group "G", lights: [:nope]
+end"#,
+        );
+        assert!(unknown_light.contains("config.rb:4"), "{unknown_light}");
+        assert!(unknown_light.contains("nope"), "{unknown_light}");
 
-        let error = Script::load_str("room \"A\" do\n  light \"l\"\nend\n", "config.rb")
-            .err()
-            .unwrap()
-            .to_string();
-        assert!(error.starts_with("config.rb:2: "), "{error}");
+        let no_device = load_error(
+            r#"room "A" do
+  light "l"
+end"#,
+        );
+        assert!(no_device.starts_with("config.rb:2: "), "{no_device}");
 
-        let error = Script::load_str("scene \"S\" do\n  turn_on \"A/b\"\nend\n", "config.rb")
-            .err()
-            .unwrap()
-            .to_string();
-        assert!(error.contains("unknown light or group \"A/b\""), "{error}");
+        let unknown_target = load_error(
+            r#"scene "S" do
+  turn_on "A/b"
+end"#,
+        );
+        assert!(
+            unknown_target.contains("unknown light or group \"A/b\""),
+            "{unknown_target}"
+        );
     }
 
     /// Every method a config can call has to be described in the DSL
