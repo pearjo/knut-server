@@ -105,23 +105,41 @@ fn ruby_time(time: &DateTime<Local>) -> String {
     format!("Time.at({})", time.timestamp())
 }
 
+/// What `set`, `turn_on` or `turn_off` asks of each target.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+pub(crate) struct SetValues {
+    pub on: Option<bool>,
+    /// 1–100.
+    pub brightness: Option<f64>,
+    pub kelvin: Option<f64>,
+    /// Seconds.
+    pub transition: Option<f64>,
+}
+
+/// What `adapt` asks of each target.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+pub(crate) struct AdaptValues {
+    /// 0–1, before room daylight is subtracted.
+    pub need: Option<f64>,
+    pub kelvin: Option<f64>,
+    /// Seconds.
+    pub transition: Option<f64>,
+}
+
 /// Something a scene or trigger block asked for.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "op", rename_all = "lowercase")]
 pub(crate) enum Action {
+    /// `set`, `turn_on` and `turn_off`.
     Set {
         targets: Vec<String>,
-        on: Option<bool>,
-        brightness: Option<f64>,
-        kelvin: Option<f64>,
-        transition: Option<f64>,
+        #[serde(flatten)]
+        values: SetValues,
     },
     Adapt {
         targets: Vec<String>,
-        /// 0–1, before room daylight is subtracted.
-        need: Option<f64>,
-        kelvin: Option<f64>,
-        transition: Option<f64>,
+        #[serde(flatten)]
+        values: AdaptValues,
     },
     Activate {
         scene: String,
@@ -360,9 +378,11 @@ mod tests {
             actions,
             vec![Action::Adapt {
                 targets: vec!["Kitchen/Spots".into()],
-                need: None,
-                kelvin: Some(4000.0),
-                transition: Some(60.0),
+                values: AdaptValues {
+                    need: None,
+                    kelvin: Some(4000.0),
+                    transition: Some(60.0),
+                },
             }]
         );
     }
@@ -383,9 +403,12 @@ mod tests {
             .unwrap();
         let [Action::Adapt {
             targets,
-            need: Some(need),
-            kelvin: Some(kelvin),
-            ..
+            values:
+                AdaptValues {
+                    need: Some(need),
+                    kelvin: Some(kelvin),
+                    ..
+                },
         }] = actions.as_slice()
         else {
             panic!("{actions:?}");

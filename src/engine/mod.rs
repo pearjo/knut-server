@@ -207,7 +207,7 @@ mod tests {
     use super::*;
     use crate::adapter::{AdapterEvent, LightCommand, LightReport};
     use crate::model::{AdapterKind, DeviceRef};
-    use crate::script::Action;
+    use crate::script::{Action, AdaptValues};
     use chrono::TimeZone;
     use serde_json::json;
 
@@ -338,9 +338,11 @@ end
         let adapt = |kelvin| {
             vec![Action::Adapt {
                 targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
-                need: None,
-                kelvin: Some(kelvin),
-                transition: Some(60.0),
+                values: AdaptValues {
+                    need: None,
+                    kelvin: Some(kelvin),
+                    transition: Some(60.0),
+                },
             }]
         };
 
@@ -378,9 +380,10 @@ end
         let adapt = |need| {
             vec![Action::Adapt {
                 targets: vec!["Küche/Spots".into(), "Flur/Licht".into()],
-                need: Some(need),
-                kelvin: None,
-                transition: None,
+                values: AdaptValues {
+                    need: Some(need),
+                    ..Default::default()
+                },
             }]
         };
         let brightness = |h: &Harness, path| h.engine.state(path).brightness;
@@ -457,9 +460,11 @@ end
         let adapt = |need| {
             vec![Action::Adapt {
                 targets: vec!["Bad/Licht".into()],
-                need: Some(need),
-                kelvin: None,
-                transition: Some(60.0),
+                values: AdaptValues {
+                    need: Some(need),
+                    kelvin: None,
+                    transition: Some(60.0),
+                },
             }]
         };
         h.engine.execute(adapt(0.5), Origin::Automation).await;
@@ -528,9 +533,10 @@ end
         let adapt = |need| {
             vec![Action::Adapt {
                 targets: vec!["Bad/Spiegel".into()],
-                need: Some(need),
-                kelvin: None,
-                transition: None,
+                values: AdaptValues {
+                    need: Some(need),
+                    ..Default::default()
+                },
             }]
         };
         h.homekit("Bad/Spiegel", Change::On(true)).await;

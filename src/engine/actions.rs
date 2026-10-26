@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 
 use super::{Engine, Origin, COMFORT_MINIMUM, MAX_SCENE_DEPTH};
 use crate::adapter::LightCommand;
-use crate::script::{self, Action, BlockArgs};
+use crate::script::{self, Action, AdaptValues, BlockArgs, SetValues};
 
 impl Engine {
     pub(super) async fn run_trigger(&mut self, proc_id: usize, args: &BlockArgs, line: &str) {
@@ -31,26 +31,14 @@ impl Engine {
             actions.into_iter().map(|a| (a, origin, 0)).collect();
         while let Some((action, origin, depth)) = queue.pop_front() {
             match action {
-                Action::Set {
-                    targets,
-                    on,
-                    brightness,
-                    kelvin,
-                    transition,
-                } => {
+                Action::Set { targets, values } => {
                     for target in &targets {
-                        self.set(target, on, brightness, kelvin, transition, origin)
-                            .await;
+                        self.set(target, &values, origin).await;
                     }
                 }
-                Action::Adapt {
-                    targets,
-                    need,
-                    kelvin,
-                    transition,
-                } => {
+                Action::Adapt { targets, values } => {
                     for target in &targets {
-                        self.adapt(target, need, kelvin, transition).await;
+                        self.adapt(target, &values).await;
                     }
                 }
                 Action::Activate { scene } => {
@@ -86,15 +74,13 @@ impl Engine {
         }
     }
 
-    async fn set(
-        &mut self,
-        path: &str,
-        on: Option<bool>,
-        brightness: Option<f64>,
-        kelvin: Option<f64>,
-        transition: Option<f64>,
-        origin: Origin,
-    ) {
+    async fn set(&mut self, path: &str, values: &SetValues, origin: Origin) {
+        let SetValues {
+            on,
+            brightness,
+            kelvin,
+            transition,
+        } = *values;
         if self.model.entity_kind(path).is_none() {
             log::error!("unknown light or group {path:?}");
             return;
@@ -133,13 +119,12 @@ impl Engine {
         self.apply(path, command).await;
     }
 
-    async fn adapt(
-        &mut self,
-        path: &str,
-        need: Option<f64>,
-        kelvin: Option<f64>,
-        transition: Option<f64>,
-    ) {
+    async fn adapt(&mut self, path: &str, values: &AdaptValues) {
+        let AdaptValues {
+            need,
+            kelvin,
+            transition,
+        } = *values;
         if self.model.entity_kind(path).is_none() {
             log::error!("adapt: unknown light or group {path:?}");
             return;
