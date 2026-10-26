@@ -36,6 +36,9 @@ static char *copy_string(mrb_state *mrb, mrb_value str) {
  */
 static char *take_exception(mrb_state *mrb, const char *filename) {
   mrb_value exc = mrb_obj_value(mrb->exc);
+  /* Once mrb->exc is cleared, nothing else keeps the exception alive, and
+     the calls below allocate and may run the garbage collector. */
+  mrb_gc_protect(mrb, exc);
   mrb->exc = NULL;
 
   mrb_value text = mrb_funcall(mrb, exc, "inspect", 0);
