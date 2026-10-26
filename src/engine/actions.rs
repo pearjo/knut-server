@@ -97,13 +97,10 @@ impl Engine {
             .await;
             return;
         }
-        let has_values = brightness.is_some() || kelvin.is_some();
+        let sets_values = brightness.is_some() || kelvin.is_some();
         let was_on = self.state(path).on;
-        match origin {
-            Origin::Scene { auto: false } if has_values => self.set_auto(path, false),
-            Origin::Scene { auto: true } => self.set_auto(path, true),
-            Origin::Scene { auto: false } if !was_on => self.set_auto(path, true),
-            _ => {}
+        if let Some(auto) = auto_after_set(origin, sets_values, was_on) {
+            self.set_auto(path, auto);
         }
         let mut command = LightCommand {
             on: Some(true),
@@ -173,5 +170,51 @@ impl Engine {
             _ => 0.0,
         };
         (100.0 * (need - daylight)).clamp(COMFORT_MINIMUM, 100.0)
+    }
+}
+
+/// Whether a `set` puts its target into auto (`Some(true)`), takes it out
+/// (`Some(false)`) or leaves auto mode alone (DESIGN.md, "Auto mode"):
+///
+/// - An `auto: true` scene sets a starting point; its entities stay in auto.
+/// - An `auto: false` scene that sets brightness or colour temperature is an
+///   override. One that only switches an entity on acts like switching on in
+///   HomeKit: an entity that was off goes back into auto.
+/// - Triggers never change auto mode.
+fn auto_after_set(origin: Origin, sets_values: bool, was_on: bool) -> Option<bool> {
+    match origin {
+        Origin::Scene { auto: true } => Some(true),
+        Origin::Scene { auto: false } if sets_values => Some(false),
+        Origin::Scene { auto: false } if !was_on => Some(true),
+        Origin::Scene { auto: false } | Origin::Automation => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_scenes_change_auto_mode() {
+        let manual = Origin::Scene { auto: false };
+        let auto = Origin::Scene { auto: true };
+        // (origin, sets values, was on) → auto afterwards
+        let cases = [
+            (auto, true, true, Some(true)),
+            (auto, false, false, Some(true)),
+            (manual, true, true, Some(false)),
+            (manual, true, false, Some(false)),
+            (manual, false, false, Some(true)),
+            (manual, false, true, None),
+            (Origin::Automation, true, false, None),
+            (Origin::Automation, false, false, None),
+        ];
+        for (origin, sets_values, was_on, expected) in cases {
+            assert_eq!(
+                auto_after_set(origin, sets_values, was_on),
+                expected,
+                "{origin:?}, sets values: {sets_values}, was on: {was_on}"
+            );
+        }
     }
 }
