@@ -27,6 +27,16 @@ pub(crate) struct LightCommand {
     pub transition: Option<f64>,
 }
 
+impl LightCommand {
+    /// Switches off and changes nothing else.
+    pub(crate) fn off() -> Self {
+        Self {
+            on: Some(false),
+            ..Default::default()
+        }
+    }
+}
+
 /// State as reported by a device. Unset fields were not part of the report.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct LightReport {

@@ -86,15 +86,11 @@ impl Engine {
             return;
         }
         if on == Some(false) {
-            self.apply(
-                path,
-                LightCommand {
-                    on: Some(false),
-                    transition,
-                    ..Default::default()
-                },
-            )
-            .await;
+            let off = LightCommand {
+                transition,
+                ..LightCommand::off()
+            };
+            self.apply(path, off).await;
             return;
         }
         let sets_values = brightness.is_some() || kelvin.is_some();

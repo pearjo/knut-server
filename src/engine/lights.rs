@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 
-use super::{ActiveStaging, Engine, EntityState, MIN_STAGE_TRANSITION};
+use super::{ActiveStaging, Engine, MIN_STAGE_TRANSITION};
 use crate::adapter::LightCommand;
 use crate::control;
 use crate::model::{Group, Staging};
@@ -91,21 +91,10 @@ impl Engine {
     pub(super) async fn apply(&mut self, path: &str, mut command: LightCommand) {
         let staged = self.stage(path, &mut command);
         let commands = control::commands_for(&self.model, path, &command, staged.as_ref());
-        let record = |state: &mut EntityState, command: &LightCommand| {
-            if let Some(on) = command.on {
-                state.on = on;
-            }
-            if let Some(brightness) = command.brightness {
-                state.brightness = brightness;
-            }
-            if command.kelvin.is_some() {
-                state.kelvin = command.kelvin;
-            }
-        };
-        self.update_state(path, |state| record(state, &command));
+        self.update_state(path, |state| state.record(&command));
         let mut touched_groups = Vec::new();
         for (light, _, light_command) in &commands {
-            self.update_state(light, |state| record(state, light_command));
+            self.update_state(light, |state| state.record(light_command));
             if light != path {
                 self.publish(light);
             }

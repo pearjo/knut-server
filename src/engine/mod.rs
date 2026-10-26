@@ -20,7 +20,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Local, Timelike};
 use tokio::sync::mpsc;
 
-use crate::adapter::{AdapterEvent, Adapters};
+use crate::adapter::{AdapterEvent, Adapters, LightCommand};
 use crate::model::Model;
 use crate::script::Script;
 use crate::store::Store;
@@ -51,6 +51,21 @@ impl Default for EntityState {
             on: false,
             brightness: 100.0,
             kelvin: None,
+        }
+    }
+}
+
+impl EntityState {
+    /// Takes over what `command` sets, as the light will once it arrives.
+    fn record(&mut self, command: &LightCommand) {
+        if let Some(on) = command.on {
+            self.on = on;
+        }
+        if let Some(brightness) = command.brightness {
+            self.brightness = brightness;
+        }
+        if command.kelvin.is_some() {
+            self.kelvin = command.kelvin;
         }
     }
 }
@@ -131,25 +146,16 @@ impl Engine {
         mut store: Store,
         updates: mpsc::UnboundedSender<Update>,
     ) -> Self {
-        let mut states = HashMap::new();
-        for path in model.lights.keys().chain(model.groups.keys()) {
-            states.insert(path.clone(), EntityState::default());
-        }
-        let mut groups_of_light: HashMap<String, Vec<String>> = HashMap::new();
-        for group in model.groups.values() {
-            for member in &group.members {
-                groups_of_light
-                    .entry(member.light.clone())
-                    .or_default()
-                    .push(group.path.clone());
-            }
-        }
+        let states = model
+            .lights
+            .keys()
+            .chain(model.groups.keys())
+            .map(|path| (path.clone(), EntityState::default()))
+            .collect();
         let exposed: HashSet<String> = model.exposed_entities().into_iter().collect();
-        store.state.auto.retain(|path, _| exposed.contains(path));
-        for path in &exposed {
-            store.state.auto.entry(path.clone()).or_insert(true);
-        }
+        sync_auto_flags(&mut store, &exposed);
         Self {
+            groups_of_light: groups_of_light(&model),
             model,
             script,
             adapters,
@@ -157,7 +163,6 @@ impl Engine {
             updates,
             states,
             auto_targets: HashMap::new(),
-            groups_of_light,
             exposed,
             store_dirty: true,
             sun: None,
@@ -194,6 +199,29 @@ impl Engine {
             }
             self.save_if_dirty();
         }
+    }
+}
+
+/// The groups each light belongs to.
+fn groups_of_light(model: &Model) -> HashMap<String, Vec<String>> {
+    let mut groups: HashMap<String, Vec<String>> = HashMap::new();
+    for group in model.groups.values() {
+        for member in &group.members {
+            groups
+                .entry(member.light.clone())
+                .or_default()
+                .push(group.path.clone());
+        }
+    }
+    groups
+}
+
+/// Forgets the auto flags of entities that are no longer exposed and puts
+/// newly exposed ones into auto.
+fn sync_auto_flags(store: &mut Store, exposed: &HashSet<String>) {
+    store.state.auto.retain(|path, _| exposed.contains(path));
+    for path in exposed {
+        store.state.auto.entry(path.clone()).or_insert(true);
     }
 }
 

@@ -51,25 +51,9 @@ impl Engine {
                 self.apply(path, command).await;
             }
             Change::On(true) => {}
-            Change::On(false) => {
-                self.apply(
-                    path,
-                    LightCommand {
-                        on: Some(false),
-                        ..Default::default()
-                    },
-                )
-                .await
-            }
+            Change::On(false) => self.apply(path, LightCommand::off()).await,
             Change::Brightness(brightness) if brightness <= 0.0 => {
-                self.apply(
-                    path,
-                    LightCommand {
-                        on: Some(false),
-                        ..Default::default()
-                    },
-                )
-                .await
+                self.apply(path, LightCommand::off()).await
             }
             Change::Brightness(brightness) => {
                 self.set_auto(path, false);
