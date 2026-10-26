@@ -128,281 +128,390 @@ impl RawModel {
         self,
         mapping_tables: &HashMap<usize, Vec<f64>>,
     ) -> Result<Model, ValidationErrors> {
-        let mut errors = Vec::new();
+        let mut builder = ModelBuilder::new(&self.adapters, mapping_tables);
+        builder.check_adapter_names();
+        for room in &self.rooms {
+            builder.add_room(room);
+        }
+        builder.add_scenes(self.scenes);
+        builder.add_triggers(self.triggers, self.location.is_some());
+        let homekit = builder.homekit(self.homekit);
 
-        let mut adapter_names = HashSet::new();
-        for adapter in &self.adapters {
-            if !adapter_names.insert(adapter.name().to_string()) {
-                errors.push(format!(
+        if !builder.errors.is_empty() {
+            return Err(ValidationErrors(builder.errors));
+        }
+        Ok(Model {
+            location: self.location,
+            homekit,
+            schedule: self.schedule,
+            rooms: builder.rooms,
+            lights: builder.lights,
+            sensors: builder.sensors,
+            groups: builder.groups,
+            scenes: builder.scenes,
+            triggers: builder.triggers,
+            adapters: self.adapters,
+        })
+    }
+}
+
+/// Collects the parts of the model, and every problem found on the way, so
+/// that `knut check` can report all of them at once.
+struct ModelBuilder<'a> {
+    adapters: &'a [AdapterConfig],
+    mapping_tables: &'a HashMap<usize, Vec<f64>>,
+    rooms: Vec<Room>,
+    lights: BTreeMap<String, Light>,
+    sensors: BTreeMap<String, Sensor>,
+    groups: BTreeMap<String, Group>,
+    scenes: Vec<Scene>,
+    triggers: Vec<Trigger>,
+    /// The light using each device, so that no device is used twice.
+    devices_seen: HashMap<DeviceRef, String>,
+    errors: Vec<String>,
+}
+
+impl<'a> ModelBuilder<'a> {
+    fn new(adapters: &'a [AdapterConfig], mapping_tables: &'a HashMap<usize, Vec<f64>>) -> Self {
+        Self {
+            adapters,
+            mapping_tables,
+            rooms: Vec::new(),
+            lights: BTreeMap::new(),
+            sensors: BTreeMap::new(),
+            groups: BTreeMap::new(),
+            scenes: Vec::new(),
+            triggers: Vec::new(),
+            devices_seen: HashMap::new(),
+            errors: Vec::new(),
+        }
+    }
+
+    fn check_adapter_names(&mut self) {
+        let mut names = HashSet::new();
+        for adapter in self.adapters {
+            if !names.insert(adapter.name()) {
+                self.errors.push(format!(
                     "{}: adapter {:?} is defined twice",
                     adapter.line(),
                     adapter.name()
                 ));
             }
         }
+    }
 
-        let resolve_adapter = |device: &RawDevice, errors: &mut Vec<String>| -> Option<DeviceRef> {
-            let candidates: Vec<&AdapterConfig> = self
-                .adapters
-                .iter()
-                .filter(|adapter| adapter.kind() == device.adapter_kind)
-                .filter(|adapter| {
-                    device
-                        .adapter
-                        .as_deref()
-                        .is_none_or(|name| adapter.name() == name)
-                })
-                .collect();
-            match candidates.as_slice() {
-                [adapter] => Some(DeviceRef {
-                    adapter: adapter.name().to_string(),
-                    kind: device.adapter_kind,
-                    device: device.device.clone(),
-                }),
-                [] => {
-                    let wanted = match &device.adapter {
-                        Some(name) => format!("{} adapter {name:?}", device.adapter_kind),
-                        None => format!("{} adapter", device.adapter_kind),
-                    };
-                    errors.push(format!(
-                        "{}: {:?} needs a {wanted}, but none is defined",
-                        device.line, device.name
-                    ));
-                    None
-                }
-                _ => {
-                    errors.push(format!(
-                        "{}: {:?}: several {} adapters are defined, pick one with adapter: \"name\"",
-                        device.line, device.name, device.adapter_kind
-                    ));
-                    None
-                }
-            }
+    fn add_room(&mut self, raw: &RawRoom) {
+        if self.rooms.iter().any(|room| room.name == raw.name) {
+            self.errors.push(format!(
+                "{}: room {:?} is defined twice",
+                raw.line, raw.name
+            ));
+            return;
+        }
+        let mut room = Room {
+            name: raw.name.clone(),
+            lights: Vec::new(),
+            sensors: Vec::new(),
+            groups: Vec::new(),
+            daylight: raw.daylight.clone(),
         };
-
-        let mut rooms = Vec::new();
-        let mut lights = BTreeMap::new();
-        let mut sensors = BTreeMap::new();
-        let mut groups = BTreeMap::new();
-        let mut room_names = HashSet::new();
-        let mut grouped_lights = HashSet::new();
-        let mut devices_seen: HashMap<DeviceRef, String> = HashMap::new();
-
-        for raw_room in &self.rooms {
-            if !room_names.insert(raw_room.name.clone()) {
-                errors.push(format!(
-                    "{}: room {:?} is defined twice",
-                    raw_room.line, raw_room.name
-                ));
+        let mut names = HashSet::new();
+        for light in &raw.lights {
+            if !self.claim_name(&mut names, &raw.name, &light.name, &light.line) {
                 continue;
             }
-            let mut room = Room {
-                name: raw_room.name.clone(),
-                lights: Vec::new(),
-                sensors: Vec::new(),
-                groups: Vec::new(),
-                daylight: raw_room.daylight.clone(),
-            };
-            let mut names = HashSet::new();
-            let mut claim_name = |name: &str, line: &str, errors: &mut Vec<String>| {
-                let unique = names.insert(name.to_string());
-                if !unique {
-                    errors.push(format!(
-                        "{line}: {name:?} is already used in room {:?}",
-                        raw_room.name
-                    ));
-                }
-                unique
-            };
-
-            for raw in &raw_room.lights {
-                if !claim_name(&raw.name, &raw.line, &mut errors) {
-                    continue;
-                }
-                let Some(device) = resolve_adapter(raw, &mut errors) else {
-                    continue;
-                };
-                let path = format!("{}/{}", raw_room.name, raw.name);
-                if let Some(other) = devices_seen.insert(device.clone(), path.clone()) {
-                    errors.push(format!("{}: {device} is already used by {other}", raw.line));
-                }
-                room.lights.push(path.clone());
-                lights.insert(
-                    path.clone(),
-                    Light {
-                        name: raw.name.clone(),
-                        path,
-                        device,
-                        exposed: raw.expose.unwrap_or(true),
-                    },
-                );
-            }
-            for raw in &raw_room.sensors {
-                if !claim_name(&raw.name, &raw.line, &mut errors) {
-                    continue;
-                }
-                let Some(device) = resolve_adapter(raw, &mut errors) else {
-                    continue;
-                };
-                let path = format!("{}/{}", raw_room.name, raw.name);
-                room.sensors.push(path.clone());
-                sensors.insert(
-                    path.clone(),
-                    Sensor {
-                        name: raw.name.clone(),
-                        path,
-                        device,
-                    },
-                );
-            }
-            for raw in &raw_room.groups {
-                if !claim_name(&raw.name, &raw.line, &mut errors) {
-                    continue;
-                }
-                let mut members = Vec::new();
-                for light in &raw.lights {
-                    let path = format!("{}/{light}", raw_room.name);
-                    if !lights.contains_key(&path) {
-                        errors.push(format!(
-                            "{}: group {:?} refers to unknown light {light:?} in room {:?}",
-                            raw.line, raw.name, raw_room.name
-                        ));
-                        continue;
-                    }
-                    if members.iter().any(|m: &GroupMember| m.light == path) {
-                        errors.push(format!(
-                            "{}: group {:?} lists {light:?} twice",
-                            raw.line, raw.name
-                        ));
-                        continue;
-                    }
-                    grouped_lights.insert(path.clone());
-                    members.push(GroupMember {
-                        light: path,
-                        mapping: None,
-                    });
-                }
-                for mapping in &raw.mappings {
-                    let path = format!("{}/{}", raw_room.name, mapping.light);
-                    let Some(member) = members.iter_mut().find(|m| m.light == path) else {
-                        errors.push(format!(
-                            "{}: map refers to {:?}, which is not a light of group {:?}",
-                            mapping.line, mapping.light, raw.name
-                        ));
-                        continue;
-                    };
-                    if member.mapping.is_some() {
-                        errors.push(format!(
-                            "{}: {:?} is mapped twice",
-                            mapping.line, mapping.light
-                        ));
-                    }
-                    match mapping_tables.get(&mapping.proc) {
-                        Some(table) => member.mapping = Some(BrightnessMapping::new(table.clone())),
-                        None => errors.push(format!(
-                            "{}: brightness mapping could not be evaluated",
-                            mapping.line
-                        )),
-                    }
-                }
-                let stages = raw.stages.as_ref().map(|raw_stages| {
-                    let stages: Vec<Vec<String>> = raw_stages
-                        .lights
-                        .iter()
-                        .map(|stage| {
-                            stage
-                                .iter()
-                                .map(|light| format!("{}/{light}", raw_room.name))
-                                .collect()
-                        })
-                        .collect();
-                    let staged: Vec<&String> = stages.iter().flatten().collect();
-                    for light in &staged {
-                        if !members.iter().any(|m| &m.light == *light) {
-                            let name = light.rsplit('/').next().unwrap_or(light);
-                            errors.push(format!(
-                                "{}: stages refer to {name:?}, which is not a light of group {:?}",
-                                raw_stages.line, raw.name
-                            ));
-                        }
-                    }
-                    for member in &members {
-                        if staged
-                            .iter()
-                            .filter(|light| **light == &member.light)
-                            .count()
-                            != 1
-                        {
-                            let name = member.light.rsplit('/').next().unwrap_or(&member.light);
-                            errors.push(format!(
-                                "{}: stages must list {name:?} exactly once",
-                                raw_stages.line
-                            ));
-                        }
-                    }
-                    Staging::Stages(stages)
-                });
-                let custom = raw.staging.as_ref().map(|raw| Staging::Custom {
-                    proc_id: raw.proc,
-                    line: raw.line.clone(),
-                });
-                let path = format!("{}/{}", raw_room.name, raw.name);
-                room.groups.push(path.clone());
-                groups.insert(
-                    path.clone(),
-                    Group {
-                        name: raw.name.clone(),
-                        path,
-                        exposed: raw.expose,
-                        members,
-                        staging: stages.or(custom),
-                    },
-                );
-            }
-            rooms.push(room);
-        }
-
-        // Grouped lights stay hidden unless the config exposes them explicitly.
-        for raw_room in &self.rooms {
-            for raw in &raw_room.lights {
-                let path = format!("{}/{}", raw_room.name, raw.name);
-                if let Some(light) = lights.get_mut(&path) {
-                    light.exposed = raw.expose.unwrap_or(!grouped_lights.contains(&path));
-                }
+            if let Some(path) = self.add_light(&raw.name, light) {
+                room.lights.push(path);
             }
         }
+        for sensor in &raw.sensors {
+            if !self.claim_name(&mut names, &raw.name, &sensor.name, &sensor.line) {
+                continue;
+            }
+            if let Some(path) = self.add_sensor(&raw.name, sensor) {
+                room.sensors.push(path);
+            }
+        }
+        for group in &raw.groups {
+            if self.claim_name(&mut names, &raw.name, &group.name, &group.line) {
+                room.groups.push(self.add_group(&raw.name, group));
+            }
+        }
+        self.set_light_exposure(raw, &room);
+        self.rooms.push(room);
+    }
 
-        let mut scenes = Vec::new();
-        let mut scene_names = HashSet::new();
-        for raw in self.scenes {
-            if !scene_names.insert(raw.name.clone()) {
-                errors.push(format!(
-                    "{}: scene {:?} is defined twice",
+    /// Whether `name` is still free in the room; reports it otherwise.
+    fn claim_name(
+        &mut self,
+        names: &mut HashSet<String>,
+        room: &str,
+        name: &str,
+        line: &str,
+    ) -> bool {
+        let unique = names.insert(name.to_string());
+        if !unique {
+            self.errors
+                .push(format!("{line}: {name:?} is already used in room {room:?}"));
+        }
+        unique
+    }
+
+    /// Adds a light and returns its path. Whether HomeKit shows it is
+    /// decided once the room's groups are known, in `set_light_exposure`.
+    fn add_light(&mut self, room: &str, raw: &RawDevice) -> Option<String> {
+        let device = self.resolve_device(raw)?;
+        let path = entity_path(room, &raw.name);
+        if let Some(other) = self.devices_seen.insert(device.clone(), path.clone()) {
+            self.errors
+                .push(format!("{}: {device} is already used by {other}", raw.line));
+        }
+        let light = Light {
+            name: raw.name.clone(),
+            path: path.clone(),
+            device,
+            exposed: false,
+        };
+        self.lights.insert(path.clone(), light);
+        Some(path)
+    }
+
+    fn add_sensor(&mut self, room: &str, raw: &RawDevice) -> Option<String> {
+        let device = self.resolve_device(raw)?;
+        let path = entity_path(room, &raw.name);
+        let sensor = Sensor {
+            name: raw.name.clone(),
+            path: path.clone(),
+            device,
+        };
+        self.sensors.insert(path.clone(), sensor);
+        Some(path)
+    }
+
+    /// The adapter device behind `zigbee:`, `hue:` and `adapter:`. A device
+    /// needs exactly one adapter of its kind that matches.
+    fn resolve_device(&mut self, raw: &RawDevice) -> Option<DeviceRef> {
+        let candidates: Vec<&AdapterConfig> = self
+            .adapters
+            .iter()
+            .filter(|adapter| adapter.kind() == raw.adapter_kind)
+            .filter(|adapter| {
+                raw.adapter
+                    .as_deref()
+                    .is_none_or(|name| adapter.name() == name)
+            })
+            .collect();
+        match candidates.as_slice() {
+            [adapter] => Some(DeviceRef {
+                adapter: adapter.name().to_string(),
+                kind: raw.adapter_kind,
+                device: raw.device.clone(),
+            }),
+            [] => {
+                let wanted = match &raw.adapter {
+                    Some(name) => format!("{} adapter {name:?}", raw.adapter_kind),
+                    None => format!("{} adapter", raw.adapter_kind),
+                };
+                self.errors.push(format!(
+                    "{}: {:?} needs a {wanted}, but none is defined",
+                    raw.line, raw.name
+                ));
+                None
+            }
+            _ => {
+                self.errors.push(format!(
+                    "{}: {:?}: several {} adapters are defined, pick one with adapter: \"name\"",
+                    raw.line, raw.name, raw.adapter_kind
+                ));
+                None
+            }
+        }
+    }
+
+    /// HomeKit shows a light unless it is in a group of its room; `expose:`
+    /// in the config decides either way.
+    fn set_light_exposure(&mut self, raw: &RawRoom, room: &Room) {
+        let grouped: HashSet<&String> = room
+            .groups
+            .iter()
+            .flat_map(|path| &self.groups[path].members)
+            .map(|member| &member.light)
+            .collect();
+        let mut exposure = Vec::new();
+        for light in &raw.lights {
+            let path = entity_path(&raw.name, &light.name);
+            if room.lights.contains(&path) {
+                let exposed = light.expose.unwrap_or(!grouped.contains(&path));
+                exposure.push((path, exposed));
+            }
+        }
+        for (path, exposed) in exposure {
+            if let Some(light) = self.lights.get_mut(&path) {
+                light.exposed = exposed;
+            }
+        }
+    }
+
+    fn add_group(&mut self, room: &str, raw: &RawGroup) -> String {
+        let mut members = self.group_members(room, raw);
+        self.add_mappings(room, raw, &mut members);
+        let staging = self.group_staging(room, raw, &members);
+        let path = entity_path(room, &raw.name);
+        let group = Group {
+            name: raw.name.clone(),
+            path: path.clone(),
+            exposed: raw.expose,
+            members,
+            staging,
+        };
+        self.groups.insert(path.clone(), group);
+        path
+    }
+
+    /// The group's lights, each a light of the same room, listed once.
+    fn group_members(&mut self, room: &str, raw: &RawGroup) -> Vec<GroupMember> {
+        let mut members: Vec<GroupMember> = Vec::new();
+        for light in &raw.lights {
+            let path = entity_path(room, light);
+            if !self.lights.contains_key(&path) {
+                self.errors.push(format!(
+                    "{}: group {:?} refers to unknown light {light:?} in room {room:?}",
                     raw.line, raw.name
                 ));
                 continue;
             }
-            scenes.push(Scene {
-                name: raw.name,
-                auto: raw.auto,
-                proc_id: raw.proc,
-                line: raw.line,
+            if members.iter().any(|member| member.light == path) {
+                self.errors.push(format!(
+                    "{}: group {:?} lists {light:?} twice",
+                    raw.line, raw.name
+                ));
+                continue;
+            }
+            members.push(GroupMember {
+                light: path,
+                mapping: None,
             });
         }
+        members
+    }
 
-        let mut triggers = Vec::new();
-        for raw in self.triggers {
-            match trigger_kind(&raw, &lights, &sensors, self.location.is_some()) {
-                Ok(kind) => triggers.push(Trigger {
-                    kind,
-                    proc_id: raw.proc,
-                    line: raw.line,
-                }),
-                Err(message) => errors.push(format!("{}: {message}", raw.line)),
+    /// Attaches each `map` of the group to its member.
+    fn add_mappings(&mut self, room: &str, raw: &RawGroup, members: &mut [GroupMember]) {
+        for mapping in &raw.mappings {
+            let path = entity_path(room, &mapping.light);
+            let Some(member) = members.iter_mut().find(|member| member.light == path) else {
+                self.errors.push(format!(
+                    "{}: map refers to {:?}, which is not a light of group {:?}",
+                    mapping.line, mapping.light, raw.name
+                ));
+                continue;
+            };
+            if member.mapping.is_some() {
+                self.errors.push(format!(
+                    "{}: {:?} is mapped twice",
+                    mapping.line, mapping.light
+                ));
+            }
+            match self.mapping_tables.get(&mapping.proc) {
+                Some(table) => member.mapping = Some(BrightnessMapping::new(table.clone())),
+                None => self.errors.push(format!(
+                    "{}: brightness mapping could not be evaluated",
+                    mapping.line
+                )),
             }
         }
+    }
 
-        let homekit = self.homekit.unwrap_or(HomeKitConfig {
+    /// The group's `stages` or `staging` block; the prelude allows only one.
+    fn group_staging(
+        &mut self,
+        room: &str,
+        raw: &RawGroup,
+        members: &[GroupMember],
+    ) -> Option<Staging> {
+        if let Some(raw_stages) = &raw.stages {
+            return Some(self.stages(room, raw, raw_stages, members));
+        }
+        raw.staging.as_ref().map(|block| Staging::Custom {
+            proc_id: block.proc,
+            line: block.line.clone(),
+        })
+    }
+
+    /// The stages as light paths. Every member must be in exactly one stage,
+    /// and every staged light must be a member.
+    fn stages(
+        &mut self,
+        room: &str,
+        group: &RawGroup,
+        raw: &RawStages,
+        members: &[GroupMember],
+    ) -> Staging {
+        let stages: Vec<Vec<String>> = raw
+            .lights
+            .iter()
+            .map(|stage| stage.iter().map(|light| entity_path(room, light)).collect())
+            .collect();
+        let staged: Vec<&String> = stages.iter().flatten().collect();
+        for light in &staged {
+            if !members.iter().any(|member| &member.light == *light) {
+                let name = light.rsplit('/').next().unwrap_or(light);
+                self.errors.push(format!(
+                    "{}: stages refer to {name:?}, which is not a light of group {:?}",
+                    raw.line, group.name
+                ));
+            }
+        }
+        for member in members {
+            let times_staged = staged
+                .iter()
+                .filter(|light| **light == &member.light)
+                .count();
+            if times_staged != 1 {
+                let name = member.light.rsplit('/').next().unwrap_or(&member.light);
+                self.errors.push(format!(
+                    "{}: stages must list {name:?} exactly once",
+                    raw.line
+                ));
+            }
+        }
+        Staging::Stages(stages)
+    }
+
+    fn add_scenes(&mut self, raw: Vec<RawScene>) {
+        for scene in raw {
+            if self.scenes.iter().any(|known| known.name == scene.name) {
+                self.errors.push(format!(
+                    "{}: scene {:?} is defined twice",
+                    scene.line, scene.name
+                ));
+                continue;
+            }
+            self.scenes.push(Scene {
+                name: scene.name,
+                auto: scene.auto,
+                proc_id: scene.proc,
+                line: scene.line,
+            });
+        }
+    }
+
+    fn add_triggers(&mut self, raw: Vec<RawTrigger>, has_location: bool) {
+        for trigger in raw {
+            match trigger_kind(&trigger, &self.lights, &self.sensors, has_location) {
+                Ok(kind) => self.triggers.push(Trigger {
+                    kind,
+                    proc_id: trigger.proc,
+                    line: trigger.line,
+                }),
+                Err(message) => self.errors.push(format!("{}: {message}", trigger.line)),
+            }
+        }
+    }
+
+    /// The `homekit` settings, or the defaults when the config has none.
+    fn homekit(&mut self, raw: Option<HomeKitConfig>) -> HomeKitConfig {
+        let homekit = raw.unwrap_or(HomeKitConfig {
             name: "Knut".into(),
             pin: None,
             port: 32000,
@@ -411,29 +520,19 @@ impl RawModel {
         });
         if let Some(pin) = &homekit.pin {
             if is_trivial_pin(pin) {
-                errors.push(format!(
+                self.errors.push(format!(
                     "{}: HomeKit rejects trivial setup codes like {pin}",
                     homekit.line
                 ));
             }
         }
-
-        if !errors.is_empty() {
-            return Err(ValidationErrors(errors));
-        }
-        Ok(Model {
-            location: self.location,
-            homekit,
-            schedule: self.schedule,
-            adapters: self.adapters,
-            rooms,
-            lights,
-            sensors,
-            groups,
-            scenes,
-            triggers,
-        })
+        homekit
     }
+}
+
+/// The `"Room/Entity"` path of an entity.
+fn entity_path(room: &str, name: &str) -> String {
+    format!("{room}/{name}")
 }
 
 fn trigger_kind(
