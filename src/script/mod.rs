@@ -11,8 +11,26 @@ use serde::Deserialize;
 use crate::model::{Model, RawModel, ValidationErrors};
 use mruby::{Mruby, RubyError};
 
-const PRELUDE: &str = include_str!("prelude.rb");
+/// The Ruby side of the DSL, in load order: internals first, then the
+/// runtime Rust calls, then the configuration language itself.
+const PRELUDE: [(&str, &str); 6] = [
+    ("(knut)/internal.rb", include_str!("prelude/internal.rb")),
+    ("(knut)/json.rb", include_str!("prelude/json.rb")),
+    ("(knut)/runtime.rb", include_str!("prelude/runtime.rb")),
+    ("(knut)/objects.rb", include_str!("prelude/objects.rb")),
+    ("(knut)/builders.rb", include_str!("prelude/builders.rb")),
+    ("(knut)/dsl.rb", include_str!("prelude/dsl.rb")),
+];
+/// Every prelude file name starts with this, so that errors and backtraces
+/// can tell the prelude from the config.
 const PRELUDE_FILE: &str = "(knut)";
+
+fn load_prelude(ruby: &mut Mruby) -> Result<(), RubyError> {
+    for (filename, code) in PRELUDE {
+        ruby.eval(code, filename)?;
+    }
+    Ok(())
+}
 
 /// Something a scene or trigger block asked for.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -104,7 +122,7 @@ impl Script {
 
     pub(crate) fn load_str(code: &str, filename: &str) -> Result<(Self, Model), LoadError> {
         let mut ruby = Mruby::new();
-        ruby.eval(PRELUDE, PRELUDE_FILE).map_err(LoadError::Ruby)?;
+        load_prelude(&mut ruby).map_err(LoadError::Ruby)?;
         ruby.eval(code, filename).map_err(LoadError::Ruby)?;
 
         let json = ruby
@@ -759,10 +777,8 @@ $demand = curve(
     /// The methods the prelude adds to the top level, plus the public
     /// methods of the objects a config works with.
     fn dsl_methods() -> Vec<String> {
-        const TOP_LEVEL: &str = "(Object.public_instance_methods(false) + \
-            Object.private_instance_methods(false)).map(&:to_s).sort.join(' ')";
-        const OBJECTS: &str = "[Knut::RoomBuilder, Knut::GroupBuilder, Knut::ScheduleBuilder, \
-            Knut::Curve, Knut::Sun, Knut::Event, Knut::EntityState]\
+        const PUBLIC_METHODS: &str = "[Knut::DSL, Knut::RoomBuilder, Knut::GroupBuilder, \
+            Knut::ScheduleBuilder, Knut::Curve, Knut::Sun, Knut::Event, Knut::EntityState]\
             .flat_map { |object| object.public_instance_methods(false) }\
             .map(&:to_s).sort.join(' ')";
         // Ruby's own hooks, not part of the language.
@@ -774,17 +790,11 @@ $demand = curve(
         ];
 
         let mut ruby = Mruby::new();
-        let before_prelude = ruby.eval(TOP_LEVEL, "test.rb").unwrap();
-        ruby.eval(PRELUDE, PRELUDE_FILE).unwrap();
-        let after_prelude = ruby.eval(TOP_LEVEL, "test.rb").unwrap();
-        let objects = ruby.eval(OBJECTS, "test.rb").unwrap();
+        load_prelude(&mut ruby).unwrap();
+        let methods = ruby.eval(PUBLIC_METHODS, "test.rb").unwrap();
 
-        let existing: Vec<&str> = before_prelude.split(' ').collect();
-        let top_level = after_prelude
+        methods
             .split(' ')
-            .filter(|method| !existing.contains(method));
-        top_level
-            .chain(objects.split(' '))
             .filter(|method| !HOOKS.contains(method))
             // Operators such as `[]` are documented by example (`event[:key]`).
             .filter(|method| method.starts_with(|c: char| c.is_alphabetic()))

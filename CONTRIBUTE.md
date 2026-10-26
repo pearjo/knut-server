@@ -29,9 +29,9 @@ the code, or the code should be simpler.
 ## Architecture
 
 ```
-config.rb ──> script (mruby + prelude.rb) ──> model ──> engine ──> adapter ──> lights
-                                                         ^  │
-                                      homekit ───────────┘  └──> store (/var/lib/knut)
+config.rb ──> script (mruby + prelude/) ──> model ──> engine ──> adapter ──> lights
+                                                       ^  │
+                                    homekit ───────────┘  └──> store (/var/lib/knut)
 ```
 
 | Module     | What it does                                                                        |
@@ -69,7 +69,7 @@ the engine.
 mruby is small and links statically into the single binary. The `minutus`
 crate no longer compiles against current mruby, so `mruby/shim.c` and
 `src/script/mruby.rs` wrap the few C functions Knut needs. Keep that boundary
-thin: Ruby code belongs in `prelude.rb`, not in C strings.
+thin: Ruby code belongs in `src/script/prelude/`, not in C strings.
 
 ### Why is `hap` vendored?
 
@@ -168,14 +168,18 @@ Use these words in code, comments, logs and docs, and only in this sense.
 
 ### Ruby (prelude and DSL)
 
-- **The prelude has visible layers**, each in its own section or file:
-  1. **DSL**: the top-level verbs a config uses (`room`, `scene`, `on`,
-     `set`, …) and the public methods of the builders (`light`, `group`,
-     `stages`, …). This is the public API of the language.
-  2. **Runtime**: the methods Rust calls (`Knut.model_json`, `Knut.run`,
-     `Knut.staging`, `Knut.mapping_table`).
-  3. **Internals**: validation, JSON encoding, proc registry. Marked
-     `private` or kept in `Knut::Internal`.
+- **The prelude has visible layers**, one file each in
+  `src/script/prelude/`, loaded in the order Rust lists them:
+  1. **Internals** (`internal.rb`, `json.rb`): `Knut::Internal` with the
+     recorded model, errors, validation and the action log, and
+     `Knut::Json`. Not for configs.
+  2. **Runtime** (`runtime.rb`): the methods Rust calls (`Knut.model_json`,
+     `Knut.run`, `Knut.staging`, `Knut.mapping_table`).
+  3. **DSL**: the public API of the language. `dsl.rb` holds the top-level
+     verbs in `Knut::DSL`, included into every object; `builders.rb` the
+     methods inside `room`, `group` and `schedule`; `objects.rb` what
+     blocks work with (`Curve`, `Sun`, `Event`, `EntityState`). Their
+     helpers are `private`.
 
   *Because a reader of the prelude should know at once whether a method is
   something a config author may call.*
@@ -242,7 +246,7 @@ modules, new types, changed interfaces, new DSL syntax) are proposed first.
 - The split DSL → model → engine; the DSL only records, Rust validates.
 - HomeKit talks only to the engine, never to adapters.
 - Stable HomeKit accessory ids, derived from config names.
-- The thin mruby shim; Ruby logic stays in `prelude.rb`.
+- The thin mruby shim; Ruby logic stays in `src/script/prelude/`.
 - `vendor/hap/PATCHES.md` lists every change to `vendor/hap`.
 
 ### What to never do
