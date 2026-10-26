@@ -356,6 +356,23 @@ impl Model {
             .values()
             .find(|sensor| &sensor.device == device)
     }
+
+    /// The triggers listening for `event` from the sensor or light at `path`.
+    pub(crate) fn device_triggers<'a>(
+        &'a self,
+        path: &'a str,
+        event: &'a str,
+    ) -> impl Iterator<Item = &'a Trigger> {
+        self.triggers
+            .iter()
+            .filter(move |trigger| match &trigger.kind {
+                TriggerKind::Device {
+                    path: source,
+                    events,
+                } => source == path && events.iter().any(|listened| listened == event),
+                _ => false,
+            })
+    }
 }
 
 impl fmt::Display for Model {

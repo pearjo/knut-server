@@ -1,10 +1,11 @@
 //! What reaches the engine from outside: HomeKit changes and adapter events.
 
 use chrono::Local;
+use serde_json::Value;
 
 use super::{Change, Engine, Input, AUTO_RESUME_TRANSITION};
-use crate::adapter::{AdapterEvent, LightCommand};
-use crate::model::TriggerKind;
+use crate::adapter::{AdapterEvent, LightCommand, LightReport};
+use crate::model::DeviceRef;
 use crate::script::BlockArgs;
 
 impl Engine {
@@ -85,60 +86,60 @@ impl Engine {
 
     pub(super) async fn handle_adapter_event(&mut self, event: AdapterEvent) {
         match event {
-            AdapterEvent::Light { device, report } => {
-                let Some(light) = self.model.light_by_device(&device) else {
-                    return;
-                };
-                let path = light.path.clone();
-                self.update_state(&path, |state| {
-                    if let Some(on) = report.on {
-                        state.on = on;
-                    }
-                    if let Some(brightness) = report.brightness.filter(|b| *b > 0.0) {
-                        state.brightness = brightness;
-                    }
-                    if report.kelvin.is_some() {
-                        state.kelvin = report.kelvin;
-                    }
-                });
-                self.publish(&path);
-                for group in self.groups_of_light.get(&path).cloned().unwrap_or_default() {
-                    self.refresh_group(&group);
-                }
-            }
+            AdapterEvent::Light { device, report } => self.on_light_report(&device, &report),
             AdapterEvent::Device {
                 device,
                 event,
                 data,
-            } => {
-                let path = match (
-                    self.model.sensor_by_device(&device),
-                    self.model.light_by_device(&device),
-                ) {
-                    (Some(sensor), _) => sensor.path.clone(),
-                    (None, Some(light)) => light.path.clone(),
-                    (None, None) => return,
-                };
-                let triggers: Vec<(usize, String)> = self
-                    .model
-                    .triggers
-                    .iter()
-                    .filter(|trigger| matches!(&trigger.kind, TriggerKind::Device { path: p, events } if *p == path && events.contains(&event)))
-                    .map(|trigger| (trigger.proc_id, trigger.line.clone()))
-                    .collect();
-                if triggers.is_empty() {
-                    return;
-                }
-                let args = BlockArgs::Device {
-                    path,
-                    event,
-                    data,
-                    now: Local::now(),
-                };
-                for (proc_id, line) in triggers {
-                    self.run_trigger(proc_id, &args, &line).await;
-                }
-            }
+            } => self.on_device_event(&device, event, data).await,
         }
+    }
+
+    /// A light reported its state, e.g. after a wall switch or another app
+    /// changed it. Reports never change auto mode.
+    fn on_light_report(&mut self, device: &DeviceRef, report: &LightReport) {
+        let Some(light) = self.model.light_by_device(device) else {
+            return;
+        };
+        let path = light.path.clone();
+        self.update_state(&path, |state| state.record_report(report));
+        self.publish(&path);
+        for group in self.groups_of_light.get(&path).cloned().unwrap_or_default() {
+            self.refresh_group(&group);
+        }
+    }
+
+    /// Runs the triggers listening for `event` from a sensor or light.
+    async fn on_device_event(&mut self, device: &DeviceRef, event: String, data: Value) {
+        let Some(path) = self.device_path(device) else {
+            return;
+        };
+        let triggers: Vec<(usize, String)> = self
+            .model
+            .device_triggers(&path, &event)
+            .map(|trigger| (trigger.proc_id, trigger.line.clone()))
+            .collect();
+        if triggers.is_empty() {
+            return;
+        }
+        let args = BlockArgs::Device {
+            path,
+            event,
+            data,
+            now: Local::now(),
+        };
+        for (proc_id, line) in triggers {
+            self.run_trigger(proc_id, &args, &line).await;
+        }
+    }
+
+    /// The path of the sensor or light behind `device`.
+    fn device_path(&self, device: &DeviceRef) -> Option<String> {
+        let sensor = self
+            .model
+            .sensor_by_device(device)
+            .map(|sensor| &sensor.path);
+        let light = self.model.light_by_device(device).map(|light| &light.path);
+        sensor.or(light).cloned()
     }
 }

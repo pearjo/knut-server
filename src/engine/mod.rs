@@ -20,7 +20,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Local, Timelike};
 use tokio::sync::mpsc;
 
-use crate::adapter::{AdapterEvent, Adapters, LightCommand};
+use crate::adapter::{AdapterEvent, Adapters, LightCommand, LightReport};
 use crate::model::Model;
 use crate::script::Script;
 use crate::store::Store;
@@ -66,6 +66,20 @@ impl EntityState {
         }
         if command.kelvin.is_some() {
             self.kelvin = command.kelvin;
+        }
+    }
+
+    /// Takes over what a device reported. A reported brightness of 0 is
+    /// ignored, so the entity comes back at its last level.
+    fn record_report(&mut self, report: &LightReport) {
+        if let Some(on) = report.on {
+            self.on = on;
+        }
+        if let Some(brightness) = report.brightness.filter(|brightness| *brightness > 0.0) {
+            self.brightness = brightness;
+        }
+        if report.kelvin.is_some() {
+            self.kelvin = report.kelvin;
         }
     }
 }
