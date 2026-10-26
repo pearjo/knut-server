@@ -30,38 +30,14 @@ impl Engine {
         let value = command.brightness.unwrap_or(state.brightness);
         let previous = self.active_stages.get(path).cloned();
         let (active, staged) = match staging {
-            Staging::Stages(stages) => {
-                let previous = match previous {
-                    Some(ActiveStaging::Stages(count)) => Some(count),
-                    _ => None,
-                };
-                let count = control::stage_count(stages, value, previous);
-                (
-                    ActiveStaging::Stages(count),
-                    control::staged_lights(stages, count, previous),
-                )
-            }
+            Staging::Stages(stages) => by_stages(stages, value, previous.as_ref()),
             Staging::Custom { proc_id, line } => {
                 let on = self.custom_staging(group, *proc_id, line, value);
-                let lit_before = match &previous {
-                    Some(ActiveStaging::Lights(lights)) => lights.clone(),
-                    _ => group.members.iter().map(|m| m.light.clone()).collect(),
-                };
-                let off = lit_before
-                    .into_iter()
-                    .filter(|light| !on.contains(light))
-                    .collect();
-                (
-                    ActiveStaging::Lights(on.clone()),
-                    control::StagedLights { on, off },
-                )
+                by_block(group, on, previous.as_ref())
             }
         };
         if previous.as_ref() != Some(&active) {
-            command.on = Some(true);
-            command.brightness = Some(value);
-            command.kelvin = command.kelvin.or(state.kelvin);
-            command.transition = Some(command.transition.unwrap_or(0.0).max(MIN_STAGE_TRANSITION));
+            cross_fade(command, value, state.kelvin);
         }
         self.active_stages.insert(path.to_string(), active);
         Some(staged)
@@ -108,4 +84,54 @@ impl Engine {
         }
         control::send_all(&self.adapters, &commands).await;
     }
+}
+
+/// The leading stages that carry `value`, with hysteresis against the
+/// stages that were on before.
+fn by_stages(
+    stages: &[Vec<String>],
+    value: f64,
+    previous: Option<&ActiveStaging>,
+) -> (ActiveStaging, control::StagedLights) {
+    let previous_count = match previous {
+        Some(ActiveStaging::Stages(count)) => Some(*count),
+        _ => None,
+    };
+    let count = control::stage_count(stages, value, previous_count);
+    (
+        ActiveStaging::Stages(count),
+        control::staged_lights(stages, count, previous_count),
+    )
+}
+
+/// The lights a staging block picked (`on`); the ones lit before and not
+/// picked again go off. Before the first pick every light counts as lit.
+fn by_block(
+    group: &Group,
+    on: Vec<String>,
+    previous: Option<&ActiveStaging>,
+) -> (ActiveStaging, control::StagedLights) {
+    let lit_before = match previous {
+        Some(ActiveStaging::Lights(lights)) => lights.clone(),
+        _ => group.members.iter().map(|m| m.light.clone()).collect(),
+    };
+    let off = lit_before
+        .into_iter()
+        .filter(|light| !on.contains(light))
+        .collect();
+    (
+        ActiveStaging::Lights(on.clone()),
+        control::StagedLights { on, off },
+    )
+}
+
+/// Turns `command` into a cross-fade for a stage change: every light that
+/// is on gets the group's brightness `value` and colour temperature, and
+/// the change takes at least `MIN_STAGE_TRANSITION` seconds.
+fn cross_fade(command: &mut LightCommand, value: f64, kelvin: Option<f64>) {
+    command.on = Some(true);
+    command.brightness = Some(value);
+    command.kelvin = command.kelvin.or(kelvin);
+    let transition = command.transition.unwrap_or(0.0);
+    command.transition = Some(transition.max(MIN_STAGE_TRANSITION));
 }
