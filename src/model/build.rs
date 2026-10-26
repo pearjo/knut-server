@@ -6,9 +6,9 @@ use std::fmt;
 use serde::Deserialize;
 
 use super::{
-    AdapterConfig, AdapterKind, BrightnessMapping, Daylight, DeviceRef, Group, GroupMember,
-    HomeKitConfig, Light, Line, Location, Model, Room, Scene, ScheduleDay, Sensor, Staging,
-    SunEvent, Trigger, TriggerKind,
+    entity_name, entity_path, AdapterConfig, AdapterKind, BrightnessMapping, Daylight, DeviceRef,
+    Group, GroupMember, HomeKitConfig, Light, Line, Location, Model, Room, Scene, ScheduleDay,
+    Sensor, Staging, SunEvent, Trigger, TriggerKind,
 };
 
 /// Problems found while validating; each names its config line.
@@ -88,10 +88,10 @@ struct RawStaging {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct RawMapping {
-    pub light: String,
-    pub proc: usize,
-    pub line: Line,
+struct RawMapping {
+    light: String,
+    proc: usize,
+    line: Line,
 }
 
 #[derive(Debug, Deserialize)]
@@ -455,7 +455,7 @@ impl<'a> ModelBuilder<'a> {
         let staged: Vec<&String> = stages.iter().flatten().collect();
         for light in &staged {
             if !members.iter().any(|member| &member.light == *light) {
-                let name = light.rsplit('/').next().unwrap_or(light);
+                let name = entity_name(light);
                 self.errors.push(format!(
                     "{}: stages refer to {name:?}, which is not a light of group {:?}",
                     raw.line, group.name
@@ -468,7 +468,7 @@ impl<'a> ModelBuilder<'a> {
                 .filter(|light| **light == &member.light)
                 .count();
             if times_staged != 1 {
-                let name = member.light.rsplit('/').next().unwrap_or(&member.light);
+                let name = entity_name(&member.light);
                 self.errors.push(format!(
                     "{}: stages must list {name:?} exactly once",
                     raw.line
@@ -528,11 +528,6 @@ impl<'a> ModelBuilder<'a> {
         }
         homekit
     }
-}
-
-/// The `"Room/Entity"` path of an entity.
-fn entity_path(room: &str, name: &str) -> String {
-    format!("{room}/{name}")
 }
 
 fn trigger_kind(

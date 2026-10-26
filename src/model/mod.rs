@@ -18,6 +18,17 @@ pub(crate) use daylight::Daylight;
 /// Source location in the config, e.g. `config.rb:12`.
 pub(crate) type Line = String;
 
+/// The `"Room/Entity"` path of an entity.
+fn entity_path(room: &str, name: &str) -> String {
+    format!("{room}/{name}")
+}
+
+/// The entity's name: the part of its path after the room.
+fn entity_name(path: &str) -> &str {
+    path.split_once('/').map_or(path, |(_, name)| name)
+}
+
+/// Where the home is, in degrees; needed for the sun.
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct Location {
     pub lat: f64,
@@ -32,6 +43,7 @@ pub(crate) struct ScheduleDay {
     pub bed: u32,
 }
 
+/// How the bridge appears in Apple Home (`homekit` in the DSL).
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct HomeKitConfig {
     pub name: String,
@@ -42,6 +54,7 @@ pub(crate) struct HomeKitConfig {
     pub line: Line,
 }
 
+/// One configured connection to a device system (`hue` or `zigbee`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub(crate) enum AdapterConfig {
@@ -80,6 +93,7 @@ impl AdapterConfig {
     }
 }
 
+/// The device systems Knut talks to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum AdapterKind {
@@ -110,14 +124,17 @@ impl fmt::Display for DeviceRef {
     }
 }
 
+/// One bulb.
 #[derive(Debug, Clone)]
 pub(crate) struct Light {
     pub name: String,
     pub path: String,
     pub device: DeviceRef,
+    /// Whether HomeKit shows it on its own.
     pub exposed: bool,
 }
 
+/// A device that sends events to triggers, e.g. a motion sensor or button.
 #[derive(Debug, Clone)]
 pub(crate) struct Sensor {
     pub name: String,
@@ -125,10 +142,12 @@ pub(crate) struct Sensor {
     pub device: DeviceRef,
 }
 
+/// Lights of one room controlled as one entity.
 #[derive(Debug, Clone)]
 pub(crate) struct Group {
     pub name: String,
     pub path: String,
+    /// Whether HomeKit shows it.
     pub exposed: bool,
     pub members: Vec<GroupMember>,
     pub staging: Option<Staging>,
@@ -144,6 +163,7 @@ pub(crate) enum Staging {
     Custom { proc_id: usize, line: Line },
 }
 
+/// A light in a group, with its brightness mapping if it has one.
 #[derive(Debug, Clone)]
 pub(crate) struct GroupMember {
     /// Path of the member light.
@@ -159,6 +179,7 @@ pub(crate) struct BrightnessMapping {
 }
 
 impl BrightnessMapping {
+    /// `table` holds the light's brightness for group brightness 1..=100.
     pub(crate) fn new(table: Vec<f64>) -> Self {
         assert_eq!(table.len(), 100);
         Self { table }
@@ -177,6 +198,8 @@ impl BrightnessMapping {
 }
 
 impl GroupMember {
+    /// The brightness this light shows when it receives `group_brightness`
+    /// (0–100), clamped to 1–100.
     pub(crate) fn brightness_for(&self, group_brightness: f64) -> f64 {
         match &self.mapping {
             Some(mapping) => mapping.apply(group_brightness),
@@ -185,6 +208,7 @@ impl GroupMember {
     }
 }
 
+/// A room; its entities are listed by path, in config order.
 #[derive(Debug, Clone)]
 pub(crate) struct Room {
     pub name: String,
@@ -194,14 +218,17 @@ pub(crate) struct Room {
     pub daylight: Option<Daylight>,
 }
 
+/// A named set of actions; `proc_id` is its block in the script.
 #[derive(Debug, Clone)]
 pub(crate) struct Scene {
     pub name: String,
+    /// Whether its entities stay in auto mode (`auto: true`).
     pub auto: bool,
     pub proc_id: usize,
     pub line: Line,
 }
 
+/// An `on … do … end` block and what it listens for.
 #[derive(Debug, Clone)]
 pub(crate) struct Trigger {
     pub kind: TriggerKind,
@@ -209,6 +236,7 @@ pub(crate) struct Trigger {
     pub line: Line,
 }
 
+/// What a trigger listens for.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TriggerKind {
     /// Once per minute.
@@ -237,6 +265,7 @@ pub(crate) enum EntityKind {
     Group,
 }
 
+/// The whole configured home. Lights, sensors and groups are keyed by path.
 #[derive(Debug, Clone)]
 pub(crate) struct Model {
     pub location: Option<Location>,
@@ -253,6 +282,7 @@ pub(crate) struct Model {
 }
 
 impl Model {
+    /// Whether `path` names a group, a light or nothing.
     pub(crate) fn entity_kind(&self, path: &str) -> Option<EntityKind> {
         if self.groups.contains_key(path) {
             Some(EntityKind::Group)
@@ -287,10 +317,12 @@ impl Model {
         self.scenes.iter().find(|scene| scene.name == name)
     }
 
+    /// The light behind an adapter device, if the config has one.
     pub(crate) fn light_by_device(&self, device: &DeviceRef) -> Option<&Light> {
         self.lights.values().find(|light| &light.device == device)
     }
 
+    /// The sensor behind an adapter device, if the config has one.
     pub(crate) fn sensor_by_device(&self, device: &DeviceRef) -> Option<&Sensor> {
         self.sensors
             .values()

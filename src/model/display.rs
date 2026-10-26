@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use super::{AdapterConfig, Group, Model, Room, ScheduleDay, Staging, TriggerKind};
+use super::{entity_name, AdapterConfig, Group, Model, Room, ScheduleDay, Staging, TriggerKind};
 
 /// Weekday names in `Weekday::num_days_from_sunday` order, as the schedule
 /// is indexed.
@@ -129,15 +129,16 @@ fn write_group(f: &mut fmt::Formatter<'_>, group: &Group) -> fmt::Result {
             ),
             None => String::new(),
         };
-        let name = member.light.rsplit('/').next().unwrap_or(&member.light);
-        writeln!(f, "    - {name}{mapping}")?;
+        writeln!(f, "    - {}{mapping}", entity_name(&member.light))?;
     }
     match &group.staging {
         Some(Staging::Stages(stages)) => {
-            let name = |path: &String| path.rsplit('/').next().unwrap_or(path).to_string();
             let stages: Vec<String> = stages
                 .iter()
-                .map(|stage| stage.iter().map(name).collect::<Vec<_>>().join(", "))
+                .map(|stage| {
+                    let names: Vec<&str> = stage.iter().map(|path| entity_name(path)).collect();
+                    names.join(", ")
+                })
                 .collect();
             writeln!(f, "    stages {}", stages.join(" | "))
         }
