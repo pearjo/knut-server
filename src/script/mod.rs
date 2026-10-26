@@ -193,28 +193,15 @@ impl Script {
         Self::load_str(&code, &filename)
     }
 
+    /// Loads and validates a config given as source code; `filename` names
+    /// it in error messages.
     pub(crate) fn load_str(code: &str, filename: &str) -> Result<(Self, Model), LoadError> {
         let mut ruby = Mruby::new();
         load_prelude(&mut ruby).map_err(LoadError::Ruby)?;
         ruby.eval(code, filename).map_err(LoadError::Ruby)?;
 
-        let json = ruby
-            .eval("Knut.model_json", PRELUDE_FILE)
-            .map_err(LoadError::Ruby)?;
-        // The prelude checks shapes; what is left are value errors such as a bad IP address.
-        let raw: RawModel = serde_json::from_str(&json).map_err(|error| {
-            LoadError::Invalid(ValidationErrors(vec![format!("{filename}: {error}")]))
-        })?;
-
-        let mut tables = HashMap::new();
-        for id in raw.mapping_procs() {
-            let json = ruby
-                .eval(&format!("Knut.mapping_table({id})"), PRELUDE_FILE)
-                .map_err(LoadError::Ruby)?;
-            let table: Vec<f64> =
-                serde_json::from_str(&json).expect("the prelude emits a JSON array");
-            tables.insert(id, table);
-        }
+        let raw = recorded_model(&mut ruby, filename)?;
+        let tables = mapping_tables(&mut ruby, &raw)?;
         let model = raw.build(&tables).map_err(LoadError::Invalid)?;
 
         let mut script = Self { ruby };
@@ -280,6 +267,29 @@ impl Script {
         }
         errors
     }
+}
+
+/// The model the prelude recorded while the config loaded.
+fn recorded_model(ruby: &mut Mruby, filename: &str) -> Result<RawModel, LoadError> {
+    let json = ruby
+        .eval("Knut.model_json", PRELUDE_FILE)
+        .map_err(LoadError::Ruby)?;
+    // The prelude checks shapes; what is left are value errors such as a bad IP address.
+    serde_json::from_str(&json)
+        .map_err(|error| LoadError::Invalid(ValidationErrors(vec![format!("{filename}: {error}")])))
+}
+
+/// Every brightness mapping evaluated for 1..100, keyed by proc id.
+fn mapping_tables(ruby: &mut Mruby, raw: &RawModel) -> Result<HashMap<usize, Vec<f64>>, LoadError> {
+    let mut tables = HashMap::new();
+    for id in raw.mapping_procs() {
+        let json = ruby
+            .eval(&format!("Knut.mapping_table({id})"), PRELUDE_FILE)
+            .map_err(LoadError::Ruby)?;
+        let table: Vec<f64> = serde_json::from_str(&json).expect("the prelude emits a JSON array");
+        tables.insert(id, table);
+    }
+    Ok(tables)
 }
 
 /// Unknown targets and scenes in a list of actions.
