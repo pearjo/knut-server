@@ -1,15 +1,18 @@
 //! Loads the Ruby DSL and runs scene and trigger blocks.
 
-pub(crate) mod mruby;
+mod mruby;
 
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
+use chrono::{DateTime, Local};
 use serde::Deserialize;
 
 use crate::model::{Model, RawModel, ValidationErrors};
-use mruby::{Mruby, RubyError};
+use crate::sun::{SunPosition, SunTimes};
+use mruby::Mruby;
+pub(crate) use mruby::RubyError;
 
 /// The Ruby side of the DSL, in load order: internals first, then the
 /// runtime Rust calls, then the configuration language itself.
@@ -30,6 +33,76 @@ fn load_prelude(ruby: &mut Mruby) -> Result<(), RubyError> {
         ruby.eval(code, filename)?;
     }
     Ok(())
+}
+
+/// What a scene or trigger block receives: `|sun, now|`, `|now|` or
+/// `|event, now|`.
+#[derive(Debug, Clone)]
+pub(crate) enum BlockArgs {
+    /// Scenes take no arguments.
+    None,
+    Clock {
+        now: DateTime<Local>,
+    },
+    Sun {
+        position: SunPosition,
+        /// Today's sunrise and sunset; `None` during polar day or night.
+        times: Option<SunTimes>,
+        now: DateTime<Local>,
+    },
+    Device {
+        path: String,
+        event: String,
+        /// The device's report.
+        data: serde_json::Value,
+        now: DateTime<Local>,
+    },
+}
+
+impl BlockArgs {
+    /// The arguments as Ruby expressions, separated by commas.
+    fn to_ruby(&self) -> String {
+        match self {
+            Self::None => String::new(),
+            Self::Clock { now } => ruby_time(now),
+            Self::Sun {
+                position,
+                times,
+                now,
+            } => {
+                // Knut::Sun takes Unix seconds and makes them Time itself.
+                let (sunrise, sunset) = match times {
+                    Some(times) => (
+                        times.sunrise.timestamp().to_string(),
+                        times.sunset.timestamp().to_string(),
+                    ),
+                    None => ("nil".to_string(), "nil".to_string()),
+                };
+                format!(
+                    "Knut::Sun.new({:.4}, {:.4}, {sunrise}, {sunset}), {}",
+                    position.elevation,
+                    position.azimuth,
+                    ruby_time(now)
+                )
+            }
+            Self::Device {
+                path,
+                event,
+                data,
+                now,
+            } => format!(
+                "Knut::Event.new({}, {}, {}), {}",
+                mruby::ruby_string(path),
+                mruby::ruby_string(event),
+                mruby::ruby_literal(data),
+                ruby_time(now)
+            ),
+        }
+    }
+}
+
+fn ruby_time(time: &DateTime<Local>) -> String {
+    format!("Time.at({})", time.timestamp())
 }
 
 /// Something a scene or trigger block asked for.
@@ -152,17 +225,18 @@ impl Script {
         Ok((script, model))
     }
 
-    /// Runs proc `proc_id` with `args`, a comma separated list of Ruby
-    /// expressions, and returns the actions it requested. `state` is the
-    /// entity snapshot exposed through `state(path)` and `on?(path)`.
+    /// Runs the scene or trigger block `proc_id` with `args` and returns the
+    /// actions it requested. `state` is the entity snapshot exposed through
+    /// `state(path)` and `on?(path)`.
     pub(crate) fn run(
         &mut self,
         proc_id: usize,
-        args: &str,
+        args: &BlockArgs,
         state: &serde_json::Value,
     ) -> Result<Vec<Action>, RubyError> {
         let code = format!(
-            "Knut.run({proc_id}, [{args}], {})",
+            "Knut.run({proc_id}, [{}], {})",
+            args.to_ruby(),
             mruby::ruby_literal(state)
         );
         let json = self.ruby.eval(&code, PRELUDE_FILE)?;
@@ -190,7 +264,7 @@ impl Script {
         let empty = serde_json::json!({});
         let mut errors = Vec::new();
         for scene in &model.scenes {
-            match self.run(scene.proc_id, "", &empty) {
+            match self.run(scene.proc_id, &BlockArgs::None, &empty) {
                 Ok(actions) => {
                     for problem in validate_actions(model, &actions) {
                         errors.push(format!("{}: scene {:?}: {problem}", scene.line, scene.name));
@@ -295,7 +369,7 @@ end
         let actions = script
             .run(
                 sun.proc_id,
-                "Knut::Sun.new(20.0, 180.0, nil, nil), Time.now",
+                &sun_at(20.0, chrono::Local::now()),
                 &serde_json::json!({}),
             )
             .unwrap();
@@ -322,11 +396,9 @@ end
             .unwrap();
         let noon = chrono::Local
             .with_ymd_and_hms(2026, 10, 22, 12, 0, 0)
-            .unwrap()
-            .timestamp();
-        let args = format!("Knut::Sun.new(20.0, 180.0, nil, nil), Time.at({noon})");
+            .unwrap();
         let actions = script
-            .run(sun.proc_id, &args, &serde_json::json!({}))
+            .run(sun.proc_id, &sun_at(20.0, noon), &serde_json::json!({}))
             .unwrap();
         let [Action::Adapt {
             targets,
@@ -346,11 +418,27 @@ end
     fn trigger_blocks_see_state() {
         let (mut script, model) = Script::load_str(CONFIG, "config.rb").unwrap();
         let motion = &model.triggers[1];
-        let args = r#"Knut::Event.new("Flur/Bewegung", :motion, {"occupancy" => true}), Time.now"#;
+        let args = BlockArgs::Device {
+            path: "Flur/Bewegung".into(),
+            event: "motion".into(),
+            data: serde_json::json!({"occupancy": true}),
+            now: chrono::Local::now(),
+        };
         let on = serde_json::json!({"Flur/Licht": {"on": true}});
-        assert!(script.run(motion.proc_id, args, &on).unwrap().is_empty());
+        assert!(script.run(motion.proc_id, &args, &on).unwrap().is_empty());
         let off = serde_json::json!({"Flur/Licht": {"on": false}});
-        assert_eq!(script.run(motion.proc_id, args, &off).unwrap().len(), 1);
+        assert_eq!(script.run(motion.proc_id, &args, &off).unwrap().len(), 1);
+    }
+
+    fn sun_at(elevation: f64, now: chrono::DateTime<chrono::Local>) -> BlockArgs {
+        BlockArgs::Sun {
+            position: SunPosition {
+                elevation,
+                azimuth: 180.0,
+            },
+            times: None,
+            now,
+        }
     }
 
     #[test]
@@ -622,7 +710,9 @@ $demand = curve(
         let error = script
             .run(
                 model.triggers[0].proc_id,
-                "Time.now",
+                &BlockArgs::Clock {
+                    now: chrono::Local::now(),
+                },
                 &serde_json::json!({}),
             )
             .unwrap_err();

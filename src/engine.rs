@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use crate::adapter::{AdapterEvent, Adapters, LightCommand};
 use crate::control;
 use crate::model::{Group, Model, Staging, SunEvent, TriggerKind};
-use crate::script::{self, mruby::ruby_string, Action, Script};
+use crate::script::{self, Action, BlockArgs, Script};
 use crate::store::Store;
 use crate::sun;
 
@@ -331,12 +331,12 @@ impl Engine {
                 if triggers.is_empty() {
                     return;
                 }
-                let args = format!(
-                    "Knut::Event.new({}, :{event}, {}), Time.at({})",
-                    ruby_string(&path),
-                    script::mruby::ruby_literal(&data),
-                    Local::now().timestamp()
-                );
+                let args = BlockArgs::Device {
+                    path,
+                    event,
+                    data,
+                    now: Local::now(),
+                };
                 for (proc_id, line) in triggers {
                     self.run_trigger(proc_id, &args, &line).await;
                 }
@@ -360,8 +360,7 @@ impl Engine {
     // Time
 
     async fn on_tick(&mut self, previous: DateTime<Local>, now: DateTime<Local>, first: bool) {
-        let mut due: Vec<(usize, String, String)> = Vec::new();
-        let now_ruby = format!("Time.at({})", now.timestamp());
+        let mut due: Vec<(usize, BlockArgs, String)> = Vec::new();
         let dates = [previous.date_naive(), now.date_naive()];
 
         let sun = self.model.location.as_ref().map(|location| {
@@ -372,21 +371,17 @@ impl Engine {
         self.sun = sun.as_ref().map(|(_, _, position, _)| *position);
 
         for trigger in &self.model.triggers {
-            let fire = |args: String| (trigger.proc_id, args, trigger.line.clone());
+            let fire = |args: BlockArgs| (trigger.proc_id, args, trigger.line.clone());
+            let sun_args =
+                |position: &sun::SunPosition, times: &Option<sun::SunTimes>| BlockArgs::Sun {
+                    position: *position,
+                    times: *times,
+                    now,
+                };
             match &trigger.kind {
                 TriggerKind::SunTick => {
                     if let Some((_, _, position, times)) = &sun {
-                        let (sunrise, sunset) = match times {
-                            Some(times) => (
-                                times.sunrise.timestamp().to_string(),
-                                times.sunset.timestamp().to_string(),
-                            ),
-                            None => ("nil".into(), "nil".into()),
-                        };
-                        due.push(fire(format!(
-                            "Knut::Sun.new({:.4}, {:.4}, {sunrise}, {sunset}), {now_ruby}",
-                            position.elevation, position.azimuth
-                        )));
+                        due.push(fire(sun_args(position, times)));
                     }
                 }
                 TriggerKind::SunEvent {
@@ -406,17 +401,7 @@ impl Engine {
                         })
                     });
                     if happened {
-                        let (sunrise, sunset) = match times {
-                            Some(times) => (
-                                times.sunrise.timestamp().to_string(),
-                                times.sunset.timestamp().to_string(),
-                            ),
-                            None => ("nil".into(), "nil".into()),
-                        };
-                        due.push(fire(format!(
-                            "Knut::Sun.new({:.4}, {:.4}, {sunrise}, {sunset}), {now_ruby}",
-                            position.elevation, position.azimuth
-                        )));
+                        due.push(fire(sun_args(position, times)));
                     }
                 }
                 TriggerKind::Clock { times } if !first => {
@@ -426,7 +411,7 @@ impl Engine {
                         })
                     });
                     if happened {
-                        due.push(fire(now_ruby.clone()));
+                        due.push(fire(BlockArgs::Clock { now }));
                     }
                 }
                 _ => {}
@@ -440,7 +425,7 @@ impl Engine {
     // -----------------------------------------------------------------------
     // Scripts
 
-    async fn run_trigger(&mut self, proc_id: usize, args: &str, line: &str) {
+    async fn run_trigger(&mut self, proc_id: usize, args: &BlockArgs, line: &str) {
         let snapshot = self.snapshot();
         match self.script.run(proc_id, args, &snapshot) {
             Ok(actions) => self.execute(actions, Origin::Automation).await,
@@ -498,7 +483,7 @@ impl Engine {
                     };
                     log::info!("scene {:?}", found.name);
                     let snapshot = self.snapshot();
-                    match self.script.run(found.proc_id, "", &snapshot) {
+                    match self.script.run(found.proc_id, &BlockArgs::None, &snapshot) {
                         Ok(actions) => {
                             let origin = Origin::Scene { auto: found.auto };
                             for (i, action) in actions.into_iter().enumerate() {
