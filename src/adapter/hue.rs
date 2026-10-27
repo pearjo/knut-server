@@ -167,29 +167,7 @@ impl Bridge {
             .get(light_id)
             .copied()
             .flatten();
-
-        let mut body = serde_json::Map::new();
-        if let Some(on) = command.on {
-            body.insert("on".into(), json!({ "on": on }));
-        }
-        if let Some(brightness) = command.brightness {
-            body.insert(
-                "dimming".into(),
-                json!({ "brightness": brightness.clamp(1.0, 100.0) }),
-            );
-        }
-        if let (Some(kelvin), Some(range)) = (command.kelvin, range) {
-            body.insert(
-                "color_temperature".into(),
-                json!({ "mirek": range.clamp_kelvin(kelvin).round() as u32 }),
-            );
-        }
-        if let Some(transition) = command.transition {
-            body.insert(
-                "dynamics".into(),
-                json!({ "duration": (transition.max(0.0) * 1000.0).round() as u64 }),
-            );
-        }
+        let body = request_body(command, range);
 
         let _spacing = self.send_lock.lock().await;
         let response = self
@@ -199,7 +177,7 @@ impl Bridge {
                 self.base_url
             ))
             .header("hue-application-key", &self.key)
-            .json(&Value::Object(body))
+            .json(&body)
             .send()
             .await
             .with_context(|| format!("hue {}: cannot reach the bridge", self.name))?;
@@ -327,6 +305,35 @@ impl Bridge {
     }
 }
 
+/// The CLIP v2 body that sets `command` on a light. Colour temperature is
+/// only sent to lights with a known `range`.
+fn request_body(command: &LightCommand, range: Option<MiredRange>) -> Value {
+    let mut body = serde_json::Map::new();
+    if let Some(on) = command.on {
+        body.insert("on".into(), json!({ "on": on }));
+    }
+    if let Some(brightness) = command.brightness {
+        body.insert(
+            "dimming".into(),
+            json!({ "brightness": brightness.clamp(1.0, 100.0) }),
+        );
+    }
+    if let (Some(kelvin), Some(range)) = (command.kelvin, range) {
+        body.insert(
+            "color_temperature".into(),
+            json!({ "mirek": range.clamp_kelvin(kelvin).round() as u32 }),
+        );
+    }
+    if let Some(transition) = command.transition {
+        body.insert(
+            "dynamics".into(),
+            json!({ "duration": (transition.max(0.0) * 1000.0).round() as u64 }),
+        );
+    }
+    Value::Object(body)
+}
+
+/// The events one resource of an `update` stands for.
 fn parse_resource_update(bridge: &str, resource: &Value) -> Vec<AdapterEvent> {
     let Some(id) = resource["id"].as_str() else {
         return Vec::new();
@@ -336,47 +343,59 @@ fn parse_resource_update(bridge: &str, resource: &Value) -> Vec<AdapterEvent> {
         kind: AdapterKind::Hue,
         device: id.to_string(),
     };
-    let device_event = |event: &str| AdapterEvent::Device {
-        device: device.clone(),
-        event: event.to_string(),
-        data: resource.clone(),
-    };
     match resource["type"].as_str() {
-        Some("light") => {
-            let report = LightReport {
-                on: resource["on"]["on"].as_bool(),
-                brightness: resource["dimming"]["brightness"].as_f64(),
-                kelvin: resource["color_temperature"]["mirek"]
-                    .as_f64()
-                    .map(mired_to_kelvin),
-            };
-            vec![AdapterEvent::Light { device, report }]
-        }
-        Some("motion") => match resource["motion"]["motion"].as_bool() {
-            Some(true) => vec![device_event("motion"), device_event("change")],
-            Some(false) => vec![device_event("clear"), device_event("change")],
-            None => Vec::new(),
-        },
-        Some("button") => {
-            let mut data = resource.clone();
-            let action = resource["button"]["button_report"]["event"]
-                .as_str()
-                .or_else(|| resource["button"]["last_event"].as_str());
-            match action {
-                Some(action) => {
-                    data["action"] = json!(action);
-                    let event = |name: &str| AdapterEvent::Device {
-                        device: device.clone(),
-                        event: name.into(),
-                        data: data.clone(),
-                    };
-                    vec![event("action"), event("change")]
-                }
-                None => Vec::new(),
-            }
-        }
+        Some("light") => vec![AdapterEvent::Light {
+            device,
+            report: light_report(resource),
+        }],
+        Some("motion") => motion_events(device, resource),
+        Some("button") => button_events(device, resource),
         _ => Vec::new(),
     }
+}
+
+fn light_report(resource: &Value) -> LightReport {
+    LightReport {
+        on: resource["on"]["on"].as_bool(),
+        brightness: resource["dimming"]["brightness"].as_f64(),
+        kelvin: resource["color_temperature"]["mirek"]
+            .as_f64()
+            .map(mired_to_kelvin),
+    }
+}
+
+/// `motion` or `clear`, then `change`.
+fn motion_events(device: DeviceRef, resource: &Value) -> Vec<AdapterEvent> {
+    let event = match resource["motion"]["motion"].as_bool() {
+        Some(true) => "motion",
+        Some(false) => "clear",
+        None => return Vec::new(),
+    };
+    device_events(&device, &[event, "change"], resource)
+}
+
+/// `action` and `change`, with the button's event as `data["action"]`.
+fn button_events(device: DeviceRef, resource: &Value) -> Vec<AdapterEvent> {
+    let action = resource["button"]["button_report"]["event"]
+        .as_str()
+        .or_else(|| resource["button"]["last_event"].as_str());
+    let Some(action) = action else {
+        return Vec::new();
+    };
+    let mut data = resource.clone();
+    data["action"] = json!(action);
+    device_events(&device, &["action", "change"], &data)
+}
+
+fn device_events(device: &DeviceRef, events: &[&str], data: &Value) -> Vec<AdapterEvent> {
+    events
+        .iter()
+        .map(|event| AdapterEvent::Device {
+            device: device.clone(),
+            event: event.to_string(),
+            data: data.clone(),
+        })
+        .collect()
 }
 
 /// The bridge presents a certificate signed by Signify's own CA for its
@@ -433,7 +452,10 @@ mod tests {
 
     #[test]
     fn parses_light_and_motion_updates() {
-        let light = json!({"id": "abc", "type": "light", "on": {"on": true}, "dimming": {"brightness": 42.0}});
+        let light = json!({
+            "id": "abc", "type": "light",
+            "on": {"on": true}, "dimming": {"brightness": 42.0}
+        });
         let events = parse_resource_update("bridge", &light);
         let AdapterEvent::Light { report, .. } = &events[0] else {
             panic!()
@@ -444,6 +466,57 @@ mod tests {
         let motion = json!({"id": "m", "type": "motion", "motion": {"motion": true}});
         let events = parse_resource_update("bridge", &motion);
         assert!(matches!(&events[0], AdapterEvent::Device { event, .. } if event == "motion"));
+    }
+
+    #[test]
+    fn button_presses_report_their_action() {
+        let button = json!({
+            "id": "b", "type": "button",
+            "button": {"button_report": {"event": "short_release"}}
+        });
+        let events = parse_resource_update("bridge", &button);
+        let names: Vec<&str> = events
+            .iter()
+            .map(|event| match event {
+                AdapterEvent::Device { event, data, .. } => {
+                    assert_eq!(data["action"], "short_release");
+                    event.as_str()
+                }
+                AdapterEvent::Light { .. } => panic!("{event:?}"),
+            })
+            .collect();
+        assert_eq!(names, ["action", "change"]);
+    }
+
+    #[test]
+    fn request_body_sends_colour_only_to_lights_that_have_it() {
+        let command = LightCommand {
+            on: Some(true),
+            brightness: Some(120.0),
+            kelvin: Some(2700.0),
+            transition: Some(1.5),
+        };
+        let range = MiredRange {
+            min: 153.0,
+            max: 454.0,
+        };
+        assert_eq!(
+            request_body(&command, Some(range)),
+            json!({
+                "on": {"on": true},
+                "dimming": {"brightness": 100.0},
+                "color_temperature": {"mirek": 370},
+                "dynamics": {"duration": 1500}
+            })
+        );
+        assert_eq!(
+            request_body(&command, None),
+            json!({
+                "on": {"on": true},
+                "dimming": {"brightness": 100.0},
+                "dynamics": {"duration": 1500}
+            })
+        );
     }
 
     #[test]
