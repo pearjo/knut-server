@@ -65,6 +65,7 @@ fn solar_parameters(time: DateTime<Utc>) -> SolarParameters {
     }
 }
 
+/// Where the sun is at `time`, seen from `lat`, `lon` (degrees).
 pub(crate) fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
     let params = solar_parameters(time);
     let minutes = time.timestamp().rem_euclid(86_400) as f64 / 60.0;
