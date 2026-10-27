@@ -25,6 +25,31 @@ pub fn check(config: &Path) -> Result<()> {
 /// as ready-to-paste DSL. Pairs unpaired Hue bridges first.
 pub async fn discover(config: &Path, state_dir: &Path) -> Result<()> {
     let (_, model) = load(config)?;
+    pair_unpaired_hue_bridges(&model, state_dir).await?;
+
+    let (events, _) = mpsc::unbounded_channel();
+    let adapters = Adapters::connect(&model, state_dir, events).await?;
+    let mut failed = false;
+    for config in &model.adapters {
+        let adapter = adapters
+            .get(config.name())
+            .expect("every configured adapter is connected");
+        println!("# {} {:?}", config.kind(), config.name());
+        if let Err(error) = print_unreferenced_devices(&model, adapter).await {
+            println!("# {error:#}");
+            failed = true;
+        }
+        println!();
+    }
+    if failed {
+        bail!("some adapters could not be queried");
+    }
+    Ok(())
+}
+
+/// Pairs every Hue bridge that has neither a `key:` in the config nor a
+/// stored key; each asks for its link button to be pressed.
+async fn pair_unpaired_hue_bridges(model: &Model, state_dir: &Path) -> Result<()> {
     for adapter in &model.adapters {
         if let AdapterConfig::Hue {
             name,
@@ -38,48 +63,32 @@ pub async fn discover(config: &Path, state_dir: &Path) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
 
-    let (events, _) = mpsc::unbounded_channel();
-    let adapters = Adapters::connect(&model, state_dir, events).await?;
+/// Prints a DSL line for every device of `adapter` that no light or sensor
+/// in the config uses yet.
+async fn print_unreferenced_devices(model: &Model, adapter: &Adapter) -> Result<()> {
     let referenced: HashSet<&model::DeviceRef> = model
         .lights
         .values()
-        .map(|l| &l.device)
-        .chain(model.sensors.values().map(|s| &s.device))
+        .map(|light| &light.device)
+        .chain(model.sensors.values().map(|sensor| &sensor.device))
         .collect();
-
-    let mut failed = false;
-    for config in &model.adapters {
-        let adapter = adapters
-            .get(config.name())
-            .expect("every configured adapter is connected");
-        println!("# {} {:?}", config.kind(), config.name());
-        match adapter.discover().await {
-            Ok(devices) => {
-                let new: Vec<_> = devices
-                    .into_iter()
-                    .filter(|d| !referenced.contains(&d.device))
-                    .collect();
-                if new.is_empty() {
-                    println!("# every device is already in the config");
-                }
-                for device in new {
-                    println!(
-                        "{:<60} # {}",
-                        adapter::dsl_snippet(&device, &model),
-                        device.description.trim()
-                    );
-                }
-            }
-            Err(error) => {
-                println!("# {error:#}");
-                failed = true;
-            }
-        }
-        println!();
+    let devices = adapter.discover().await?;
+    let new: Vec<_> = devices
+        .into_iter()
+        .filter(|device| !referenced.contains(&device.device))
+        .collect();
+    if new.is_empty() {
+        println!("# every device is already in the config");
     }
-    if failed {
-        bail!("some adapters could not be queried");
+    for device in new {
+        println!(
+            "{:<60} # {}",
+            adapter::dsl_snippet(&device, model),
+            device.description.trim()
+        );
     }
     Ok(())
 }
@@ -93,24 +102,51 @@ pub async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String
         bail!("unknown light or group {entity:?}");
     }
     let command = control::parse_values(values)?;
-    let group = model.groups.get(entity);
-    let staged = match (
-        group.and_then(|group| group.staging.as_ref()),
-        command.brightness,
-    ) {
-        (Some(Staging::Stages(stages)), Some(brightness)) => Some(control::staged_lights(
-            stages,
-            control::stage_count(stages, brightness, None),
-            None,
-        )),
-        (Some(Staging::Custom { proc_id, line }), Some(brightness)) => {
-            let group = group.expect("only groups have staging");
+    let staged = match (model.groups.get(entity), command.brightness) {
+        (Some(group), Some(brightness)) => staged_for_set(&mut script, group, brightness)?,
+        _ => None,
+    };
+    let commands = control::commands_for(&model, entity, &command, staged.as_ref());
+
+    let (events, _) = mpsc::unbounded_channel();
+    let adapters = Adapters::connect(&model, state_dir, events).await?;
+    let failed = control::send_all(&adapters, &commands).await;
+    let uses_zigbee = commands.iter().any(|light| {
+        matches!(
+            adapters.get(&light.device.adapter),
+            Some(Adapter::Zigbee(_))
+        )
+    });
+    if uses_zigbee {
+        // MQTT publishes leave from the client's background task; give it time.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    if !failed.is_empty() {
+        bail!("could not reach {}", failed.join(", "));
+    }
+    Ok(())
+}
+
+/// The lights a staged `group` switches on and off for `brightness`, for a
+/// one-off `knut set`: no hysteresis, and every light not picked goes off.
+/// `None` for groups without staging.
+fn staged_for_set(
+    script: &mut Script,
+    group: &model::Group,
+    brightness: f64,
+) -> Result<Option<control::StagedLights>> {
+    let Some(staging) = &group.staging else {
+        return Ok(None);
+    };
+    let staged = match staging {
+        Staging::Stages(stages) => {
+            let count = control::stage_count(stages, brightness, None);
+            control::staged_lights(stages, count, None)
+        }
+        Staging::Custom { proc_id, line } => {
+            let now = chrono::Local::now().timestamp();
             let names = script
-                .staging(
-                    *proc_id,
-                    brightness / 100.0,
-                    chrono::Local::now().timestamp(),
-                )
+                .staging(*proc_id, brightness / 100.0, now)
                 .map_err(|error| {
                     anyhow::anyhow!("staging block at {line}: {}", script::describe(&error))
                 })?;
@@ -119,31 +155,13 @@ pub async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String
             let off = group
                 .members
                 .iter()
-                .map(|m| m.light.clone())
+                .map(|member| member.light.clone())
                 .filter(|light| !on.contains(light))
                 .collect();
-            Some(control::StagedLights { on, off })
+            control::StagedLights { on, off }
         }
-        _ => None,
     };
-    let commands = control::commands_for(&model, entity, &command, staged.as_ref());
-
-    let (events, _) = mpsc::unbounded_channel();
-    let adapters = Adapters::connect(&model, state_dir, events).await?;
-    let failed = control::send_all(&adapters, &commands).await;
-    // MQTT publishes leave from the client's background task; give it time.
-    if commands.iter().any(|light| {
-        matches!(
-            adapters.get(&light.device.adapter),
-            Some(Adapter::Zigbee(_))
-        )
-    }) {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
-    if !failed.is_empty() {
-        bail!("could not reach {}", failed.join(", "));
-    }
-    Ok(())
+    Ok(Some(staged))
 }
 
 /// Runs the daemon until Ctrl-C: connects the adapters, starts the HomeKit
