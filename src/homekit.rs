@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
 use crate::adapter::{kelvin_to_mired, mired_to_kelvin};
-use crate::engine::{Change, Input, Update};
+use crate::engine::{Change, EntityState, Input, Update};
 use crate::model::Model;
 use crate::store::Store;
 
@@ -40,6 +40,10 @@ struct Exposed {
 }
 
 impl Exposed {
+    fn new(accessory: hap::pointer::Accessory, pushing: Arc<AtomicBool>) -> Self {
+        Self { accessory, pushing }
+    }
+
     async fn set(&self, service: HapType, characteristic: HapType, value: Value) {
         let mut accessory = self.accessory.lock().await;
         let Some(service) = accessory.get_mut_service(service) else {
@@ -65,31 +69,90 @@ pub(crate) async fn start(
     store: &mut Store,
     state_dir: &Path,
     inputs: mpsc::UnboundedSender<Input>,
-    mut updates: mpsc::UnboundedReceiver<Update>,
+    updates: mpsc::UnboundedReceiver<Update>,
 ) -> Result<()> {
     let pin = setup_code(model, store)?;
+    let plan = plan_accessories(model, store)?;
     let homekit_dir = state_dir.join("homekit");
     std::fs::create_dir_all(&homekit_dir).context("cannot create the HomeKit state directory")?;
     let mut storage = FileStorage::new(&homekit_dir).await.map_err(hap_error)?;
 
-    let mut accessory_ids = Vec::new();
-    let mut lightbulbs = Vec::new();
-    let mut switches = Vec::new();
-    for path in model.exposed_entities() {
-        let id = store.accessory_id(&path);
-        accessory_ids.push(id);
-        lightbulbs.push((id, path));
+    let config = server_config(&mut storage, model, &pin, &plan.ids()).await?;
+    log::info!(
+        "HomeKit: {:?} on {}:{}, setup code {}",
+        config.name,
+        config.host,
+        config.port,
+        format_pin(&pin)
+    );
+    let pairings = storage.count_pairings().await.map_err(hap_error)?;
+    if pairings > 0 {
+        log::info!(
+            "HomeKit: paired with {pairings} controller(s), not offered for pairing \
+             (`knut unpair` resets)"
+        );
     }
-    for scene in &model.scenes {
-        let id = store.accessory_id(&format!("scene:{}", scene.name));
-        accessory_ids.push(id);
-        switches.push((id, Some(scene.name.clone())));
-    }
-    let auto_id = store.accessory_id(AUTO_SWITCH_KEY);
-    accessory_ids.push(auto_id);
-    switches.push((auto_id, None));
-    store.save()?;
 
+    let server = IpServer::new(config, storage).await.map_err(hap_error)?;
+    let (resets, reset_requests) = mpsc::unbounded_channel();
+    let accessories = add_accessories(&server, model, plan, &inputs, &resets).await?;
+    tokio::spawn(async move {
+        if let Err(error) = server.run_handle().await {
+            log::error!("HomeKit server stopped: {error}");
+        }
+    });
+    tokio::spawn(forward_updates(accessories, updates, reset_requests));
+    Ok(())
+}
+
+/// The accessories HomeKit gets, each with the id the store keeps for it.
+struct AccessoryPlan {
+    /// Exposed groups and lights, by entity path.
+    lightbulbs: Vec<(u64, String)>,
+    /// Scene switches, by scene name.
+    scenes: Vec<(u64, String)>,
+    auto_switch: u64,
+}
+
+impl AccessoryPlan {
+    fn ids(&self) -> Vec<u64> {
+        let lightbulbs = self.lightbulbs.iter().map(|(id, _)| *id);
+        let scenes = self.scenes.iter().map(|(id, _)| *id);
+        lightbulbs.chain(scenes).chain([self.auto_switch]).collect()
+    }
+}
+
+fn plan_accessories(model: &Model, store: &mut Store) -> Result<AccessoryPlan> {
+    let lightbulbs = model
+        .exposed_entities()
+        .into_iter()
+        .map(|path| (store.accessory_id(&path), path))
+        .collect();
+    let scenes = model
+        .scenes
+        .iter()
+        .map(|scene| {
+            let id = store.accessory_id(&format!("scene:{}", scene.name));
+            (id, scene.name.clone())
+        })
+        .collect();
+    let auto_switch = store.accessory_id(AUTO_SWITCH_KEY);
+    store.save()?;
+    Ok(AccessoryPlan {
+        lightbulbs,
+        scenes,
+        auto_switch,
+    })
+}
+
+/// The bridge's HAP configuration: the stored one with a new random device
+/// id the first time, updated from the config and saved.
+async fn server_config(
+    storage: &mut FileStorage,
+    model: &Model,
+    pin: &str,
+    accessory_ids: &[u64],
+) -> Result<Config> {
     let mut config = match storage.load_config().await {
         Ok(config) => config,
         Err(_) => Config {
@@ -106,38 +169,57 @@ pub(crate) async fn start(
     config.name = homekit_name(&model.homekit.name);
     // Matches the bridge's Protocol Information service (1.1.0).
     config.protocol_version = "1.1".into();
-    config.pin = Pin::new(pin_digits(&pin)?).map_err(hap_error)?;
-    // Accessories that left the config would linger in the Home app as
-    // "No Response"; dropping them from the cache and bumping the
-    // configuration number makes controllers reload the accessory list.
+    config.pin = Pin::new(pin_digits(pin)?).map_err(hap_error)?;
+    forget_removed_accessories(storage, &mut config, accessory_ids).await?;
+    storage.save_config(&config).await.map_err(hap_error)?;
+    Ok(config)
+}
+
+/// Accessories that left the config would linger in the Home app as "No
+/// Response"; dropping them from the cache and bumping the configuration
+/// number makes controllers reload the accessory list.
+async fn forget_removed_accessories(
+    storage: &mut FileStorage,
+    config: &mut Config,
+    accessory_ids: &[u64],
+) -> Result<()> {
+    const BRIDGE_ID: u64 = 1;
     let cached = storage.load_aid_cache().await.unwrap_or_default();
-    let stale: Vec<u64> = cached
+    let removed: Vec<u64> = cached
         .iter()
         .copied()
-        .filter(|id| !accessory_ids.contains(id) && *id != 1)
+        .filter(|id| !accessory_ids.contains(id) && *id != BRIDGE_ID)
         .collect();
-    if !stale.is_empty() {
-        let kept: Vec<u64> = cached
-            .into_iter()
-            .filter(|id| !stale.contains(id))
-            .collect();
-        storage.save_aid_cache(&kept).await.map_err(hap_error)?;
-        config.configuration_number += 1;
+    if removed.is_empty() {
+        return Ok(());
     }
-    storage.save_config(&config).await.map_err(hap_error)?;
-    log::info!(
-        "HomeKit: {:?} on {}:{}, setup code {}",
-        config.name,
-        config.host,
-        config.port,
-        format_pin(&pin)
-    );
-    let pairings = storage.count_pairings().await.map_err(hap_error)?;
-    if pairings > 0 {
-        log::info!("HomeKit: paired with {pairings} controller(s), not offered for pairing (`knut unpair` resets)");
-    }
+    let kept: Vec<u64> = cached
+        .into_iter()
+        .filter(|id| !removed.contains(id))
+        .collect();
+    storage.save_aid_cache(&kept).await.map_err(hap_error)?;
+    config.configuration_number += 1;
+    Ok(())
+}
 
-    let server = IpServer::new(config, storage).await.map_err(hap_error)?;
+/// The accessories Knut keeps updating, once they are on the server.
+struct ExposedAccessories {
+    /// Lightbulbs by entity path.
+    entities: HashMap<String, Exposed>,
+    /// Scene switches by accessory id.
+    scenes: HashMap<u64, Exposed>,
+    auto_switch: Exposed,
+}
+
+/// Adds the bridge and every planned accessory to `server`. HomeKit writes
+/// go to `inputs`; a tapped scene switch asks `resets` to turn it off again.
+async fn add_accessories(
+    server: &IpServer,
+    model: &Model,
+    plan: AccessoryPlan,
+    inputs: &mpsc::UnboundedSender<Input>,
+    resets: &mpsc::UnboundedSender<u64>,
+) -> Result<ExposedAccessories> {
     let mut bridge =
         BridgeAccessory::new(1, information(&model.homekit.name, "bridge")).map_err(hap_error)?;
     bridge
@@ -148,77 +230,78 @@ pub(crate) async fn start(
         .map_err(hap_error)?;
     server.add_accessory(bridge).await.map_err(hap_error)?;
 
-    let mut entities: HashMap<String, Exposed> = HashMap::new();
-    for (id, path) in lightbulbs {
+    let mut entities = HashMap::new();
+    for (id, path) in plan.lightbulbs {
         let pushing = Arc::new(AtomicBool::new(false));
-        let accessory = lightbulb(id, &path, &pushing, &inputs)?;
+        let accessory = lightbulb(id, &path, &pushing, inputs)?;
         let pointer = server.add_accessory(accessory).await.map_err(hap_error)?;
-        entities.insert(
-            path,
-            Exposed {
-                accessory: pointer,
-                pushing,
-            },
-        );
+        entities.insert(path, Exposed::new(pointer, pushing));
     }
-
-    let (reset_tx, mut reset_rx) = mpsc::unbounded_channel::<u64>();
-    let mut scene_switches: HashMap<u64, Exposed> = HashMap::new();
-    let mut auto_switch = None;
-    for (id, scene) in switches {
+    let mut scenes = HashMap::new();
+    for (id, scene) in plan.scenes {
         let pushing = Arc::new(AtomicBool::new(false));
-        let accessory = switch(id, scene.as_deref(), &pushing, &inputs, &reset_tx)?;
+        let accessory = switch(id, Some(&scene), &pushing, inputs, resets)?;
         let pointer = server.add_accessory(accessory).await.map_err(hap_error)?;
-        let exposed = Exposed {
-            accessory: pointer,
-            pushing,
-        };
-        match scene {
-            Some(_) => {
-                scene_switches.insert(id, exposed);
-            }
-            None => auto_switch = Some(exposed),
-        }
+        scenes.insert(id, Exposed::new(pointer, pushing));
     }
-    let auto_switch = auto_switch.expect("the Auto switch is always created");
+    let pushing = Arc::new(AtomicBool::new(false));
+    let accessory = switch(plan.auto_switch, None, &pushing, inputs, resets)?;
+    let pointer = server.add_accessory(accessory).await.map_err(hap_error)?;
+    Ok(ExposedAccessories {
+        entities,
+        scenes,
+        auto_switch: Exposed::new(pointer, pushing),
+    })
+}
 
-    tokio::spawn(async move {
-        if let Err(error) = server.run_handle().await {
-            log::error!("HomeKit server stopped: {error}");
-        }
-    });
-
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                Some(update) = updates.recv() => match update {
-                    Update::Entity { path, state } => {
-                        let Some(exposed) = entities.get(&path) else { continue };
-                        exposed.set(HapType::Lightbulb, HapType::PowerState, json!(state.on)).await;
-                        let brightness = state.brightness.round().clamp(1.0, 100.0) as i32;
-                        exposed.set(HapType::Lightbulb, HapType::Brightness, json!(brightness)).await;
-                        if let Some(kelvin) = state.kelvin {
-                            let mired = (kelvin_to_mired(kelvin).round() as u32).clamp(MIRED_MIN, MIRED_MAX);
-                            exposed.set(HapType::Lightbulb, HapType::ColorTemperature, json!(mired)).await;
-                        }
-                    }
-                    Update::Auto(all_auto) => {
-                        auto_switch.set(HapType::Switch, HapType::PowerState, json!(all_auto)).await;
-                    }
-                },
-                Some(id) = reset_rx.recv() => {
-                    if let Some(exposed) = scene_switches.get(&id).cloned() {
-                        tokio::spawn(async move {
-                            tokio::time::sleep(SCENE_SWITCH_ON_TIME).await;
-                            exposed.set(HapType::Switch, HapType::PowerState, json!(false)).await;
-                        });
+/// Shows the engine's updates in HomeKit, and turns tapped scene switches
+/// off again after a moment.
+async fn forward_updates(
+    accessories: ExposedAccessories,
+    mut updates: mpsc::UnboundedReceiver<Update>,
+    mut reset_requests: mpsc::UnboundedReceiver<u64>,
+) {
+    loop {
+        tokio::select! {
+            Some(update) = updates.recv() => match update {
+                Update::Entity { path, state } => {
+                    if let Some(exposed) = accessories.entities.get(&path) {
+                        show_entity_state(exposed, &state).await;
                     }
                 }
-                else => break,
+                Update::Auto(all_auto) => {
+                    let switch = &accessories.auto_switch;
+                    switch.set(HapType::Switch, HapType::PowerState, json!(all_auto)).await;
+                }
+            },
+            Some(id) = reset_requests.recv() => {
+                if let Some(exposed) = accessories.scenes.get(&id).cloned() {
+                    tokio::spawn(async move {
+                        tokio::time::sleep(SCENE_SWITCH_ON_TIME).await;
+                        exposed.set(HapType::Switch, HapType::PowerState, json!(false)).await;
+                    });
+                }
             }
+            else => break,
         }
-    });
-    Ok(())
+    }
+}
+
+async fn show_entity_state(exposed: &Exposed, state: &EntityState) {
+    let lightbulb = HapType::Lightbulb;
+    exposed
+        .set(lightbulb, HapType::PowerState, json!(state.on))
+        .await;
+    let brightness = state.brightness.round().clamp(1.0, 100.0) as i32;
+    exposed
+        .set(lightbulb, HapType::Brightness, json!(brightness))
+        .await;
+    if let Some(kelvin) = state.kelvin {
+        let mired = (kelvin_to_mired(kelvin).round() as u32).clamp(MIRED_MIN, MIRED_MAX);
+        exposed
+            .set(lightbulb, HapType::ColorTemperature, json!(mired))
+            .await;
+    }
 }
 
 /// Removes all stored controller pairings and the bridge identity. A bridge
@@ -365,7 +448,7 @@ fn information(name: &str, serial: &str) -> AccessoryInformation {
     }
 }
 
-/// "Küche/Spots" becomes "Küche Spots".
+/// "Kitchen/Spots" becomes "Kitchen Spots".
 fn display_name(path: &str) -> String {
     path.replace('/', " ")
 }
@@ -458,13 +541,17 @@ mod tests {
 
     #[test]
     fn makes_names_acceptable_to_the_home_app() {
-        assert_eq!(homekit_name("Küche Spots"), "Küche Spots");
-        assert_eq!(homekit_name("Joe's Büro Licht"), "Joe's Büro Licht");
         assert_eq!(
-            homekit_name("Wohnzimmer - Decke (alt)"),
-            "Wohnzimmer Decke alt"
+            homekit_name("Café Spots"),
+            "Café Spots",
+            "letters beyond ASCII"
         );
-        assert_eq!(homekit_name("'Flur'"), "Flur");
+        assert_eq!(homekit_name("Joe's Office Light"), "Joe's Office Light");
+        assert_eq!(
+            homekit_name("Living Room - Ceiling (old)"),
+            "Living Room Ceiling old"
+        );
+        assert_eq!(homekit_name("'Hallway'"), "Hallway");
         assert_eq!(homekit_name("--"), "Knut");
     }
 }
