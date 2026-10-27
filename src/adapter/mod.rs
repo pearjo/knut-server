@@ -11,7 +11,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use tokio::sync::mpsc;
 
-use crate::model::{AdapterConfig, AdapterKind, DeviceRef, Model};
+use crate::model::{AdapterConfig, DeviceRef, Model};
 
 /// Device events triggers can listen for.
 pub(crate) const DEVICE_EVENTS: &[&str] = &["motion", "clear", "action", "change"];
@@ -139,12 +139,7 @@ impl Adapters {
                 AdapterConfig::Hue {
                     name, host, key, ..
                 } => {
-                    let key = match key {
-                        Some(key) => key.clone(),
-                        None => hue::load_key(state_dir, name)?.ok_or_else(|| {
-                            anyhow!("hue bridge {name:?} is not paired yet; run `knut discover` and press the link button")
-                        })?,
-                    };
+                    let key = hue_key(state_dir, name, key.as_deref())?;
                     Adapter::Hue(hue::Bridge::connect(name, host, &key, events.clone()))
                 }
                 AdapterConfig::Zigbee {
@@ -184,6 +179,19 @@ impl Adapters {
     }
 }
 
+/// The application key of a Hue bridge: from the config, or the one
+/// `knut discover` stored when it paired.
+fn hue_key(state_dir: &Path, bridge: &str, configured: Option<&str>) -> Result<String> {
+    if let Some(key) = configured {
+        return Ok(key.to_string());
+    }
+    hue::load_key(state_dir, bridge)?.ok_or_else(|| {
+        anyhow!(
+            "hue bridge {bridge:?} is not paired yet; run `knut discover` and press the link button"
+        )
+    })
+}
+
 /// Snippet to paste into the config for a discovered device.
 pub(crate) fn dsl_snippet(device: &DiscoveredDevice, model: &Model) -> String {
     let several_of_kind = model
@@ -201,13 +209,10 @@ pub(crate) fn dsl_snippet(device: &DiscoveredDevice, model: &Model) -> String {
         DeviceClass::Light => "light",
         DeviceClass::Sensor => "sensor",
     };
-    let kind = match device.device.kind {
-        AdapterKind::Hue => "hue",
-        AdapterKind::Zigbee => "zigbee",
-    };
     format!(
-        "{keyword} {:?}, {kind}: {:?}{adapter}",
+        "{keyword} {:?}, {}: {:?}{adapter}",
         suggested_name(&device.name),
+        device.device.kind,
         device.device.device
     )
 }
