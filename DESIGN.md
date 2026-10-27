@@ -203,6 +203,9 @@ end
 - `adapt` only adjusts groups that are on and in auto; it never switches a group on.
   For an entity that is off, it remembers the values, and the entity comes on with
   them.
+- A light in auto that is switched on outside Knut (wall switch, Hue app) gets the
+  current auto values as soon as it reports on: its own, or else its group's,
+  through the brightness mapping. Device reports still never change auto mode.
 - Actions from triggers never change auto mode. Only HomeKit, scenes and the Auto
   switch do.
 - `turn_on` in an `auto: false` scene acts like switching on in HomeKit: if the

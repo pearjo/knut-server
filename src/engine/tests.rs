@@ -371,6 +371,68 @@ async fn device_events_fire_triggers_and_reports_update_groups() {
 }
 
 #[tokio::test]
+async fn light_switched_on_outside_knut_gets_auto_values() {
+    let mut h = harness("switched-outside");
+    let switched_on = |device: &str| AdapterEvent::Light {
+        device: DeviceRef {
+            adapter: "z2m".into(),
+            kind: AdapterKind::Zigbee,
+            device: device.into(),
+        },
+        report: LightReport {
+            on: Some(true),
+            brightness: Some(80.0),
+            kelvin: Some(4000.0),
+        },
+    };
+    let values = AdaptValues {
+        need: Some(0.4),
+        kelvin: Some(2400.0),
+        transition: Some(60.0),
+    };
+    h.engine
+        .execute(adapt(&["Hallway/Light"], values), Origin::Automation)
+        .await;
+    h.engine
+        .execute(adapt(&["Kitchen/Spots"], need(0.6)), Origin::Automation)
+        .await;
+
+    h.engine.handle_adapter_event(switched_on("0x10")).await;
+    let hallway = h.engine.state("Hallway/Light");
+    assert_eq!(
+        (hallway.brightness, hallway.kelvin),
+        (40.0, Some(2400.0)),
+        "its own adapt values, not where it came on"
+    );
+
+    h.engine.handle_adapter_event(switched_on("0x02")).await;
+    assert_eq!(
+        h.lit("Kitchen/spot2"),
+        Some(30.0),
+        "the group's value through the member's mapping"
+    );
+    assert_eq!(h.lit("Kitchen/spot1"), None, "other members stay off");
+
+    h.engine.handle_adapter_event(switched_on("0x02")).await;
+    assert_eq!(
+        h.lit("Kitchen/spot2"),
+        Some(80.0),
+        "a report while on only records the state"
+    );
+
+    h.homekit("Hallway/Light", Change::Kelvin(3000.0)).await;
+    h.homekit("Hallway/Light", Change::On(false)).await;
+    h.engine.handle_adapter_event(switched_on("0x10")).await;
+    let hallway = h.engine.state("Hallway/Light");
+    assert_eq!(
+        (hallway.brightness, hallway.kelvin),
+        (80.0, Some(4000.0)),
+        "an overridden light keeps what it came on with"
+    );
+    assert!(!h.engine.is_auto("Hallway/Light"));
+}
+
+#[tokio::test]
 async fn clock_triggers_fire_once_in_their_minute() {
     let mut h = harness("clock");
     let at = |h, m, s| Local.with_ymd_and_hms(2026, 10, 22, h, m, s).unwrap();

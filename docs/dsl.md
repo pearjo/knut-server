@@ -423,8 +423,9 @@ adapt all_groups, "Living Room/Light", need: demand.at(now), kelvin: warmth.at(n
 ```
 
 Moves targets that are in auto mode towards a need and colour temperature.
-Targets that are off only remember the values for when they come on;
-targets the user has overridden are left alone.
+Targets that are off only remember the values for when they come on,
+also when a light is switched on outside Knut, e.g. at the wall or in the
+Hue app. Targets the user has overridden are left alone.
 
 | Option | Value |
 |---|---|

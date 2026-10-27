@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use super::{Change, Engine, Input, AUTO_RESUME_TRANSITION};
 use crate::adapter::{AdapterEvent, LightCommand, LightReport};
+use crate::control;
 use crate::model::DeviceRef;
 use crate::script::BlockArgs;
 
@@ -86,7 +87,7 @@ impl Engine {
 
     pub(super) async fn handle_adapter_event(&mut self, event: AdapterEvent) {
         match event {
-            AdapterEvent::Light { device, report } => self.on_light_report(&device, &report),
+            AdapterEvent::Light { device, report } => self.on_light_report(&device, &report).await,
             AdapterEvent::Device {
                 device,
                 event,
@@ -96,16 +97,52 @@ impl Engine {
     }
 
     /// A light reported its state, e.g. after a wall switch or another app
-    /// changed it. Reports never change auto mode.
-    fn on_light_report(&mut self, device: &DeviceRef, report: &LightReport) {
+    /// changed it. Reports never change auto mode, but a light in auto that
+    /// comes on gets the current auto values.
+    async fn on_light_report(&mut self, device: &DeviceRef, report: &LightReport) {
         let Some(light) = self.model.light_by_device(device) else {
             return;
         };
         let path = light.path.clone();
+        let was_on = self.state(&path).on;
         self.update_state(&path, |state| state.record_report(report));
         self.publish(&path);
         for group in self.groups_of_light.get(&path).cloned().unwrap_or_default() {
             self.refresh_group(&group);
+        }
+        if !was_on && self.state(&path).on {
+            self.resume_auto(&path).await;
+        }
+    }
+
+    /// A light in auto that came on outside Knut gets the values the last
+    /// `adapt` asked for: its own, or else those of its first group in auto,
+    /// through that group's brightness mapping.
+    async fn resume_auto(&mut self, light: &str) {
+        if !self.is_auto(light) {
+            return;
+        }
+        let sets_values =
+            |command: &LightCommand| command.brightness.is_some() || command.kelvin.is_some();
+        let own = self.auto_values(light);
+        if sets_values(&own) {
+            self.apply(light, own).await;
+            return;
+        }
+        let groups = self.groups_of_light.get(light).cloned().unwrap_or_default();
+        let group_values = groups
+            .iter()
+            .filter(|group| self.is_auto(group))
+            .map(|group| (group, self.auto_values(group)))
+            .find(|(_, command)| sets_values(command));
+        let Some((group, command)) = group_values else {
+            return;
+        };
+        let member = control::commands_for(&self.model, group, &command, None)
+            .into_iter()
+            .find(|member| member.path == light);
+        if let Some(member) = member {
+            self.apply(light, member.command).await;
         }
     }
 
