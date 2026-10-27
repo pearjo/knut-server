@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use tokio::sync::{mpsc, watch};
 
 use super::{
@@ -93,24 +93,10 @@ impl Device {
             for expose in &definition.exposes {
                 if expose.expose_type == "light" {
                     class = Some(DeviceClass::Light);
-                    for feature in &expose.features {
-                        match feature.name.as_deref() {
-                            Some("brightness") => supports_brightness = true,
-                            Some("color_temp") => {
-                                colour_temperature = Some(MiredRange {
-                                    min: feature.value_min.unwrap_or(153.0),
-                                    max: feature.value_max.unwrap_or(500.0),
-                                })
-                            }
-                            _ => {}
-                        }
-                    }
-                } else if class.is_none()
-                    && matches!(
-                        expose.name.as_deref(),
-                        Some("occupancy" | "action" | "contact" | "presence")
-                    )
-                {
+                    let (brightness, range) = light_features(expose);
+                    supports_brightness |= brightness;
+                    colour_temperature = range.or(colour_temperature);
+                } else if class.is_none() && is_sensor_value(expose) {
                     class = Some(DeviceClass::Sensor);
                 }
             }
@@ -125,6 +111,35 @@ impl Device {
             occupancy: None,
         }
     }
+}
+
+/// Whether a `light` expose offers brightness, and its colour temperature
+/// range in mireds if it has one.
+fn light_features(expose: &Expose) -> (bool, Option<MiredRange>) {
+    let mut supports_brightness = false;
+    let mut colour_temperature = None;
+    for feature in &expose.features {
+        match feature.name.as_deref() {
+            Some("brightness") => supports_brightness = true,
+            Some("color_temp") => {
+                colour_temperature = Some(MiredRange {
+                    min: feature.value_min.unwrap_or(153.0),
+                    max: feature.value_max.unwrap_or(500.0),
+                })
+            }
+            _ => {}
+        }
+    }
+    (supports_brightness, colour_temperature)
+}
+
+/// Whether an expose is something a sensor reports, so that the device can
+/// trigger blocks.
+fn is_sensor_value(expose: &Expose) -> bool {
+    matches!(
+        expose.name.as_deref(),
+        Some("occupancy" | "action" | "contact" | "presence")
+    )
 }
 
 impl Zigbee {
@@ -189,95 +204,78 @@ impl Zigbee {
             return;
         };
         if subtopic == "bridge/devices" {
-            match serde_json::from_slice::<Vec<BridgeDevice>>(payload) {
-                Ok(list) => {
-                    let mut devices = self.devices.lock().unwrap();
-                    let previous = std::mem::take(&mut *devices);
-                    for device in list.into_iter().filter(|d| d.device_type != "Coordinator") {
-                        let mut device = Device::from_bridge(device);
-                        device.occupancy = previous.get(&device.ieee).and_then(|d| d.occupancy);
-                        devices.insert(device.ieee.clone(), device);
-                    }
-                    log::info!("zigbee {}: {} devices known", self.name, devices.len());
-                    let first_list = !self.devices_known.send_replace(true);
-                    if first_list {
-                        self.request_light_states(devices.values());
-                    }
-                }
-                Err(error) => {
-                    log::warn!("zigbee {}: cannot parse bridge/devices: {error}", self.name)
-                }
-            }
+            self.on_device_list(payload);
             return;
         }
-        if subtopic.starts_with("bridge/")
-            || subtopic.ends_with("/set")
-            || subtopic.ends_with("/get")
-        {
+        if is_not_device_state(subtopic) {
             return;
         }
-        if subtopic.ends_with("/availability") {
-            return;
-        }
-
         let Ok(Value::Object(data)) = serde_json::from_slice::<Value>(payload) else {
             return;
         };
+        self.on_device_message(subtopic, &data, events);
+    }
+
+    /// zigbee2mqtt's retained list of devices, sent at start and whenever a
+    /// device joins, leaves or is renamed.
+    fn on_device_list(&self, payload: &[u8]) {
+        let list = match serde_json::from_slice::<Vec<BridgeDevice>>(payload) {
+            Ok(list) => list,
+            Err(error) => {
+                log::warn!("zigbee {}: cannot parse bridge/devices: {error}", self.name);
+                return;
+            }
+        };
         let mut devices = self.devices.lock().unwrap();
-        let Some(device) = devices.values_mut().find(|d| d.friendly_name == subtopic) else {
+        let previous = std::mem::take(&mut *devices);
+        for device in list.into_iter().filter(|d| d.device_type != "Coordinator") {
+            let mut device = Device::from_bridge(device);
+            device.occupancy = previous.get(&device.ieee).and_then(|d| d.occupancy);
+            devices.insert(device.ieee.clone(), device);
+        }
+        log::info!("zigbee {}: {} devices known", self.name, devices.len());
+        let first_list = !self.devices_known.send_replace(true);
+        if first_list {
+            self.request_light_states(devices.values());
+        }
+    }
+
+    /// A device's state, on the topic of its friendly name.
+    fn on_device_message(
+        &self,
+        friendly_name: &str,
+        data: &Map<String, Value>,
+        events: &mpsc::UnboundedSender<AdapterEvent>,
+    ) {
+        let mut devices = self.devices.lock().unwrap();
+        let Some(device) = devices
+            .values_mut()
+            .find(|d| d.friendly_name == friendly_name)
+        else {
             return;
         };
-        let device_ref = DeviceRef {
-            adapter: self.name.clone(),
-            kind: AdapterKind::Zigbee,
-            device: device.ieee.clone(),
-        };
-
+        let device_ref = self.device_ref(&device.ieee);
         if device.class == Some(DeviceClass::Light) || data.contains_key("state") {
-            let report = LightReport {
-                on: data
-                    .get("state")
-                    .and_then(Value::as_str)
-                    .map(|state| state.eq_ignore_ascii_case("ON")),
-                brightness: data
-                    .get("brightness")
-                    .and_then(Value::as_f64)
-                    .map(|b| b / MAX_BRIGHTNESS * 100.0),
-                kelvin: data
-                    .get("color_temp")
-                    .and_then(Value::as_f64)
-                    .map(mired_to_kelvin),
-            };
             let _ = events.send(AdapterEvent::Light {
                 device: device_ref.clone(),
-                report,
+                report: light_report(data),
             });
         }
-
-        let send_event = |event: &str| {
+        for event in device_events(device, data) {
             let _ = events.send(AdapterEvent::Device {
                 device: device_ref.clone(),
                 event: event.to_string(),
                 data: Value::Object(data.clone()),
             });
-        };
-        if let Some(occupancy) = data.get("occupancy").and_then(Value::as_bool) {
-            if occupancy {
-                send_event("motion");
-            } else if device.occupancy != Some(false) {
-                send_event("clear");
-            }
-            device.occupancy = Some(occupancy);
         }
-        // zigbee2mqtt follows each action with an empty one to reset it.
-        if data
-            .get("action")
-            .and_then(Value::as_str)
-            .is_some_and(|action| !action.is_empty())
-        {
-            send_event("action");
+    }
+
+    fn device_ref(&self, ieee: &str) -> DeviceRef {
+        DeviceRef {
+            adapter: self.name.clone(),
+            kind: AdapterKind::Zigbee,
+            device: ieee.to_string(),
         }
-        send_event("change");
     }
 
     /// zigbee2mqtt does not retain device state by default, so ask each light.
@@ -321,40 +319,9 @@ impl Zigbee {
             let devices = self.devices.lock().unwrap();
             let device = devices.get(ieee);
             let friendly_name = device.map_or(ieee, |d| d.friendly_name.as_str());
-            let mut payload = serde_json::Map::new();
-            if let Some(on) = command.on {
-                payload.insert("state".into(), json!(if on { "ON" } else { "OFF" }));
-            }
-            let supports_brightness = device.is_none_or(|d| d.supports_brightness);
-            if let (Some(brightness), true) = (command.brightness, supports_brightness) {
-                let value = (brightness.clamp(1.0, 100.0) / 100.0 * MAX_BRIGHTNESS)
-                    .round()
-                    .max(1.0);
-                payload.insert("brightness".into(), json!(value as u32));
-            }
-            if let Some(kelvin) = command.kelvin {
-                match device.map(|d| d.colour_temperature) {
-                    Some(Some(range)) => {
-                        payload.insert(
-                            "color_temp".into(),
-                            json!(range.clamp_kelvin(kelvin).round() as u32),
-                        );
-                    }
-                    Some(None) => {}
-                    None => {
-                        payload.insert(
-                            "color_temp".into(),
-                            json!(super::kelvin_to_mired(kelvin).round() as u32),
-                        );
-                    }
-                }
-            }
-            if let Some(transition) = command.transition {
-                payload.insert("transition".into(), json!(transition.max(0.0)));
-            }
             (
                 format!("{}/{friendly_name}/set", self.base_topic),
-                Value::Object(payload).to_string(),
+                set_payload(device, command).to_string(),
             )
         };
         self.client
@@ -370,11 +337,7 @@ impl Zigbee {
             .values()
             .filter_map(|device| {
                 Some(DiscoveredDevice {
-                    device: DeviceRef {
-                        adapter: self.name.clone(),
-                        kind: AdapterKind::Zigbee,
-                        device: device.ieee.clone(),
-                    },
+                    device: self.device_ref(&device.ieee),
                     class: device.class?,
                     name: device.friendly_name.clone(),
                     description: device.description.clone(),
@@ -384,6 +347,87 @@ impl Zigbee {
         found.sort_by(|a, b| (a.class, &a.name).cmp(&(b.class, &b.name)));
         Ok(found)
     }
+}
+
+/// Topics below the base topic that carry no device state: zigbee2mqtt's
+/// own, the `set` and `get` requests Knut sends, and availability.
+fn is_not_device_state(subtopic: &str) -> bool {
+    subtopic.starts_with("bridge/")
+        || subtopic.ends_with("/set")
+        || subtopic.ends_with("/get")
+        || subtopic.ends_with("/availability")
+}
+
+/// The `set` message for `command`, in zigbee2mqtt's units. Values the
+/// device does not support are left out. Without a known `device` (no
+/// device list yet), every value is sent.
+fn set_payload(device: Option<&Device>, command: &LightCommand) -> Value {
+    let mut payload = Map::new();
+    if let Some(on) = command.on {
+        payload.insert("state".into(), json!(if on { "ON" } else { "OFF" }));
+    }
+    let supports_brightness = device.is_none_or(|d| d.supports_brightness);
+    if let (Some(brightness), true) = (command.brightness, supports_brightness) {
+        let value = (brightness.clamp(1.0, 100.0) / 100.0 * MAX_BRIGHTNESS)
+            .round()
+            .max(1.0);
+        payload.insert("brightness".into(), json!(value as u32));
+    }
+    if let Some(kelvin) = command.kelvin {
+        let mired = match device.map(|d| d.colour_temperature) {
+            Some(Some(range)) => Some(range.clamp_kelvin(kelvin)),
+            // A device without colour temperature.
+            Some(None) => None,
+            None => Some(super::kelvin_to_mired(kelvin)),
+        };
+        if let Some(mired) = mired {
+            payload.insert("color_temp".into(), json!(mired.round() as u32));
+        }
+    }
+    if let Some(transition) = command.transition {
+        payload.insert("transition".into(), json!(transition.max(0.0)));
+    }
+    Value::Object(payload)
+}
+
+/// What a light reported, in Knut's units (brightness 0–100, kelvin).
+fn light_report(data: &Map<String, Value>) -> LightReport {
+    LightReport {
+        on: data
+            .get("state")
+            .and_then(Value::as_str)
+            .map(|state| state.eq_ignore_ascii_case("ON")),
+        brightness: data
+            .get("brightness")
+            .and_then(Value::as_f64)
+            .map(|brightness| brightness / MAX_BRIGHTNESS * 100.0),
+        kelvin: data
+            .get("color_temp")
+            .and_then(Value::as_f64)
+            .map(mired_to_kelvin),
+    }
+}
+
+/// The trigger events a message means, in this order: `motion`, or `clear`
+/// when occupancy ends; `action` for a button press; and always `change`.
+/// Remembers the occupancy so that `clear` comes only once.
+fn device_events(device: &mut Device, data: &Map<String, Value>) -> Vec<&'static str> {
+    let mut events = Vec::new();
+    if let Some(occupancy) = data.get("occupancy").and_then(Value::as_bool) {
+        if occupancy {
+            events.push("motion");
+        } else if device.occupancy != Some(false) {
+            events.push("clear");
+        }
+        device.occupancy = Some(occupancy);
+    }
+    // zigbee2mqtt follows each action with an empty one to reset it.
+    let action = data.get("action").and_then(Value::as_str);
+    if action.is_some_and(|action| !action.is_empty()) {
+        events.push("action");
+    }
+    events.push("change");
+    events
 }
 
 fn mqtt_options(url: &str, adapter: &str) -> Result<MqttOptions> {
@@ -526,7 +570,7 @@ mod tests {
     fn reads_capabilities_from_bridge_devices() {
         let device: BridgeDevice = serde_json::from_value(json!({
             "ieee_address": "0x01",
-            "friendly_name": "Küche Spot",
+            "friendly_name": "Kitchen Spot",
             "type": "Router",
             "definition": {
                 "vendor": "IKEA", "model": "LED1537R6", "description": "TRADFRI GU10",
@@ -547,6 +591,38 @@ mod tests {
                 min: 250.0,
                 max: 454.0
             })
+        );
+    }
+
+    #[test]
+    fn set_payload_leaves_out_what_a_device_cannot_do() {
+        let command = LightCommand {
+            on: Some(true),
+            brightness: Some(50.0),
+            kelvin: Some(2700.0),
+            transition: None,
+        };
+        let device = |supports_brightness, colour_temperature| Device {
+            ieee: "0x01".into(),
+            friendly_name: "lamp".into(),
+            class: Some(DeviceClass::Light),
+            description: String::new(),
+            supports_brightness,
+            colour_temperature,
+            occupancy: None,
+        };
+
+        let dimmable = device(true, None);
+        assert_eq!(
+            set_payload(Some(&dimmable), &command),
+            json!({"state": "ON", "brightness": 127})
+        );
+        let switch = device(false, None);
+        assert_eq!(set_payload(Some(&switch), &command), json!({"state": "ON"}));
+        assert_eq!(
+            set_payload(None, &command),
+            json!({"state": "ON", "brightness": 127, "color_temp": 370}),
+            "an unknown device gets every value"
         );
     }
 }
