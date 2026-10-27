@@ -4,7 +4,7 @@
 use anyhow::{bail, Result};
 
 use crate::adapter::{Adapters, LightCommand};
-use crate::model::{DeviceRef, Group, Model};
+use crate::model::{DeviceRef, Group, GroupMember, Light, Model};
 
 /// Staging adds the next stage once the lights that are on would go above
 /// this brightness…
@@ -103,41 +103,65 @@ pub(crate) fn commands_for(
     staged: Option<&StagedLights>,
 ) -> Vec<DeviceCommand> {
     if let Some(group) = model.groups.get(path) {
-        let lit = staged.map_or(group.members.len(), |staged| staged.on.len());
-        let spread =
-            |brightness: f64| (brightness * group.members.len() as f64 / lit as f64).min(100.0);
-        return group
-            .members
-            .iter()
-            .filter_map(|member| {
-                let light = model.lights.get(&member.light)?;
-                let light_command = match staged {
-                    Some(staged) if staged.off.contains(&member.light) => LightCommand {
-                        on: Some(false),
-                        transition: command.transition,
-                        ..Default::default()
-                    },
-                    Some(staged) if !staged.on.contains(&member.light) => return None,
-                    _ => LightCommand {
-                        brightness: command.brightness.map(|b| member.brightness_for(spread(b))),
-                        ..command.clone()
-                    },
-                };
-                Some(DeviceCommand {
-                    path: light.path.clone(),
-                    device: light.device.clone(),
-                    command: light_command,
-                })
-            })
-            .collect();
+        return group_commands(model, group, command, staged);
     }
     match model.lights.get(path) {
-        Some(light) => vec![DeviceCommand {
-            path: light.path.clone(),
-            device: light.device.clone(),
-            command: command.clone(),
-        }],
+        Some(light) => vec![device_command(light, command.clone())],
         None => Vec::new(),
+    }
+}
+
+fn group_commands(
+    model: &Model,
+    group: &Group,
+    command: &LightCommand,
+    staged: Option<&StagedLights>,
+) -> Vec<DeviceCommand> {
+    let members = group.members.len() as f64;
+    let lit = staged.map_or(group.members.len(), |staged| staged.on.len()) as f64;
+    // With k of n lights on, each carries value · n / k.
+    let spread = |brightness: f64| (brightness * members / lit).min(100.0);
+    let mut commands = Vec::new();
+    for member in &group.members {
+        let Some(light) = model.lights.get(&member.light) else {
+            continue;
+        };
+        if let Some(light_command) = member_command(member, command, staged, spread) {
+            commands.push(device_command(light, light_command));
+        }
+    }
+    commands
+}
+
+/// What one member of a group gets: off if staging switches it off, nothing
+/// if staging leaves it alone, otherwise the spread brightness through its
+/// mapping.
+fn member_command(
+    member: &GroupMember,
+    command: &LightCommand,
+    staged: Option<&StagedLights>,
+    spread: impl Fn(f64) -> f64,
+) -> Option<LightCommand> {
+    match staged {
+        Some(staged) if staged.off.contains(&member.light) => Some(LightCommand {
+            transition: command.transition,
+            ..LightCommand::off()
+        }),
+        Some(staged) if !staged.on.contains(&member.light) => None,
+        _ => Some(LightCommand {
+            brightness: command
+                .brightness
+                .map(|brightness| member.brightness_for(spread(brightness))),
+            ..command.clone()
+        }),
+    }
+}
+
+fn device_command(light: &Light, command: LightCommand) -> DeviceCommand {
+    DeviceCommand {
+        path: light.path.clone(),
+        device: light.device.clone(),
+        command,
     }
 }
 
@@ -219,13 +243,7 @@ mod tests {
     fn parses_set_values() {
         let values =
             |v: &[&str]| parse_values(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        assert_eq!(
-            values(&["off"]).unwrap(),
-            LightCommand {
-                on: Some(false),
-                ..Default::default()
-            }
-        );
+        assert_eq!(values(&["off"]).unwrap(), LightCommand::off());
         let command = values(&["40%", "2700K", "transition=2"]).unwrap();
         assert_eq!(command.on, Some(true));
         assert_eq!(command.brightness, Some(40.0));
@@ -239,7 +257,7 @@ mod tests {
     fn group_commands_apply_brightness_mapping() {
         let config = r#"
 zigbee "z2m", mqtt: "mqtt://localhost"
-room "Küche" do
+room "Kitchen" do
   light "spot1", zigbee: "0x01"
   light "spot3", zigbee: "0x03"
   group "Spots", lights: [:spot1, :spot3] do
@@ -253,16 +271,13 @@ end
             brightness: Some(50.0),
             ..Default::default()
         };
-        let commands = commands_for(&model, "Küche/Spots", &command, None);
+        let commands = commands_for(&model, "Kitchen/Spots", &command, None);
         assert_eq!(commands.len(), 2);
         assert_eq!(commands[0].command.brightness, Some(50.0));
         assert_eq!(commands[1].command.brightness, Some(40.0));
 
-        let off = LightCommand {
-            on: Some(false),
-            ..Default::default()
-        };
-        assert!(commands_for(&model, "Küche/Spots", &off, None)
+        let off = LightCommand::off();
+        assert!(commands_for(&model, "Kitchen/Spots", &off, None)
             .iter()
             .all(|light| light.command.brightness.is_none()));
     }
@@ -342,7 +357,14 @@ end
 
     #[test]
     fn picked_lights_must_belong_to_the_group() {
-        let config = "zigbee \"z2m\", mqtt: \"mqtt://x\"\nroom \"A\" do\n  light \"a\", zigbee: \"1\"\n  light \"b\", zigbee: \"2\"\n  group \"G\", lights: [:a, :b]\nend\n";
+        let config = r#"
+zigbee "z2m", mqtt: "mqtt://x"
+room "A" do
+  light "a", zigbee: "1"
+  light "b", zigbee: "2"
+  group "G", lights: [:a, :b]
+end
+"#;
         let (_, model) = Script::load_str(config, "config.rb").unwrap();
         let group = &model.groups["A/G"];
         let names = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
@@ -365,7 +387,7 @@ end
     fn staging_spreads_the_value_before_the_mapping() {
         let config = r#"
 zigbee "z2m", mqtt: "mqtt://localhost"
-room "Küche" do
+room "Kitchen" do
   light "spot1", zigbee: "0x01"
   light "spot2", zigbee: "0x02"
   light "spot3", zigbee: "0x03"
@@ -376,7 +398,7 @@ room "Küche" do
 end
 "#;
         let (_, model) = Script::load_str(config, "config.rb").unwrap();
-        let Some(Staging::Stages(stages)) = model.groups["Küche/Spots"].staging.clone() else {
+        let Some(Staging::Stages(stages)) = model.groups["Kitchen/Spots"].staging.clone() else {
             panic!("staged group")
         };
         let brightness_of = |value: f64, count: usize| {
@@ -386,7 +408,7 @@ end
                 ..Default::default()
             };
             let staged = staged_lights(&stages, count, None);
-            commands_for(&model, "Küche/Spots", &command, Some(&staged))
+            commands_for(&model, "Kitchen/Spots", &command, Some(&staged))
                 .into_iter()
                 .map(|light| {
                     (
