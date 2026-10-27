@@ -132,10 +132,12 @@ pub async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String
     let adapters = Adapters::connect(&model, state_dir, events).await?;
     let failed = control::send_all(&adapters, &commands).await;
     // MQTT publishes leave from the client's background task; give it time.
-    if commands
-        .iter()
-        .any(|(_, device, _)| matches!(adapters.get(&device.adapter), Some(Adapter::Zigbee(_))))
-    {
+    if commands.iter().any(|light| {
+        matches!(
+            adapters.get(&light.device.adapter),
+            Some(Adapter::Zigbee(_))
+        )
+    }) {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     if !failed.is_empty() {

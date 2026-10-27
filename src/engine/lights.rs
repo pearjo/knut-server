@@ -69,12 +69,13 @@ impl Engine {
         let commands = control::commands_for(&self.model, path, &command, staged.as_ref());
         self.update_state(path, |state| state.record(&command));
         let mut touched_groups = Vec::new();
-        for (light, _, light_command) in &commands {
-            self.update_state(light, |state| state.record(light_command));
-            if light != path {
-                self.publish(light);
+        for light in &commands {
+            self.update_state(&light.path, |state| state.record(&light.command));
+            if light.path != path {
+                self.publish(&light.path);
             }
-            touched_groups.extend(self.groups_of_light.get(light).cloned().unwrap_or_default());
+            let groups = self.groups_of_light.get(&light.path).cloned();
+            touched_groups.extend(groups.unwrap_or_default());
         }
         self.publish(path);
         for group in touched_groups {

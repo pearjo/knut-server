@@ -13,6 +13,15 @@ const STAGE_UP: f64 = 95.0;
 /// lights don't flicker at the threshold.
 const STAGE_DOWN: f64 = 75.0;
 
+/// A command for one physical light.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DeviceCommand {
+    /// The light's `"Room/Entity"` path.
+    pub path: String,
+    pub device: DeviceRef,
+    pub command: LightCommand,
+}
+
 /// Which members of a staged group a command reaches: `on` share the group's
 /// brightness, `off` are switched off, any others are left alone.
 #[derive(Debug, Clone, PartialEq)]
@@ -92,7 +101,7 @@ pub(crate) fn commands_for(
     path: &str,
     command: &LightCommand,
     staged: Option<&StagedLights>,
-) -> Vec<(String, DeviceRef, LightCommand)> {
+) -> Vec<DeviceCommand> {
     if let Some(group) = model.groups.get(path) {
         let lit = staged.map_or(group.members.len(), |staged| staged.on.len());
         let spread =
@@ -114,28 +123,33 @@ pub(crate) fn commands_for(
                         ..command.clone()
                     },
                 };
-                Some((light.path.clone(), light.device.clone(), light_command))
+                Some(DeviceCommand {
+                    path: light.path.clone(),
+                    device: light.device.clone(),
+                    command: light_command,
+                })
             })
             .collect();
     }
     match model.lights.get(path) {
-        Some(light) => vec![(light.path.clone(), light.device.clone(), command.clone())],
+        Some(light) => vec![DeviceCommand {
+            path: light.path.clone(),
+            device: light.device.clone(),
+            command: command.clone(),
+        }],
         None => Vec::new(),
     }
 }
 
 /// Sends commands to all lights at once, so a group changes together.
 /// Returns the paths of the lights whose command failed.
-pub(crate) async fn send_all(
-    adapters: &Adapters,
-    commands: &[(String, DeviceRef, LightCommand)],
-) -> Vec<String> {
-    let sends = commands.iter().map(|(path, device, command)| async move {
-        match adapters.send(device, command).await {
+pub(crate) async fn send_all(adapters: &Adapters, commands: &[DeviceCommand]) -> Vec<String> {
+    let sends = commands.iter().map(|light| async move {
+        match adapters.send(&light.device, &light.command).await {
             Ok(()) => None,
             Err(error) => {
-                log::error!("{path}: {error:#}");
-                Some(path.clone())
+                log::error!("{}: {error:#}", light.path);
+                Some(light.path.clone())
             }
         }
     });
@@ -241,8 +255,8 @@ end
         };
         let commands = commands_for(&model, "Küche/Spots", &command, None);
         assert_eq!(commands.len(), 2);
-        assert_eq!(commands[0].2.brightness, Some(50.0));
-        assert_eq!(commands[1].2.brightness, Some(40.0));
+        assert_eq!(commands[0].command.brightness, Some(50.0));
+        assert_eq!(commands[1].command.brightness, Some(40.0));
 
         let off = LightCommand {
             on: Some(false),
@@ -250,7 +264,7 @@ end
         };
         assert!(commands_for(&model, "Küche/Spots", &off, None)
             .iter()
-            .all(|(_, _, c)| c.brightness.is_none()));
+            .all(|light| light.command.brightness.is_none()));
     }
 
     fn stages(sizes: &[usize]) -> Vec<Vec<String>> {
@@ -374,11 +388,11 @@ end
             let staged = staged_lights(&stages, count, None);
             commands_for(&model, "Küche/Spots", &command, Some(&staged))
                 .into_iter()
-                .map(|(path, _, c)| {
+                .map(|light| {
                     (
-                        path.rsplit('/').next().unwrap().to_string(),
-                        c.on,
-                        c.brightness,
+                        light.path.rsplit('/').next().unwrap().to_string(),
+                        light.command.on,
+                        light.command.brightness,
                     )
                 })
                 .collect::<Vec<_>>()
