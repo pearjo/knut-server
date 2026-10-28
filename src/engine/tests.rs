@@ -434,6 +434,71 @@ async fn light_switched_on_outside_knut_gets_auto_values() {
     assert!(!h.engine.is_auto("Hallway/Light"));
 }
 
+fn zigbee_device(device: &str) -> DeviceRef {
+    DeviceRef {
+        adapter: "z2m".into(),
+        kind: AdapterKind::Zigbee,
+        device: device.into(),
+    }
+}
+
+#[tokio::test]
+async fn a_light_back_from_a_wall_switch_gets_auto_values() {
+    let mut h = harness("wall-switch");
+    let unavailable = AdapterEvent::Unavailable {
+        device: zigbee_device("0x10"),
+    };
+    let powered_on = AdapterEvent::Light {
+        device: zigbee_device("0x10"),
+        report: LightReport {
+            on: Some(true),
+            brightness: Some(100.0),
+            kelvin: Some(4000.0),
+        },
+    };
+    h.engine
+        .execute(adapt(&["Hallway/Light"], need(0.4)), Origin::Automation)
+        .await;
+    h.homekit("Hallway/Light", Change::On(true)).await;
+
+    h.engine.handle_adapter_event(unavailable).await;
+    h.engine
+        .execute(adapt(&["Hallway/Light"], need(0.7)), Origin::Automation)
+        .await;
+    let hallway = h.engine.state("Hallway/Light");
+    assert!(!hallway.available);
+    assert_eq!(
+        hallway.brightness, 40.0,
+        "nothing is sent while unavailable"
+    );
+
+    h.engine.handle_adapter_event(powered_on).await;
+    assert_eq!(
+        h.lit("Hallway/Light"),
+        Some(70.0),
+        "on again after being unavailable counts as coming on"
+    );
+    assert!(h.engine.state("Hallway/Light").available);
+}
+
+#[tokio::test]
+async fn a_group_is_unavailable_only_when_every_member_is() {
+    let mut h = harness("unavailable-group");
+    let unavailable = |device: &str| AdapterEvent::Unavailable {
+        device: zigbee_device(device),
+    };
+    h.homekit("Kitchen/Spots", Change::On(true)).await;
+
+    h.engine.handle_adapter_event(unavailable("0x01")).await;
+    let spots = h.engine.state("Kitchen/Spots");
+    assert!(spots.available && spots.on, "spot2 is still there and on");
+
+    h.engine.handle_adapter_event(unavailable("0x02")).await;
+    let spots = h.engine.state("Kitchen/Spots");
+    assert!(!spots.available);
+    assert!(!spots.on, "unavailable members do not count as on");
+}
+
 #[tokio::test]
 async fn clock_triggers_fire_once_in_their_minute() {
     let mut h = harness("clock");

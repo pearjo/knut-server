@@ -89,9 +89,15 @@ impl Engine {
     }
 
     /// Sends `command` to the lights behind `path` and records the result.
+    /// Unavailable lights are left out: they could not receive it, and they
+    /// get the auto values when they report again.
     pub(super) async fn apply(&mut self, path: &str, command: LightCommand) {
+        if !self.state(path).available {
+            return;
+        }
         let StagedCommand { command, lights } = self.stage(path, command);
-        let commands = control::commands_for(&self.model, path, &command, lights.as_ref());
+        let mut commands = control::commands_for(&self.model, path, &command, lights.as_ref());
+        commands.retain(|light| self.state(&light.path).available);
         self.update_state(path, |state| state.record(&command));
 
         let mut touched_groups = Vec::new();

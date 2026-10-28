@@ -12,6 +12,13 @@ serial:
 frontend:
   enabled: true
   port: 8080
+# Tells Knut when a light loses power, e.g. at a wall switch. Mains-powered
+# devices are pinged; after 2 minutes (default 10) without an answer they
+# count as offline.
+availability:
+  enabled: true
+  active:
+    timeout: 2
 advanced:
   # Channel 11 (the default) overlaps Wi-Fi channel 1; 20 sits between Wi-Fi
   # channels 6 and 11. Changing it later means re-pairing every device.

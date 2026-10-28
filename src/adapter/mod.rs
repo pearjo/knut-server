@@ -58,6 +58,9 @@ pub(crate) enum AdapterEvent {
         device: DeviceRef,
         report: LightReport,
     },
+    /// The light lost power or restarted; its state is unknown until it
+    /// reports again.
+    Unavailable { device: DeviceRef },
     /// `event` is one of [`DEVICE_EVENTS`]; `data` is the device's raw payload.
     Device {
         device: DeviceRef,

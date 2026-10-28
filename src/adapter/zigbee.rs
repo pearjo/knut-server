@@ -84,6 +84,25 @@ struct Expose {
     value_max: Option<f64>,
 }
 
+/// A message on `bridge/event`, such as `device_announce`.
+#[derive(Debug, Deserialize)]
+struct BridgeEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    data: BridgeEventData,
+}
+
+#[derive(Debug, Deserialize)]
+struct BridgeEventData {
+    ieee_address: String,
+}
+
+/// A message on `<friendly name>/availability`: `online` or `offline`.
+#[derive(Debug, Deserialize)]
+struct Availability {
+    state: String,
+}
+
 impl Device {
     fn from_bridge(device: BridgeDevice) -> Self {
         let definition = device.definition.as_ref();
@@ -247,6 +266,14 @@ impl Zigbee {
             self.on_device_list(payload);
             return;
         }
+        if subtopic == "bridge/event" {
+            self.on_bridge_event(payload, events);
+            return;
+        }
+        if let Some(friendly_name) = subtopic.strip_suffix("/availability") {
+            self.on_availability(friendly_name, payload, events);
+            return;
+        }
         if is_not_device_state(subtopic) {
             return;
         }
@@ -277,6 +304,59 @@ impl Zigbee {
         let first_list = !self.devices_known.send_replace(true);
         if first_list {
             self.request_light_states(devices.values());
+        }
+    }
+
+    /// A light that announces itself has just got power back, for example
+    /// from a wall switch. Its state is unknown until it answers.
+    fn on_bridge_event(&self, payload: &[u8], events: &mpsc::UnboundedSender<AdapterEvent>) {
+        let Ok(event) = serde_json::from_slice::<BridgeEvent>(payload) else {
+            return;
+        };
+        if event.event_type != "device_announce" {
+            return;
+        }
+        let devices = self.devices.lock().unwrap();
+        let light = devices
+            .get(&event.data.ieee_address)
+            .filter(|device| device.class == Some(DeviceClass::Light));
+        let Some(light) = light else {
+            return;
+        };
+
+        // Sending fails only while the daemon shuts down.
+        let _ = events.send(AdapterEvent::Unavailable {
+            device: self.device_ref(&light.ieee),
+        });
+        self.request_light_states(std::iter::once(light));
+    }
+
+    /// zigbee2mqtt's availability check: `offline` once a light stops
+    /// answering, `online` when it answers again.
+    fn on_availability(
+        &self,
+        friendly_name: &str,
+        payload: &[u8],
+        events: &mpsc::UnboundedSender<AdapterEvent>,
+    ) {
+        let Ok(availability) = serde_json::from_slice::<Availability>(payload) else {
+            return;
+        };
+        let devices = self.devices.lock().unwrap();
+        let light = devices.values().find(|device| {
+            device.friendly_name == friendly_name && device.class == Some(DeviceClass::Light)
+        });
+        let Some(light) = light else {
+            return;
+        };
+
+        if availability.state == "online" {
+            self.request_light_states(std::iter::once(light));
+        } else {
+            // Sending fails only while the daemon shuts down.
+            let _ = events.send(AdapterEvent::Unavailable {
+                device: self.device_ref(&light.ieee),
+            });
         }
     }
 
@@ -400,12 +480,9 @@ impl Zigbee {
 }
 
 /// Topics below the base topic that carry no device state: zigbee2mqtt's
-/// own, the `set` and `get` requests Knut sends, and availability.
+/// own and the `set` and `get` requests Knut sends.
 fn is_not_device_state(subtopic: &str) -> bool {
-    subtopic.starts_with("bridge/")
-        || subtopic.ends_with("/set")
-        || subtopic.ends_with("/get")
-        || subtopic.ends_with("/availability")
+    subtopic.starts_with("bridge/") || subtopic.ends_with("/set") || subtopic.ends_with("/get")
 }
 
 /// The `set` message for `command`, in zigbee2mqtt's units. Values the
@@ -617,6 +694,57 @@ mod tests {
             ["change", "motion", "change", "clear", "change", "change"],
             "clear only on a change"
         );
+    }
+
+    #[tokio::test]
+    async fn a_light_that_announces_itself_or_goes_offline_is_unavailable() {
+        let (requests_tx, requests) = flume::unbounded();
+        let zigbee = Zigbee::new("z2m", "zigbee2mqtt", AsyncClient::from_senders(requests_tx));
+        let (events_tx, mut events) = mpsc::unbounded_channel();
+        zigbee.handle_message("zigbee2mqtt/bridge/devices", &bridge_devices(), &events_tx);
+        published(&requests);
+
+        let announce = json!({
+            "type": "device_announce",
+            "data": {"friendly_name": "kitchen/spot", "ieee_address": "0x01"}
+        });
+        zigbee.handle_message(
+            "zigbee2mqtt/bridge/event",
+            announce.to_string().as_bytes(),
+            &events_tx,
+        );
+        let Ok(AdapterEvent::Unavailable { device }) = events.try_recv() else {
+            panic!("an announce makes the light unavailable")
+        };
+        assert_eq!(device.device, "0x01");
+        let state_requests = published(&requests);
+        assert_eq!(state_requests[0].0, "zigbee2mqtt/kitchen/spot/get");
+
+        zigbee.handle_message(
+            "zigbee2mqtt/kitchen/spot/availability",
+            br#"{"state":"offline"}"#,
+            &events_tx,
+        );
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AdapterEvent::Unavailable { .. })
+        ));
+
+        zigbee.handle_message(
+            "zigbee2mqtt/kitchen/spot/availability",
+            br#"{"state":"online"}"#,
+            &events_tx,
+        );
+        assert!(events.try_recv().is_err(), "online waits for the state");
+        let state_requests = published(&requests);
+        assert_eq!(state_requests[0].0, "zigbee2mqtt/kitchen/spot/get");
+
+        zigbee.handle_message(
+            "zigbee2mqtt/hall motion/availability",
+            br#"{"state":"offline"}"#,
+            &events_tx,
+        );
+        assert!(events.try_recv().is_err(), "only lights become unavailable");
     }
 
     #[test]

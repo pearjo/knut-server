@@ -561,7 +561,9 @@ mod tests {
                     assert_eq!(data["action"], "short_release");
                     event.as_str()
                 }
-                AdapterEvent::Light { .. } => panic!("{event:?}"),
+                AdapterEvent::Light { .. } | AdapterEvent::Unavailable { .. } => {
+                    panic!("{event:?}")
+                }
             })
             .collect();
         assert_eq!(names, ["action", "change"]);

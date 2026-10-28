@@ -15,18 +15,36 @@ impl Engine {
         change(self.states.entry(path.to_string()).or_default());
     }
 
-    /// A group shows on while any member is on.
+    /// A group shows on while any available member is on, and is available
+    /// while any member is.
     pub(super) fn refresh_group(&mut self, group: &str) {
         let Some(found) = self.model.groups.get(group) else {
             return;
         };
-        let any_on = found
+        let members: Vec<EntityState> = found
             .members
             .iter()
-            .any(|member| self.state(&member.light).on);
-        if self.state(group).on != any_on {
-            self.update_state(group, |state| state.on = any_on);
+            .map(|member| self.state(&member.light))
+            .collect();
+        let any_on = members.iter().any(|member| member.available && member.on);
+        let any_available = members.iter().any(|member| member.available);
+
+        let state = self.state(group);
+        let unchanged = state.on == any_on && state.available == any_available;
+        if !unchanged {
+            self.update_state(group, |state| {
+                state.on = any_on;
+                state.available = any_available;
+            });
             self.publish(group);
+        }
+    }
+
+    /// Refreshes every group `light` belongs to.
+    pub(super) fn refresh_groups_of(&mut self, light: &str) {
+        let groups = self.groups_of_light.get(light).cloned().unwrap_or_default();
+        for group in groups {
+            self.refresh_group(&group);
         }
     }
 

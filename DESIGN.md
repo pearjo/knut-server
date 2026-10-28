@@ -206,6 +206,11 @@ end
 - A light in auto that is switched on outside Knut (wall switch, Hue app) gets the
   current auto values as soon as it reports on: its own, or else its group's,
   through the brightness mapping. Device reports still never change auto mode.
+- A light that loses power at a wall switch becomes **unavailable**: zigbee2mqtt
+  reports it offline, or it announces itself when power returns. Knut sends it
+  nothing and HomeKit shows "No Response" until it reports again; a group does
+  so only when every member is unavailable. A light that reports on after being
+  unavailable counts as switched on outside Knut and gets the auto values.
 - Actions from triggers never change auto mode. Only HomeKit, scenes and the Auto
   switch do.
 - `turn_on` in an `auto: false` scene acts like switching on in HomeKit: if the

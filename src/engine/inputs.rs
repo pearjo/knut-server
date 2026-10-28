@@ -101,6 +101,7 @@ impl Engine {
     pub(super) async fn handle_adapter_event(&mut self, event: AdapterEvent) {
         match event {
             AdapterEvent::Light { device, report } => self.on_light_report(&device, &report).await,
+            AdapterEvent::Unavailable { device } => self.on_light_unavailable(&device),
             AdapterEvent::Device {
                 device,
                 event,
@@ -111,24 +112,40 @@ impl Engine {
 
     /// A light reported its state, e.g. after a wall switch or another app
     /// changed it. Reports never change auto mode, but a light in auto that
-    /// comes on gets the current auto values.
+    /// comes on gets the current auto values. A light that reports on after
+    /// being unavailable counts as coming on: a wall switch gave it power.
     async fn on_light_report(&mut self, device: &DeviceRef, report: &LightReport) {
         let Some(light) = self.model.light_by_device(device) else {
             return;
         };
         let path = light.path.clone();
-        let was_on = self.state(&path).on;
+        let before = self.state(&path);
         self.update_state(&path, |state| state.record_report(report));
         self.publish(&path);
+        self.refresh_groups_of(&path);
 
-        let groups = self.groups_of_light.get(&path).cloned().unwrap_or_default();
-        for group in groups {
-            self.refresh_group(&group);
-        }
-        let came_on = !was_on && self.state(&path).on;
+        let was_dark = !before.on || !before.available;
+        let came_on = was_dark && self.state(&path).on;
         if came_on {
             self.resume_auto(&path).await;
         }
+    }
+
+    /// A light lost power or restarted. Knut keeps its last known state but
+    /// sends it nothing until it reports again.
+    fn on_light_unavailable(&mut self, device: &DeviceRef) {
+        let Some(light) = self.model.light_by_device(device) else {
+            return;
+        };
+        let path = light.path.clone();
+        if !self.state(&path).available {
+            return;
+        }
+
+        log::info!("{path}: unavailable");
+        self.update_state(&path, |state| state.available = false);
+        self.publish(&path);
+        self.refresh_groups_of(&path);
     }
 
     /// A light in auto that came on outside Knut gets the values the last

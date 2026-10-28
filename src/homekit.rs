@@ -13,10 +13,11 @@ use hap::accessory::bridge::BridgeAccessory;
 use hap::accessory::lightbulb::LightbulbAccessory;
 use hap::accessory::switch::SwitchAccessory;
 use hap::accessory::{AccessoryCategory, AccessoryInformation, HapAccessory};
-use hap::characteristic::{CharacteristicCallbacks, HapCharacteristic};
+use hap::characteristic::{CharacteristicCallbacks, HapCharacteristic, OnReadFn};
 use hap::server::{IpServer, Server};
 use hap::storage::{FileStorage, Storage};
 use hap::{Config, HapType, MacAddress, Pin};
+use serde::Serialize;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
@@ -340,10 +341,17 @@ impl Exposed {
     }
 }
 
+/// A lightbulb on the server, and whether its entity is available. Reads
+/// fail while it is not, so the Home app shows "No Response".
+struct ExposedLightbulb {
+    exposed: Exposed,
+    available: Arc<AtomicBool>,
+}
+
 /// The accessories Knut keeps updating, once they are on the server.
 struct ExposedAccessories {
     /// Lightbulbs by entity path.
-    entities: HashMap<String, Exposed>,
+    entities: HashMap<String, ExposedLightbulb>,
     /// Scene switches by accessory id.
     scenes: HashMap<u64, Exposed>,
     auto_switch: Exposed,
@@ -368,8 +376,10 @@ async fn add_accessories(
             pushing: Arc::clone(&pushing),
             inputs: inputs.clone(),
         };
-        let accessory = lightbulb(id, &path, input)?;
-        entities.insert(path, Exposed::add(server, accessory, pushing).await?);
+        let available = Arc::new(AtomicBool::new(true));
+        let accessory = lightbulb(id, &path, input, &available)?;
+        let exposed = Exposed::add(server, accessory, pushing).await?;
+        entities.insert(path, ExposedLightbulb { exposed, available });
     }
 
     let mut scenes = HashMap::new();
@@ -425,8 +435,9 @@ async fn forward_updates(
 async fn show_update(accessories: &ExposedAccessories, update: Update) {
     match update {
         Update::Entity { path, state } => {
-            if let Some(exposed) = accessories.entities.get(&path) {
-                show_entity_state(exposed, &state).await;
+            if let Some(lightbulb) = accessories.entities.get(&path) {
+                lightbulb.available.store(state.available, Ordering::SeqCst);
+                show_entity_state(&lightbulb.exposed, &state).await;
             }
         }
         Update::Auto(all_auto) => {
@@ -496,7 +507,12 @@ impl EntityInput {
     }
 }
 
-fn lightbulb(id: u64, path: &str, input: EntityInput) -> Result<LightbulbAccessory> {
+fn lightbulb(
+    id: u64,
+    path: &str,
+    input: EntityInput,
+    available: &Arc<AtomicBool>,
+) -> Result<LightbulbAccessory> {
     let information = information(&display_name(path), path);
     let mut accessory = LightbulbAccessory::new(id, information).map_err(hap_error)?;
     let service = &mut accessory.lightbulb;
@@ -519,6 +535,9 @@ fn lightbulb(id: u64, path: &str, input: EntityInput) -> Result<LightbulbAccesso
             on.send(Change::On(*new));
             Ok(())
         }));
+    service
+        .power_state
+        .on_read(Some(fail_while_unavailable(available)));
 
     if let Some(brightness) = service.brightness.as_mut() {
         let input = input.clone();
@@ -526,9 +545,11 @@ fn lightbulb(id: u64, path: &str, input: EntityInput) -> Result<LightbulbAccesso
             input.send(Change::Brightness(*new as f64));
             Ok(())
         }));
+        brightness.on_read(Some(fail_while_unavailable(available)));
     }
 
     if let Some(colour_temperature) = service.color_temperature.as_mut() {
+        colour_temperature.on_read(Some(fail_while_unavailable(available)));
         colour_temperature
             .set_min_value(Some(json!(MIRED_MIN)))
             .map_err(hap_error)?;
@@ -543,6 +564,23 @@ fn lightbulb(id: u64, path: &str, input: EntityInput) -> Result<LightbulbAccesso
     }
 
     Ok(accessory)
+}
+
+/// A read callback that fails while `available` is false. hap answers a
+/// failed read with "service communication failure", which the Home app
+/// shows as "No Response".
+fn fail_while_unavailable<T>(available: &Arc<AtomicBool>) -> impl OnReadFn<T>
+where
+    T: Default + Clone + Serialize + Send + Sync,
+{
+    let available = Arc::clone(available);
+    move || {
+        if available.load(Ordering::SeqCst) {
+            Ok(None)
+        } else {
+            Err("entity unavailable".into())
+        }
+    }
 }
 
 /// A momentary switch that runs `scene` when tapped.

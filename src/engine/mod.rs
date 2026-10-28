@@ -44,6 +44,10 @@ pub(crate) struct EntityState {
     /// 1–100; kept while off so the entity comes back at the same level.
     pub brightness: f64,
     pub kelvin: Option<f64>,
+    /// False while a light's state is unknown because it lost power or
+    /// restarted, until it reports again; for a group, while every member
+    /// is. The other fields then keep the last known state.
+    pub available: bool,
 }
 
 impl Default for EntityState {
@@ -52,6 +56,7 @@ impl Default for EntityState {
             on: false,
             brightness: 100.0,
             kelvin: None,
+            available: true,
         }
     }
 }
@@ -70,9 +75,11 @@ impl EntityState {
         }
     }
 
-    /// Takes over what a device reported. A reported brightness of 0 is
-    /// ignored, so the entity comes back at its last level.
+    /// Takes over what a device reported; a light that reports is
+    /// available. A reported brightness of 0 is ignored, so the entity
+    /// comes back at its last level.
     fn record_report(&mut self, report: &LightReport) {
+        self.available = true;
         if let Some(on) = report.on {
             self.on = on;
         }
