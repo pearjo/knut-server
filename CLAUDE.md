@@ -8,6 +8,7 @@ the AI tooling.
 cargo build --release
 cargo test
 cargo fmt --check && cargo clippy
+cargo doc --document-private-items --open
 target/release/knut check examples/config.rb
 .scratch/homekit/.venv/bin/python .scratch/homekit/run.py
 ```
@@ -27,6 +28,18 @@ tokio features).
 2. Does it change a design decision, a module interface or DSL syntax that
    the approved plan did not cover? If yes: propose it and wait.
 3. Does it add a dependency? If yes: justify it and wait.
+
+## Commit messages
+
+Write every commit message by the template in `.gitmessage`:
+
+- Summary in the imperative, capitalised, no trailing full stop, at most
+  50 characters, with no branch prefix such as `v2:`.
+- A blank line, then a body that says what changed and why, not how,
+  wrapped at 72 characters. Separate paragraphs and bullets with blank
+  lines; bullets take a hyphen, one space and a hanging indent.
+- The template's `#` lines are guidance only; leave them out of the
+  message.
 
 ## Tool use without permission prompts
 
