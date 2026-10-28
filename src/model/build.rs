@@ -29,9 +29,9 @@ impl fmt::Display for ValidationErrors {
 
 impl std::error::Error for ValidationErrors {}
 
-// ---------------------------------------------------------------------------
-// The raw JSON recorded by the prelude.
-
+/// The model as the prelude records it: names instead of resolved
+/// references, and nothing validated yet. The `Raw…` types below mirror
+/// its JSON.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawModel {
     location: Option<Location>,
@@ -291,15 +291,12 @@ impl<'a> ModelBuilder<'a> {
     /// The adapter device behind `zigbee:`, `hue:` and `adapter:`. A device
     /// needs exactly one adapter of its kind that matches.
     fn resolve_device(&mut self, raw: &RawDevice) -> Option<DeviceRef> {
+        let wanted_name = raw.adapter.as_deref();
         let candidates: Vec<&AdapterConfig> = self
             .adapters
             .iter()
             .filter(|adapter| adapter.kind() == raw.adapter_kind)
-            .filter(|adapter| {
-                raw.adapter
-                    .as_deref()
-                    .is_none_or(|name| adapter.name() == name)
-            })
+            .filter(|adapter| wanted_name.is_none_or(|name| adapter.name() == name))
             .collect();
         match candidates.as_slice() {
             [adapter] => Some(DeviceRef {
@@ -530,100 +527,126 @@ impl<'a> ModelBuilder<'a> {
     }
 }
 
+/// What `on source, *events, **options` listens for, or why it cannot.
 fn trigger_kind(
     raw: &RawTrigger,
     lights: &BTreeMap<String, Light>,
     sensors: &BTreeMap<String, Sensor>,
     has_location: bool,
 ) -> Result<TriggerKind, String> {
-    let allow_options = |allowed: &[&str]| -> Result<(), String> {
-        match raw
-            .options
-            .keys()
-            .find(|key| !allowed.contains(&key.as_str()))
-        {
-            Some(key) => Err(format!(
-                "unknown option {key}: for {:?} trigger",
-                raw.source
-            )),
-            None => Ok(()),
-        }
-    };
     match raw.source.as_str() {
-        "Sun" => {
-            if !has_location {
-                return Err("Sun triggers need `location lat:, lon:`".into());
-            }
-            allow_options(&["offset"])?;
-            let offset_minutes = match raw.options.get("offset") {
-                None => 0,
-                Some(value) => value.as_i64().ok_or("offset: must be whole minutes")?,
-            };
-            match raw.events.as_slice() {
-                [event] if event == "sun" => {
-                    if offset_minutes != 0 {
-                        return Err("offset: only applies to :sunrise and :sunset".into());
-                    }
-                    Ok(TriggerKind::SunTick)
-                }
-                [event] if event == "sunrise" => Ok(TriggerKind::SunEvent {
-                    event: SunEvent::Sunrise,
-                    offset_minutes,
-                }),
-                [event] if event == "sunset" => Ok(TriggerKind::SunEvent {
-                    event: SunEvent::Sunset,
-                    offset_minutes,
-                }),
-                _ => Err("Sun triggers take exactly one of :sun, :sunrise, :sunset".into()),
-            }
-        }
-        "Clock" => {
-            allow_options(&["at"])?;
-            if !raw.events.is_empty() {
-                return Err("Clock triggers take no events, only at: \"HH:MM\"".into());
-            }
-            let values = match raw.options.get("at") {
-                Some(serde_json::Value::String(time)) => vec![time.clone()],
-                Some(serde_json::Value::Array(times)) => times
-                    .iter()
-                    .map(|time| {
-                        time.as_str()
-                            .map(str::to_owned)
-                            .ok_or("at: must contain \"HH:MM\" strings")
-                    })
-                    .collect::<Result<_, _>>()?,
-                _ => return Err("Clock triggers need at: \"HH:MM\"".into()),
-            };
-            let times = values
-                .iter()
-                .map(|time| {
-                    chrono::NaiveTime::parse_from_str(time, "%H:%M")
-                        .map_err(|_| format!("at: {time:?} is not a valid \"HH:MM\" time"))
-                })
-                .collect::<Result<_, _>>()?;
-            Ok(TriggerKind::Clock { times })
-        }
+        "Sun" => sun_trigger(raw, has_location),
+        "Clock" => clock_trigger(raw),
         path => {
-            allow_options(&[])?;
-            if !sensors.contains_key(path) && !lights.contains_key(path) {
-                return Err(format!("trigger source {path:?} is neither \"Sun\", \"Clock\" nor a known sensor or light"));
+            let known = sensors.contains_key(path) || lights.contains_key(path);
+            if !known {
+                return Err(format!(
+                    "trigger source {path:?} is neither \"Sun\", \"Clock\" nor a known sensor or light"
+                ));
             }
-            if raw.events.is_empty() {
-                return Err(format!("trigger on {path:?} needs an event, e.g. :motion"));
-            }
-            for event in &raw.events {
-                if !crate::adapter::DEVICE_EVENTS.contains(&event.as_str()) {
-                    return Err(format!(
-                        "unknown device event :{event}, expected one of :{}",
-                        crate::adapter::DEVICE_EVENTS.join(", :")
-                    ));
-                }
-            }
-            Ok(TriggerKind::Device {
-                path: path.to_string(),
-                events: raw.events.clone(),
-            })
+            device_trigger(raw, path)
         }
+    }
+}
+
+/// `on "Sun", :sun`, or `:sunrise` / `:sunset` with an optional
+/// `offset:` in minutes.
+fn sun_trigger(raw: &RawTrigger, has_location: bool) -> Result<TriggerKind, String> {
+    if !has_location {
+        return Err("Sun triggers need `location lat:, lon:`".into());
+    }
+    allow_options(raw, &["offset"])?;
+    let offset_minutes = match raw.options.get("offset") {
+        None => 0,
+        Some(value) => value.as_i64().ok_or("offset: must be whole minutes")?,
+    };
+
+    let sun_event = |event| TriggerKind::SunEvent {
+        event,
+        offset_minutes,
+    };
+    match raw.events.as_slice() {
+        [event] if event == "sun" => {
+            if offset_minutes != 0 {
+                return Err("offset: only applies to :sunrise and :sunset".into());
+            }
+            Ok(TriggerKind::SunTick)
+        }
+        [event] if event == "sunrise" => Ok(sun_event(SunEvent::Sunrise)),
+        [event] if event == "sunset" => Ok(sun_event(SunEvent::Sunset)),
+        _ => Err("Sun triggers take exactly one of :sun, :sunrise, :sunset".into()),
+    }
+}
+
+/// `on "Clock", at: "HH:MM"` or `at: ["HH:MM", …]`.
+fn clock_trigger(raw: &RawTrigger) -> Result<TriggerKind, String> {
+    allow_options(raw, &["at"])?;
+    if !raw.events.is_empty() {
+        return Err("Clock triggers take no events, only at: \"HH:MM\"".into());
+    }
+
+    let values = clock_time_strings(raw.options.get("at"))?;
+    let times = values
+        .iter()
+        .map(|time| parse_clock_time(time))
+        .collect::<Result<_, _>>()?;
+    Ok(TriggerKind::Clock { times })
+}
+
+/// The `at:` option as a list of strings, whether it holds one or several.
+fn clock_time_strings(at: Option<&serde_json::Value>) -> Result<Vec<String>, String> {
+    match at {
+        Some(serde_json::Value::String(time)) => Ok(vec![time.clone()]),
+        Some(serde_json::Value::Array(times)) => times
+            .iter()
+            .map(|time| {
+                let time = time.as_str().ok_or("at: must contain \"HH:MM\" strings")?;
+                Ok(time.to_owned())
+            })
+            .collect(),
+        _ => Err("Clock triggers need at: \"HH:MM\"".into()),
+    }
+}
+
+fn parse_clock_time(time: &str) -> Result<chrono::NaiveTime, String> {
+    chrono::NaiveTime::parse_from_str(time, "%H:%M")
+        .map_err(|_| format!("at: {time:?} is not a valid \"HH:MM\" time"))
+}
+
+/// `on "Room/Sensor", :motion, …`: one or more of the device events.
+fn device_trigger(raw: &RawTrigger, path: &str) -> Result<TriggerKind, String> {
+    allow_options(raw, &[])?;
+    if raw.events.is_empty() {
+        return Err(format!("trigger on {path:?} needs an event, e.g. :motion"));
+    }
+
+    let device_events = crate::adapter::DEVICE_EVENTS;
+    for event in &raw.events {
+        if !device_events.contains(&event.as_str()) {
+            return Err(format!(
+                "unknown device event :{event}, expected one of :{}",
+                device_events.join(", :")
+            ));
+        }
+    }
+    Ok(TriggerKind::Device {
+        path: path.to_string(),
+        events: raw.events.clone(),
+    })
+}
+
+/// Fails for the first option of `raw` that is not in `allowed`.
+fn allow_options(raw: &RawTrigger, allowed: &[&str]) -> Result<(), String> {
+    let unknown = raw
+        .options
+        .keys()
+        .find(|key| !allowed.contains(&key.as_str()));
+    match unknown {
+        Some(key) => Err(format!(
+            "unknown option {key}: for {:?} trigger",
+            raw.source
+        )),
+        None => Ok(()),
     }
 }
 
