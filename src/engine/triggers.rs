@@ -24,11 +24,9 @@ impl Engine {
         now: DateTime<Local>,
         first: bool,
     ) {
-        self.sun = self
-            .model
-            .location
-            .as_ref()
-            .map(|location| sun::position(location.lat, location.lon, now.to_utc()));
+        let location = self.model.location.as_ref();
+        self.sun = location.map(|location| sun::position(location.lat, location.lon, now.to_utc()));
+
         for due in due_triggers(&self.model, previous, now, first) {
             self.run_trigger(due.proc_id, &due.args, &due.line).await;
         }
@@ -60,12 +58,17 @@ pub(super) fn due_triggers(
                 let happened = model.location.as_ref().is_some_and(|location| {
                     sun_event_between(location, *event, *offset_minutes, previous, now)
                 });
-                sun_args.clone().filter(|_| happened)
+                if happened {
+                    sun_args.clone()
+                } else {
+                    None
+                }
             }
             TriggerKind::Clock { times } if !first => {
                 let happened = clock_time_between(times, previous, now);
                 happened.then_some(BlockArgs::Clock { now })
             }
+            // Events and the first tick: nothing due.
             _ => None,
         };
         if let Some(args) = args {
@@ -88,16 +91,24 @@ fn sun_event_between(
     previous: DateTime<Local>,
     now: DateTime<Local>,
 ) -> bool {
+    // A tick shortly after midnight also covers the day before.
     let dates = [previous.date_naive(), now.date_naive()];
-    dates.iter().any(|date| {
-        sun::times(location.lat, location.lon, *date).is_some_and(|day| {
-            let at = match event {
-                SunEvent::Sunrise => day.sunrise,
-                SunEvent::Sunset => day.sunset,
-            } + chrono::Duration::minutes(offset_minutes);
-            previous.to_utc() < at && at <= now.to_utc()
-        })
-    })
+    let offset = chrono::Duration::minutes(offset_minutes);
+    for date in dates {
+        // No sunrise or sunset during polar day or night.
+        let Some(day) = sun::times(location.lat, location.lon, date) else {
+            continue;
+        };
+        let event_time = match event {
+            SunEvent::Sunrise => day.sunrise,
+            SunEvent::Sunset => day.sunset,
+        };
+        let at = event_time + offset;
+        if previous.to_utc() < at && at <= now.to_utc() {
+            return true;
+        }
+    }
+    false
 }
 
 /// Whether one of the daily `times` falls after `previous` and at or before
@@ -108,13 +119,17 @@ fn clock_time_between(
     now: DateTime<Local>,
 ) -> bool {
     let dates = [previous.date_naive(), now.date_naive()];
+    let in_tick = |at: DateTime<Local>| previous < at && at <= now;
     times.iter().any(|time| {
         dates
             .iter()
-            .any(|date| local_time(*date, *time).is_some_and(|at| previous < at && at <= now))
+            .filter_map(|date| local_time(*date, *time))
+            .any(in_tick)
     })
 }
 
+/// `time` on `date` in the local time zone; the earlier one when the clock
+/// goes back, `None` when it skips that time.
 fn local_time(date: NaiveDate, time: NaiveTime) -> Option<DateTime<Local>> {
     Local.from_local_datetime(&date.and_time(time)).earliest()
 }

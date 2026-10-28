@@ -17,10 +17,13 @@ impl Engine {
 
     /// A group shows on while any member is on.
     pub(super) fn refresh_group(&mut self, group: &str) {
-        let Some(members) = self.model.groups.get(group).map(|g| g.members.clone()) else {
+        let Some(found) = self.model.groups.get(group) else {
             return;
         };
-        let any_on = members.iter().any(|m| self.state(&m.light).on);
+        let any_on = found
+            .members
+            .iter()
+            .any(|member| self.state(&member.light).on);
         if self.state(group).on != any_on {
             self.update_state(group, |state| state.on = any_on);
             self.publish(group);
@@ -50,29 +53,37 @@ impl Engine {
         }
         let was_all_auto = self.all_auto();
         let previous = self.store.state.auto.insert(path.to_string(), auto);
-        if previous != Some(auto) {
-            log::info!("{path}: {}", if auto { "auto" } else { "overridden" });
-            self.store_dirty = true;
-            if was_all_auto != self.all_auto() {
-                let _ = self.updates.send(Update::Auto(self.all_auto()));
-            }
+        if previous == Some(auto) {
+            return;
+        }
+
+        log::info!("{path}: {}", if auto { "auto" } else { "overridden" });
+        self.store_dirty = true;
+        if was_all_auto != self.all_auto() {
+            self.send_update(Update::Auto(self.all_auto()));
         }
     }
 
+    /// Shows the state of `path` in HomeKit, if HomeKit shows the entity.
     pub(super) fn publish(&self, path: &str) {
         if self.exposed.contains(path) {
-            let _ = self.updates.send(Update::Entity {
+            self.send_update(Update::Entity {
                 path: path.to_string(),
                 state: self.state(path),
             });
         }
     }
 
+    fn send_update(&self, update: Update) {
+        // Fails only while the daemon shuts down.
+        let _ = self.updates.send(update);
+    }
+
     pub(super) fn publish_all(&self) {
         for path in &self.exposed {
             self.publish(path);
         }
-        let _ = self.updates.send(Update::Auto(self.all_auto()));
+        self.send_update(Update::Auto(self.all_auto()));
     }
 
     /// Entity state for `state(path)` in scripts.

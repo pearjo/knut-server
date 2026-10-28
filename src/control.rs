@@ -217,8 +217,7 @@ pub(crate) fn parse_values(values: &[String]) -> Result<LightCommand> {
 
     // A brightness or colour temperature switches the light on, unless the
     // values also say off.
-    let sets_a_level = command.brightness.is_some() || command.kelvin.is_some();
-    if sets_a_level && command.on != Some(false) {
+    if command.sets_level() && command.on != Some(false) {
         command.on = Some(true);
     }
     Ok(command)

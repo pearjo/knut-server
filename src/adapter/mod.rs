@@ -35,6 +35,12 @@ impl LightCommand {
             ..Default::default()
         }
     }
+
+    /// Whether it sets a brightness or colour temperature, not just on or
+    /// off.
+    pub(crate) fn sets_level(&self) -> bool {
+        self.brightness.is_some() || self.kelvin.is_some()
+    }
 }
 
 /// State as reported by a device. Unset fields were not part of the report.

@@ -245,30 +245,32 @@ async fn stage_changes_cross_fade() {
     let mut h = harness("cross-fade");
     h.homekit("Bathroom/Light", Change::Brightness(20.0)).await;
 
-    let mut command = LightCommand {
+    let command = LightCommand {
         brightness: Some(50.0),
         ..Default::default()
     };
-    let staged = h.engine.stage("Bathroom/Light", &mut command).unwrap();
-    assert_eq!(staged.on.len(), 3, "the second stage comes on");
-    assert_eq!(command.transition, Some(MIN_STAGE_TRANSITION));
-    assert_eq!(command.on, Some(true));
+    let staged = h.engine.stage("Bathroom/Light", command);
+    let lights = staged.lights.expect("the group is staged");
+    assert_eq!(lights.on.len(), 3, "the second stage comes on");
+    assert_eq!(staged.command.transition, Some(MIN_STAGE_TRANSITION));
+    assert_eq!(staged.command.on, Some(true));
 
-    let mut command = LightCommand {
+    let command = LightCommand {
         brightness: Some(45.0),
         transition: Some(60.0),
         ..Default::default()
     };
-    let staged = h.engine.stage("Bathroom/Light", &mut command).unwrap();
-    assert!(staged.off.is_empty());
+    let staged = h.engine.stage("Bathroom/Light", command);
+    let lights = staged.lights.expect("the group is staged");
+    assert!(lights.off.is_empty());
     assert_eq!(
-        command.transition,
+        staged.command.transition,
         Some(60.0),
         "longer transitions are kept"
     );
 
-    let mut off = LightCommand::off();
-    assert!(h.engine.stage("Bathroom/Light", &mut off).is_none());
+    let off = h.engine.stage("Bathroom/Light", LightCommand::off());
+    assert!(off.lights.is_none());
     assert!(
         !h.engine.active_stages.contains_key("Bathroom/Light"),
         "switching off forgets the stages"

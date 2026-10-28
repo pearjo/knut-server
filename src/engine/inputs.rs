@@ -14,27 +14,37 @@ impl Engine {
         match input {
             Input::Entity { path, change } => self.handle_change(&path, change).await,
             Input::Scene(name) => self.activate_scene(&name).await,
-            Input::AutoSwitch(true) => {
-                log::info!("Auto switch on: every entity back into auto");
-                let paths: Vec<String> = self.exposed.iter().cloned().collect();
-                for path in paths {
-                    self.set_auto(&path, true);
-                    if self.state(&path).on {
-                        let mut command = self.auto_values(&path);
-                        if command.brightness.is_some() || command.kelvin.is_some() {
-                            command.transition = Some(AUTO_RESUME_TRANSITION);
-                            self.apply(&path, command).await;
-                        }
-                    }
-                }
+            Input::AutoSwitch(true) => self.put_all_into_auto().await,
+            Input::AutoSwitch(false) => self.take_all_out_of_auto(),
+        }
+    }
+
+    /// The Auto switch went on: every entity is in auto again, and those
+    /// that are on fade to the auto values.
+    async fn put_all_into_auto(&mut self) {
+        log::info!("Auto switch on: every entity back into auto");
+        let paths: Vec<String> = self.exposed.iter().cloned().collect();
+        for path in paths {
+            self.set_auto(&path, true);
+            if !self.state(&path).on {
+                continue;
             }
-            Input::AutoSwitch(false) => {
-                log::info!("Auto switch off: every entity out of auto");
-                let paths: Vec<String> = self.exposed.iter().cloned().collect();
-                for path in paths {
-                    self.set_auto(&path, false);
-                }
+            let command = self.auto_values(&path);
+            if command.sets_level() {
+                let command = LightCommand {
+                    transition: Some(AUTO_RESUME_TRANSITION),
+                    ..command
+                };
+                self.apply(&path, command).await;
             }
+        }
+    }
+
+    fn take_all_out_of_auto(&mut self) {
+        log::info!("Auto switch off: every entity out of auto");
+        let paths: Vec<String> = self.exposed.iter().cloned().collect();
+        for path in paths {
+            self.set_auto(&path, false);
         }
     }
 
@@ -68,20 +78,23 @@ impl Engine {
             }
             Change::Kelvin(kelvin) => {
                 self.set_auto(path, false);
-                if was_on {
-                    self.apply(
-                        path,
-                        LightCommand {
-                            kelvin: Some(kelvin),
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-                } else {
-                    self.update_state(path, |state| state.kelvin = Some(kelvin));
-                    self.publish(path);
-                }
+                self.change_kelvin(path, kelvin, was_on).await;
             }
+        }
+    }
+
+    /// A light that is off keeps the colour temperature for when it comes
+    /// on; HomeKit lets the user pick it without switching on.
+    async fn change_kelvin(&mut self, path: &str, kelvin: f64, was_on: bool) {
+        if was_on {
+            let command = LightCommand {
+                kelvin: Some(kelvin),
+                ..Default::default()
+            };
+            self.apply(path, command).await;
+        } else {
+            self.update_state(path, |state| state.kelvin = Some(kelvin));
+            self.publish(path);
         }
     }
 
@@ -107,10 +120,13 @@ impl Engine {
         let was_on = self.state(&path).on;
         self.update_state(&path, |state| state.record_report(report));
         self.publish(&path);
-        for group in self.groups_of_light.get(&path).cloned().unwrap_or_default() {
+
+        let groups = self.groups_of_light.get(&path).cloned().unwrap_or_default();
+        for group in groups {
             self.refresh_group(&group);
         }
-        if !was_on && self.state(&path).on {
+        let came_on = !was_on && self.state(&path).on;
+        if came_on {
             self.resume_auto(&path).await;
         }
     }
@@ -122,28 +138,29 @@ impl Engine {
         if !self.is_auto(light) {
             return;
         }
-        let sets_values =
-            |command: &LightCommand| command.brightness.is_some() || command.kelvin.is_some();
         let own = self.auto_values(light);
-        if sets_values(&own) {
-            self.apply(light, own).await;
-            return;
+        let command = if own.sets_level() {
+            Some(own)
+        } else {
+            self.auto_values_through_group(light)
+        };
+        if let Some(command) = command {
+            self.apply(light, command).await;
         }
-        let groups = self.groups_of_light.get(light).cloned().unwrap_or_default();
-        let group_values = groups
+    }
+
+    /// What `light` gets from its first group in auto that has auto values.
+    fn auto_values_through_group(&self, light: &str) -> Option<LightCommand> {
+        let groups = self.groups_of_light.get(light)?;
+        let (group, command) = groups
             .iter()
             .filter(|group| self.is_auto(group))
             .map(|group| (group, self.auto_values(group)))
-            .find(|(_, command)| sets_values(command));
-        let Some((group, command)) = group_values else {
-            return;
-        };
-        let member = control::commands_for(&self.model, group, &command, None)
-            .into_iter()
-            .find(|member| member.path == light);
-        if let Some(member) = member {
-            self.apply(light, member.command).await;
-        }
+            .find(|(_, command)| command.sets_level())?;
+
+        let members = control::commands_for(&self.model, group, &command, None);
+        let member = members.into_iter().find(|member| member.path == light)?;
+        Some(member.command)
     }
 
     /// Runs the triggers listening for `event` from a sensor or light.
