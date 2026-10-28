@@ -23,19 +23,31 @@ const DIRECT_FADE_IN_ELEVATION: f64 = 5.0;
 impl Daylight {
     /// Daylight reaching the room, 0–1.
     pub(crate) fn at(&self, sun: SunPosition) -> f64 {
-        let sky =
-            ease((sun.elevation - SKY_DARK_ELEVATION) / (SKY_FULL_ELEVATION - SKY_DARK_ELEVATION));
-        let windows = self
-            .facing
-            .iter()
-            .map(|facing| (sun.azimuth - facing).to_radians().cos().max(0.0))
-            .sum::<f64>()
-            / self.facing.len() as f64;
-        let direct = ease(sun.elevation / DIRECT_FADE_IN_ELEVATION)
-            * sun.elevation.to_radians().cos()
-            * windows;
+        let sky = sky_light(sun.elevation);
+        let direct = direct_light(sun.elevation) * self.windows_facing(sun.azimuth);
         (self.amount * (sky + direct)).min(1.0)
     }
+
+    /// How squarely the windows face the sun's azimuth, averaged over the
+    /// windows: 1 head-on, 0 side-on or behind.
+    fn windows_facing(&self, azimuth: f64) -> f64 {
+        let facing_sun = |facing: &f64| (azimuth - facing).to_radians().cos().max(0.0);
+        let total: f64 = self.facing.iter().map(facing_sun).sum();
+        total / self.facing.len() as f64
+    }
+}
+
+/// Light from the sky, 0–1, whatever the windows face.
+fn sky_light(elevation: f64) -> f64 {
+    let progress = (elevation - SKY_DARK_ELEVATION) / (SKY_FULL_ELEVATION - SKY_DARK_ELEVATION);
+    ease(progress)
+}
+
+/// Direct sunlight on a window facing the sun, 0–1: strongest low over
+/// the horizon, where it shines in flat.
+fn direct_light(elevation: f64) -> f64 {
+    let fade_in = ease(elevation / DIRECT_FADE_IN_ELEVATION);
+    fade_in * elevation.to_radians().cos()
 }
 
 /// Cosine ease from 0 to 1 while `x` goes from 0 to 1; flat outside.

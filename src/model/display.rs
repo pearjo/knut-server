@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use super::{entity_name, AdapterConfig, Group, Model, Room, ScheduleDay, Staging, TriggerKind};
+use super::{
+    entity_name, AdapterConfig, BrightnessMapping, Group, Model, Room, ScheduleDay, Staging,
+    TriggerKind,
+};
 
 /// Weekday names in `Weekday::num_days_from_sunday` order, as the schedule
 /// is indexed.
@@ -83,20 +86,13 @@ fn write_adapters(f: &mut fmt::Formatter<'_>, adapters: &[AdapterConfig]) -> fmt
 fn write_room(f: &mut fmt::Formatter<'_>, model: &Model, room: &Room) -> fmt::Result {
     writeln!(f)?;
     match &room.daylight {
-        Some(daylight) => {
-            let facing: Vec<&str> = daylight
-                .facing
-                .iter()
-                .map(|azimuth| compass_name(*azimuth))
-                .collect();
-            writeln!(
-                f,
-                "room {}  daylight {} facing {}",
-                room.name,
-                daylight.amount,
-                facing.join(", ")
-            )?
-        }
+        Some(daylight) => writeln!(
+            f,
+            "room {}  daylight {} facing {}",
+            room.name,
+            daylight.amount,
+            compass_names(&daylight.facing)
+        )?,
         None => writeln!(f, "room {}", room.name)?,
     }
     for path in &room.groups {
@@ -120,31 +116,41 @@ fn write_group(f: &mut fmt::Formatter<'_>, group: &Group) -> fmt::Result {
     let hidden = if group.exposed { "" } else { " (hidden)" };
     writeln!(f, "  group  {}{hidden}", group.name)?;
     for member in &group.members {
-        let mapping = match &member.mapping {
-            Some(mapping) => format!(
-                "  brightness 25/50/100 → {:.0}/{:.0}/{:.0}",
-                mapping.apply(25.0),
-                mapping.apply(50.0),
-                mapping.apply(100.0)
-            ),
-            None => String::new(),
-        };
+        let mapping = member
+            .mapping
+            .as_ref()
+            .map(mapping_sample)
+            .unwrap_or_default();
         writeln!(f, "    - {}{mapping}", entity_name(&member.light))?;
     }
     match &group.staging {
-        Some(Staging::Stages(stages)) => {
-            let stages: Vec<String> = stages
-                .iter()
-                .map(|stage| {
-                    let names: Vec<&str> = stage.iter().map(|path| entity_name(path)).collect();
-                    names.join(", ")
-                })
-                .collect();
-            writeln!(f, "    stages {}", stages.join(" | "))
-        }
+        Some(Staging::Stages(stages)) => writeln!(f, "    stages {}", stage_names(stages)),
         Some(Staging::Custom { line, .. }) => writeln!(f, "    staging block at {line}"),
         None => Ok(()),
     }
+}
+
+/// "  brightness 25/50/100 → 10/30/80": what the mapping makes of three
+/// group brightnesses.
+fn mapping_sample(mapping: &BrightnessMapping) -> String {
+    format!(
+        "  brightness 25/50/100 → {:.0}/{:.0}/{:.0}",
+        mapping.apply(25.0),
+        mapping.apply(50.0),
+        mapping.apply(100.0)
+    )
+}
+
+/// "Spot1, Spot2 | Spot3": the lights of each stage by name.
+fn stage_names(stages: &[Vec<String>]) -> String {
+    let stages: Vec<String> = stages
+        .iter()
+        .map(|stage| {
+            let names: Vec<&str> = stage.iter().map(|path| entity_name(path)).collect();
+            names.join(", ")
+        })
+        .collect();
+    stages.join(" | ")
 }
 
 fn write_scenes(f: &mut fmt::Formatter<'_>, model: &Model) -> fmt::Result {
@@ -192,6 +198,16 @@ fn trigger_description(kind: &TriggerKind) -> String {
     }
 }
 
+/// "east, south" for window azimuths of 90° and 180°.
+fn compass_names(azimuths: &[f64]) -> String {
+    let names: Vec<&str> = azimuths
+        .iter()
+        .map(|azimuth| compass_name(*azimuth))
+        .collect();
+    names.join(", ")
+}
+
+/// The nearest of the eight compass directions.
 fn compass_name(azimuth: f64) -> &'static str {
     const NAMES: [&str; 8] = [
         "north",

@@ -73,6 +73,7 @@ pub(crate) enum AdapterConfig {
 }
 
 impl AdapterConfig {
+    /// The name lights and sensors refer to with `adapter:`.
     pub(crate) fn name(&self) -> &str {
         match self {
             Self::Hue { name, .. } | Self::Zigbee { name, .. } => name,
@@ -86,6 +87,7 @@ impl AdapterConfig {
         }
     }
 
+    /// Where the config defines the adapter.
     pub(crate) fn line(&self) -> &str {
         match self {
             Self::Hue { line, .. } | Self::Zigbee { line, .. } => line,
@@ -180,6 +182,11 @@ pub(crate) struct BrightnessMapping {
 
 impl BrightnessMapping {
     /// `table` holds the light's brightness for group brightness 1..=100.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `table` has exactly 100 entries; the prelude always
+    /// evaluates a mapping at 1..=100.
     pub(crate) fn new(table: Vec<f64>) -> Self {
         assert_eq!(table.len(), 100);
         Self { table }
@@ -188,11 +195,14 @@ impl BrightnessMapping {
     /// Maps a group brightness (0–100) to the light's brightness, clamped to
     /// 1–100. Fractional input is interpolated between table entries.
     pub(crate) fn apply(&self, group_brightness: f64) -> f64 {
-        let x = group_brightness.clamp(1.0, 100.0);
-        let lower = x.floor() as usize;
-        let upper = x.ceil() as usize;
-        let at = |i: usize| self.table[i - 1];
-        let value = at(lower) + (at(upper) - at(lower)) * (x - lower as f64);
+        let group_brightness = group_brightness.clamp(1.0, 100.0);
+        let below = group_brightness.floor();
+        let above = group_brightness.ceil();
+        // The table starts at group brightness 1.
+        let light_at = |brightness: f64| self.table[brightness as usize - 1];
+
+        let fraction = group_brightness - below;
+        let value = light_at(below) + (light_at(above) - light_at(below)) * fraction;
         value.clamp(1.0, 100.0)
     }
 }
@@ -299,13 +309,13 @@ impl Model {
         let groups = self
             .groups
             .values()
-            .filter(|g| g.exposed)
-            .map(|g| g.path.clone());
+            .filter(|group| group.exposed)
+            .map(|group| group.path.clone());
         let lights = self
             .lights
             .values()
-            .filter(|l| l.exposed)
-            .map(|l| l.path.clone());
+            .filter(|light| light.exposed)
+            .map(|light| light.path.clone());
         groups.chain(lights).collect()
     }
 
@@ -337,13 +347,22 @@ impl Model {
     ) -> impl Iterator<Item = &'a Trigger> {
         self.triggers
             .iter()
-            .filter(move |trigger| match &trigger.kind {
-                TriggerKind::Device {
-                    path: source,
-                    events,
-                } => source == path && events.iter().any(|listened| listened == event),
-                _ => false,
-            })
+            .filter(move |trigger| trigger.kind.listens_to(path, event))
+    }
+}
+
+impl TriggerKind {
+    /// Whether this is a device trigger for `event` from the sensor or
+    /// light at `path`.
+    fn listens_to(&self, path: &str, event: &str) -> bool {
+        let TriggerKind::Device {
+            path: source,
+            events,
+        } = self
+        else {
+            return false;
+        };
+        source == path && events.iter().any(|listened| listened == event)
     }
 }
 
