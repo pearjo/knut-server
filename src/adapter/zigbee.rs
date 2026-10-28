@@ -22,11 +22,16 @@ use crate::model::{AdapterKind, DeviceRef};
 
 /// zigbee2mqtt's brightness scale.
 const MAX_BRIGHTNESS: f64 = 254.0;
+/// How long to wait before reconnecting to the MQTT broker.
+const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
+/// One zigbee2mqtt instance, reached through its MQTT broker.
 pub(crate) struct Zigbee {
+    /// The adapter's name in the config.
     name: String,
     base_topic: String,
     client: AsyncClient,
+    /// Every device but the coordinator, by IEEE address.
     devices: Mutex<HashMap<String, Device>>,
     /// Flips to true once `bridge/devices` arrived.
     devices_known: watch::Sender<bool>,
@@ -81,35 +86,54 @@ struct Expose {
 
 impl Device {
     fn from_bridge(device: BridgeDevice) -> Self {
-        let mut class = None;
-        let mut supports_brightness = false;
-        let mut colour_temperature = None;
-        let mut description = String::new();
-        if let Some(definition) = &device.definition {
-            description = format!(
-                "{} {} – {}",
-                definition.vendor, definition.model, definition.description
-            );
-            for expose in &definition.exposes {
-                if expose.expose_type == "light" {
-                    class = Some(DeviceClass::Light);
-                    let (brightness, range) = light_features(expose);
-                    supports_brightness |= brightness;
-                    colour_temperature = range.or(colour_temperature);
-                } else if class.is_none() && is_sensor_value(expose) {
-                    class = Some(DeviceClass::Sensor);
-                }
-            }
-        }
+        let definition = device.definition.as_ref();
+        let description = definition.map(describe).unwrap_or_default();
+        let exposes = definition.map_or(&[][..], |definition| &definition.exposes);
+        let capabilities = Capabilities::of(exposes);
         Self {
             ieee: device.ieee_address,
             friendly_name: device.friendly_name,
-            class,
+            class: capabilities.class,
             description,
-            supports_brightness,
-            colour_temperature,
+            supports_brightness: capabilities.supports_brightness,
+            colour_temperature: capabilities.colour_temperature,
             occupancy: None,
         }
+    }
+}
+
+/// "IKEA LED1537R6 – GU10" for `knut discover`.
+fn describe(definition: &Definition) -> String {
+    format!(
+        "{} {} – {}",
+        definition.vendor, definition.model, definition.description
+    )
+}
+
+/// What a device can do, read from its exposes.
+#[derive(Debug, Default)]
+struct Capabilities {
+    /// A light if it exposes one, else a sensor if it reports something
+    /// triggers can use, else neither.
+    class: Option<DeviceClass>,
+    supports_brightness: bool,
+    colour_temperature: Option<MiredRange>,
+}
+
+impl Capabilities {
+    fn of(exposes: &[Expose]) -> Self {
+        let mut capabilities = Self::default();
+        for expose in exposes {
+            if expose.expose_type == "light" {
+                let (brightness, range) = light_features(expose);
+                capabilities.class = Some(DeviceClass::Light);
+                capabilities.supports_brightness |= brightness;
+                capabilities.colour_temperature = range.or(capabilities.colour_temperature);
+            } else if capabilities.class.is_none() && is_sensor_value(expose) {
+                capabilities.class = Some(DeviceClass::Sensor);
+            }
+        }
+        capabilities
     }
 }
 
@@ -143,6 +167,12 @@ fn is_sensor_value(expose: &Expose) -> bool {
 }
 
 impl Zigbee {
+    /// Connects to the MQTT broker at `url` and handles zigbee2mqtt's
+    /// messages in the background, reconnecting when the connection breaks.
+    ///
+    /// # Errors
+    ///
+    /// Fails for an invalid MQTT url; connection errors are retried.
     pub(crate) fn connect(
         name: &str,
         url: &str,
@@ -150,35 +180,45 @@ impl Zigbee {
         events: mpsc::UnboundedSender<AdapterEvent>,
     ) -> Result<Arc<Self>> {
         let options = mqtt_options(url, name)?;
-        let (client, mut event_loop) = AsyncClient::new(options, 256);
+        let (client, event_loop) = AsyncClient::new(options, 256);
         let zigbee = Self::new(name, base_topic, client);
 
-        let this = Arc::clone(&zigbee);
-        tokio::spawn(async move {
-            loop {
-                match event_loop.poll().await {
-                    Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                        log::info!("zigbee {}: connected to MQTT", this.name);
-                        let topic = format!("{}/#", this.base_topic);
-                        if let Err(error) = this.client.subscribe(topic, QoS::AtLeastOnce).await {
-                            log::error!("zigbee {}: subscribe failed: {error}", this.name);
-                        }
-                    }
-                    Ok(Event::Incoming(Packet::Publish(publish))) => {
-                        this.handle_message(&publish.topic, &publish.payload, &events);
-                    }
-                    Ok(_) => {}
-                    Err(error) => {
-                        log::warn!(
-                            "zigbee {}: MQTT connection error: {error}; retrying in 5 s",
-                            this.name
-                        );
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                    }
+        let listener = Arc::clone(&zigbee);
+        tokio::spawn(listener.run_event_loop(event_loop, events));
+        Ok(zigbee)
+    }
+
+    async fn run_event_loop(
+        self: Arc<Self>,
+        mut event_loop: rumqttc::EventLoop,
+        events: mpsc::UnboundedSender<AdapterEvent>,
+    ) {
+        loop {
+            match event_loop.poll().await {
+                Ok(Event::Incoming(Packet::ConnAck(_))) => self.on_connected().await,
+                Ok(Event::Incoming(Packet::Publish(publish))) => {
+                    self.handle_message(&publish.topic, &publish.payload, &events);
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    log::warn!(
+                        "zigbee {}: MQTT connection error: {error}; retrying in 5 s",
+                        self.name
+                    );
+                    tokio::time::sleep(RECONNECT_DELAY).await;
                 }
             }
-        });
-        Ok(zigbee)
+        }
+    }
+
+    /// Subscribes to everything below the base topic, again after every
+    /// reconnect.
+    async fn on_connected(&self) {
+        log::info!("zigbee {}: connected to MQTT", self.name);
+        let topic = format!("{}/#", self.base_topic);
+        if let Err(error) = self.client.subscribe(topic, QoS::AtLeastOnce).await {
+            log::error!("zigbee {}: subscribe failed: {error}", self.name);
+        }
     }
 
     fn new(name: &str, base_topic: &str, client: AsyncClient) -> Arc<Self> {
@@ -255,7 +295,9 @@ impl Zigbee {
             return;
         };
         let device_ref = self.device_ref(&device.ieee);
-        if device.class == Some(DeviceClass::Light) || data.contains_key("state") {
+        let is_light = device.class == Some(DeviceClass::Light) || data.contains_key("state");
+        // Sending fails only while the daemon shuts down.
+        if is_light {
             let _ = events.send(AdapterEvent::Light {
                 device: device_ref.clone(),
                 report: light_report(data),
@@ -281,12 +323,13 @@ impl Zigbee {
     /// zigbee2mqtt does not retain device state by default, so ask each light.
     fn request_light_states<'a>(&self, devices: impl Iterator<Item = &'a Device>) {
         let payload = json!({ "state": "", "brightness": "", "color_temp": "" }).to_string();
-        for device in devices.filter(|d| d.class == Some(DeviceClass::Light)) {
+        let lights = devices.filter(|device| device.class == Some(DeviceClass::Light));
+        for device in lights {
             let topic = format!("{}/{}/get", self.base_topic, device.friendly_name);
-            if let Err(error) =
-                self.client
-                    .try_publish(topic, QoS::AtMostOnce, false, payload.clone())
-            {
+            let request = self
+                .client
+                .try_publish(topic, QoS::AtMostOnce, false, payload.clone());
+            if let Err(error) = request {
                 log::debug!(
                     "zigbee {}: cannot request state of {}: {error}",
                     self.name,
@@ -300,36 +343,43 @@ impl Zigbee {
     /// addresses to topics.
     pub(crate) async fn ready(&self, timeout: Duration) -> Result<()> {
         let mut known = self.devices_known.subscribe();
-        tokio::time::timeout(timeout, known.wait_for(|known| *known))
-            .await
-            .map_err(|_| {
-                anyhow!(
-                    "zigbee {}: no device list from zigbee2mqtt within {timeout:?}",
-                    self.name
-                )
-            })??;
+        let list_arrived = known.wait_for(|known| *known);
+        let waited = tokio::time::timeout(timeout, list_arrived).await;
+        let Ok(watched) = waited else {
+            bail!(
+                "zigbee {}: no device list from zigbee2mqtt within {timeout:?}",
+                self.name
+            );
+        };
+        watched?;
         Ok(())
     }
 
+    /// Sends `command` to the device with IEEE address `ieee`.
     pub(crate) async fn send(&self, ieee: &str, command: &LightCommand) -> Result<()> {
         if let Err(error) = self.ready(Duration::from_secs(5)).await {
             log::warn!("{error}; addressing {ieee} by its IEEE address");
         }
-        let (topic, payload) = {
-            let devices = self.devices.lock().unwrap();
-            let device = devices.get(ieee);
-            let friendly_name = device.map_or(ieee, |d| d.friendly_name.as_str());
-            (
-                format!("{}/{friendly_name}/set", self.base_topic),
-                set_payload(device, command).to_string(),
-            )
-        };
+        let (topic, payload) = self.set_message(ieee, command);
         self.client
             .publish(topic, QoS::AtLeastOnce, false, payload)
             .await
             .context("cannot queue MQTT message")
     }
 
+    /// The topic and payload that set `command` on `ieee`. Before the
+    /// device list arrives, zigbee2mqtt also accepts the IEEE address as
+    /// the topic.
+    fn set_message(&self, ieee: &str, command: &LightCommand) -> (String, String) {
+        let devices = self.devices.lock().unwrap();
+        let device = devices.get(ieee);
+        let friendly_name = device.map_or(ieee, |device| device.friendly_name.as_str());
+        let topic = format!("{}/{friendly_name}/set", self.base_topic);
+        let payload = set_payload(device, command).to_string();
+        (topic, payload)
+    }
+
+    /// Every light and sensor zigbee2mqtt knows, lights first, by name.
     pub(crate) async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
         self.ready(Duration::from_secs(10)).await?;
         let devices = self.devices.lock().unwrap();
@@ -366,22 +416,15 @@ fn set_payload(device: Option<&Device>, command: &LightCommand) -> Value {
     if let Some(on) = command.on {
         payload.insert("state".into(), json!(if on { "ON" } else { "OFF" }));
     }
-    let supports_brightness = device.is_none_or(|d| d.supports_brightness);
-    if let (Some(brightness), true) = (command.brightness, supports_brightness) {
-        let value = (brightness.clamp(1.0, 100.0) / 100.0 * MAX_BRIGHTNESS)
-            .round()
-            .max(1.0);
-        payload.insert("brightness".into(), json!(value as u32));
+    let supports_brightness = device.is_none_or(|device| device.supports_brightness);
+    if let Some(brightness) = command.brightness {
+        if supports_brightness {
+            payload.insert("brightness".into(), json!(zigbee_brightness(brightness)));
+        }
     }
     if let Some(kelvin) = command.kelvin {
-        let mired = match device.map(|d| d.colour_temperature) {
-            Some(Some(range)) => Some(range.clamp_kelvin(kelvin)),
-            // A device without colour temperature.
-            Some(None) => None,
-            None => Some(super::kelvin_to_mired(kelvin)),
-        };
-        if let Some(mired) = mired {
-            payload.insert("color_temp".into(), json!(mired.round() as u32));
+        if let Some(mired) = zigbee_mired(device, kelvin) {
+            payload.insert("color_temp".into(), json!(mired));
         }
     }
     if let Some(transition) = command.transition {
@@ -390,21 +433,31 @@ fn set_payload(device: Option<&Device>, command: &LightCommand) -> Value {
     Value::Object(payload)
 }
 
+/// zigbee2mqtt's 1–254 for a brightness of 0–100; 0 would switch off.
+fn zigbee_brightness(brightness: f64) -> u32 {
+    let scaled = brightness.clamp(1.0, 100.0) / 100.0 * MAX_BRIGHTNESS;
+    scaled.round().max(1.0) as u32
+}
+
+/// The colour temperature in the device's range, `None` for a device
+/// without colour temperature. An unknown device gets the plain value.
+fn zigbee_mired(device: Option<&Device>, kelvin: f64) -> Option<u32> {
+    let mired = match device {
+        Some(device) => device.colour_temperature?.clamp_kelvin(kelvin),
+        None => super::kelvin_to_mired(kelvin),
+    };
+    Some(mired.round() as u32)
+}
+
 /// What a light reported, in Knut's units (brightness 0–100, kelvin).
 fn light_report(data: &Map<String, Value>) -> LightReport {
+    let state = data.get("state").and_then(Value::as_str);
+    let brightness = data.get("brightness").and_then(Value::as_f64);
+    let mired = data.get("color_temp").and_then(Value::as_f64);
     LightReport {
-        on: data
-            .get("state")
-            .and_then(Value::as_str)
-            .map(|state| state.eq_ignore_ascii_case("ON")),
-        brightness: data
-            .get("brightness")
-            .and_then(Value::as_f64)
-            .map(|brightness| brightness / MAX_BRIGHTNESS * 100.0),
-        kelvin: data
-            .get("color_temp")
-            .and_then(Value::as_f64)
-            .map(mired_to_kelvin),
+        on: state.map(|state| state.eq_ignore_ascii_case("ON")),
+        brightness: brightness.map(|brightness| brightness / MAX_BRIGHTNESS * 100.0),
+        kelvin: mired.map(mired_to_kelvin),
     }
 }
 
