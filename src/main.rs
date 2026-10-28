@@ -59,10 +59,7 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info,hap=warn,libmdns=error"),
-    )
-    .init();
+    init_logging();
 
     let runtime = tokio::runtime::Runtime::new().expect("cannot start the async runtime");
     let result = match cli.command {
@@ -81,4 +78,12 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Logs at info level unless `RUST_LOG` says otherwise. hap and libmdns
+/// report routine connection noise below warn and error.
+fn init_logging() {
+    let default_filter = "info,hap=warn,libmdns=error";
+    let env = env_logger::Env::default().default_filter_or(default_filter);
+    env_logger::Builder::from_env(env).init();
 }

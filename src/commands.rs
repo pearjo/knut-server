@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use tokio::sync::mpsc;
 
 use crate::adapter::{self, Adapter, Adapters};
@@ -101,6 +101,7 @@ pub async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String
     if model.entity_kind(entity).is_none() {
         bail!("unknown light or group {entity:?}");
     }
+
     let command = control::parse_values(values)?;
     let staged = match (model.groups.get(entity), command.brightness) {
         (Some(group), Some(brightness)) => staged_for_set(&mut script, group, brightness)?,
@@ -111,20 +112,24 @@ pub async fn set(config: &Path, state_dir: &Path, entity: &str, values: &[String
     let (events, _) = mpsc::unbounded_channel();
     let adapters = Adapters::connect(&model, state_dir, events).await?;
     let failed = control::send_all(&adapters, &commands).await;
-    let uses_zigbee = commands.iter().any(|light| {
-        matches!(
-            adapters.get(&light.device.adapter),
-            Some(Adapter::Zigbee(_))
-        )
-    });
-    if uses_zigbee {
-        // MQTT publishes leave from the client's background task; give it time.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
+    wait_for_mqtt_publishes(&adapters, &commands).await;
+
     if !failed.is_empty() {
         bail!("could not reach {}", failed.join(", "));
     }
     Ok(())
+}
+
+/// MQTT publishes leave from the client's background task, which stops
+/// with the command; give them time when any command went to zigbee2mqtt.
+async fn wait_for_mqtt_publishes(adapters: &Adapters, commands: &[control::DeviceCommand]) {
+    let uses_zigbee = commands.iter().any(|light| {
+        let adapter = adapters.get(&light.device.adapter);
+        matches!(adapter, Some(Adapter::Zigbee(_)))
+    });
+    if uses_zigbee {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 /// The lights a staged `group` switches on and off for `brightness`, for a
@@ -144,24 +149,35 @@ fn staged_for_set(
             control::staged_lights(stages, count, None)
         }
         Staging::Custom { proc_id, line } => {
-            let now = chrono::Local::now().timestamp();
-            let names = script
-                .staging(*proc_id, brightness / 100.0, now)
-                .map_err(|error| {
-                    anyhow::anyhow!("staging block at {line}: {}", script::describe(&error))
-                })?;
-            let on = control::picked_lights(group, &names)
-                .map_err(|error| anyhow::anyhow!("{line}: {error}"))?;
-            let off = group
-                .members
-                .iter()
-                .map(|member| member.light.clone())
-                .filter(|light| !on.contains(light))
-                .collect();
-            control::StagedLights { on, off }
+            let need = brightness / 100.0;
+            run_staging_block(script, group, *proc_id, line, need)?
         }
     };
     Ok(Some(staged))
+}
+
+/// Asks the group's `staging` block, defined at `line`, which lights carry
+/// `need`; the others go off.
+fn run_staging_block(
+    script: &mut Script,
+    group: &model::Group,
+    proc_id: usize,
+    line: &model::Line,
+    need: f64,
+) -> Result<control::StagedLights> {
+    let now = chrono::Local::now().timestamp();
+    let names = script
+        .staging(proc_id, need, now)
+        .map_err(|error| anyhow!("staging block at {line}: {}", script::describe(&error)))?;
+    let on = control::picked_lights(group, &names).map_err(|error| anyhow!("{line}: {error}"))?;
+
+    let off = group
+        .members
+        .iter()
+        .map(|member| member.light.clone())
+        .filter(|light| !on.contains(light))
+        .collect();
+    Ok(control::StagedLights { on, off })
 }
 
 /// Runs the daemon until Ctrl-C: connects the adapters, starts the HomeKit
@@ -192,14 +208,20 @@ pub async fn run(config: &Path, state_dir: &Path) -> Result<()> {
     // mruby is single-threaded, so the engine stays on this thread.
     let local = tokio::task::LocalSet::new();
     local
-        .run_until(async move {
-            tokio::select! {
-                _ = engine.run(inputs, adapter_events) => {}
-                _ = tokio::signal::ctrl_c() => log::info!("shutting down"),
-            }
-        })
+        .run_until(run_until_ctrl_c(engine, inputs, adapter_events))
         .await;
     Ok(())
+}
+
+async fn run_until_ctrl_c(
+    engine: engine::Engine,
+    inputs: mpsc::UnboundedReceiver<engine::Input>,
+    adapter_events: mpsc::UnboundedReceiver<adapter::AdapterEvent>,
+) {
+    tokio::select! {
+        _ = engine.run(inputs, adapter_events) => {}
+        _ = tokio::signal::ctrl_c() => log::info!("shutting down"),
+    }
 }
 
 /// Forgets every HomeKit pairing in `state_dir`, so the bridge can be added
@@ -209,7 +231,8 @@ pub fn unpair(state_dir: &Path) -> Result<()> {
 }
 
 fn load(config: &Path) -> Result<(Script, Model)> {
-    Script::load(config).map_err(|error| anyhow::anyhow!("{error}"))
+    let loaded = Script::load(config)?;
+    Ok(loaded)
 }
 
 async fn pair_hue(state_dir: &Path, name: &str, host: &str) -> Result<()> {

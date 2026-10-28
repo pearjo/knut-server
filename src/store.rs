@@ -23,7 +23,9 @@ pub(crate) struct State {
     pub homekit_pin: Option<String>,
 }
 
-/// The state file and its contents. Changes reach the disk on `save`.
+/// The state file and its contents. Changes reach the disk on
+/// [`save`](Store::save).
+#[derive(Debug)]
 pub(crate) struct Store {
     path: PathBuf,
     pub state: State,
@@ -36,14 +38,7 @@ impl Store {
         std::fs::create_dir_all(state_dir)
             .with_context(|| format!("cannot create state directory {}", state_dir.display()))?;
         let path = state_dir.join("state.json");
-        let state = match std::fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text)
-                .with_context(|| format!("{} is corrupt", path.display()))?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => State::default(),
-            Err(error) => {
-                return Err(error).with_context(|| format!("cannot read {}", path.display()))
-            }
-        };
+        let state = read_state(&path)?;
         Ok(Self { path, state })
     }
 
@@ -60,20 +55,31 @@ impl Store {
     /// The accessory id for `key`, allocating a new one if needed. Id 1 is
     /// the bridge itself.
     pub(crate) fn accessory_id(&mut self, key: &str) -> u64 {
+        const BRIDGE_ID: u64 = 1;
         if let Some(id) = self.state.accessory_ids.get(key) {
             return *id;
         }
-        let id = self
-            .state
-            .accessory_ids
-            .values()
-            .copied()
-            .max()
-            .unwrap_or(1)
-            + 1;
+
+        let ids = self.state.accessory_ids.values().copied();
+        let highest = ids.max().unwrap_or(BRIDGE_ID);
+        let id = highest + 1;
         self.state.accessory_ids.insert(key.to_string(), id);
         id
     }
+}
+
+/// A missing file is an empty state; a corrupt one is an error.
+fn read_state(path: &Path) -> Result<State> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(State::default());
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("cannot read {}", path.display()));
+        }
+    };
+    serde_json::from_str(&text).with_context(|| format!("{} is corrupt", path.display()))
 }
 
 #[cfg(test)]
@@ -81,18 +87,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn keeps_accessory_ids_stable() {
+    fn keeps_accessory_ids_stable() -> Result<()> {
         let dir = std::env::temp_dir().join(format!("knut-store-test-{}", std::process::id()));
-        let mut store = Store::open(&dir).unwrap();
+        let mut store = Store::open(&dir)?;
         let spots = store.accessory_id("Kitchen/Spots");
         let light = store.accessory_id("Hallway/Light");
         assert_eq!((spots, light), (2, 3), "id 1 is the bridge");
         store.state.auto.insert("Kitchen/Spots".into(), false);
-        store.save().unwrap();
+        store.save()?;
 
-        let mut reopened = Store::open(&dir).unwrap();
+        let mut reopened = Store::open(&dir)?;
         assert_eq!(reopened.accessory_id("Kitchen/Spots"), 2);
         assert!(!reopened.state.auto["Kitchen/Spots"]);
-        std::fs::remove_dir_all(dir).unwrap();
+        std::fs::remove_dir_all(dir)?;
+        Ok(())
     }
 }
