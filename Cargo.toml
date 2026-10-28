@@ -6,6 +6,10 @@ description = "A small, focused smart-home daemon exposing lights to Apple Home"
 authors = ["Joe Pearson"]
 license = "GPL-3.0-or-later"
 repository = "https://github.com/pearjo/knut-server"
+homepage = "https://github.com/pearjo/knut-server"
+readme = "README.md"
+keywords = ["smart-home", "homekit", "zigbee", "hue", "lighting"]
+categories = ["command-line-utilities"]
 publish = false
 build = "build.rs"
 

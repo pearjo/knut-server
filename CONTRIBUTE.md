@@ -161,10 +161,81 @@ Use these words in code, comments, logs and docs, and only in this sense.
   function named after what it handles.
 - **Split large modules along their responsibilities**, not by size alone.
   A file over about 500 lines is a reason to look.
+- **One fallible step per line.** Give the result of each `?` a name
+  instead of nesting calls inside calls:
+
+  ```rust
+  let digits = pin_digits(pin)?;
+  let pin = Pin::new(digits).map_err(hap_error)?;
+  ```
+
+  not `Pin::new(pin_digits(pin)?).map_err(hap_error)?`. *Because each
+  line then has one reason to fail, and the name says what it produced.*
+- **Build a value in one expression.** Prefer a struct literal, with
+  `..base` for the fields that stay, to a run of `value.field = …`
+  assignments, and compute the parts first under their own names.
+  *Because the reader sees the finished value in one place instead of
+  piecing it together from mutations.*
+- **Separate the paragraphs of a function** with a blank line: the inputs
+  it gathers, the decision it makes, the effect it has. *Because a wall of
+  lines hides where one step ends and the next begins.*
 - **Tests read like specifications.** Name them after the behaviour
   (`staging_adds_a_stage_above_95_percent`), test one idea each, and keep
   configs as small as the test allows. Longer configs live in
   `tests/fixtures/*.rb`, not in inline strings.
+
+### Rust API guidelines
+
+Knut follows the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html)
+for every module interface (`pub(crate)` items), not only for the public
+API. The checklist codes are in brackets. *Because other modules are the
+users of a module, and they deserve the same care as users of a crate.*
+
+- **Naming.** Casing as in RFC 430 (C-CASE). Conversions are `as_`
+  (free, borrowed), `to_` (costly) or `into_` (consuming) (C-CONV).
+  Getters have no `get_` prefix (C-GETTER). Iterators come from `iter`,
+  `iter_mut` and `into_iter` (C-ITER). Related names keep one word order,
+  such as `on_light_report` and `on_device_event` (C-WORD-ORDER).
+- **Common traits.** Derive `Debug` on every type (C-DEBUG), and `Clone`,
+  `Copy`, `PartialEq`, `Eq`, `Hash` and `Default` where they mean
+  something for the type (C-COMMON-TRAITS). `Debug` output is never empty
+  (C-DEBUG-NONEMPTY). Implement `Display` for what users see.
+- **Conversions use the standard traits** `From`, `TryFrom`, `AsRef`
+  (C-CONV-TRAITS), and live on the most specific type involved
+  (C-CONV-SPECIFIC).
+- **Errors are meaningful.** Error types implement `Error`, `Debug` and
+  `Display`, with messages in lower case and no full stop (C-GOOD-ERR).
+  With `anyhow`, add `.context(…)` that names what was being done.
+- **Documentation.** The crate docs in `lib.rs` are the entry point: what
+  Knut is, where the program starts and a map of the modules
+  (C-CRATE-DOC). Docs link to the items they mention with intra-doc links
+  such as [`Engine`](crate::engine::Engine) (C-LINK). A function that can
+  fail or panic says when, under `# Errors` and `# Panics` (C-FAILURE).
+  Examples in docs use `?`, not `unwrap` (C-QUESTION-MARK). Cargo.toml
+  carries the common metadata (C-METADATA).
+- **Predictability.** A function with a clear receiver is a method
+  (C-METHOD). Constructors are associated functions, `new` or `with_…`
+  (C-CTOR). Functions return their results instead of writing to
+  `&mut` out-parameters (C-NO-OUT). `Deref` only on smart pointers
+  (C-DEREF).
+- **Flexibility.** Take `impl Into<String>`, `impl AsRef<Path>` or
+  `&[T]` where callers have different types at hand (C-GENERIC), but not
+  when it makes the signature harder to read than the calls it saves.
+  Return intermediate results callers would otherwise recompute
+  (C-INTERMEDIATE).
+- **Type safety.** Distinct meanings get distinct types, such as a
+  newtype for an id (C-NEWTYPE). Arguments say what they mean through an
+  enum or struct, not a `bool` or a bare `Option` (C-CUSTOM-TYPE). Values
+  with many optional parts get a builder (C-BUILDER); with only a few, a
+  struct literal with `..Default::default()` is enough.
+- **Dependability.** Functions validate their arguments, preferably
+  through types that cannot hold invalid values (C-VALIDATE). Destructors
+  never fail or block (C-DTOR-FAIL, C-DTOR-BLOCK).
+
+The macro items, C-SERDE, C-SEND-SYNC beyond what tokio needs, C-SEALED,
+C-STRUCT-PRIVATE, C-RELNOTES, C-STABLE and C-EXAMPLE for private items do
+not apply: Knut defines no macros, publishes no crate and has no
+downstream users who could depend on its internals.
 
 ### Ruby (prelude and DSL)
 
