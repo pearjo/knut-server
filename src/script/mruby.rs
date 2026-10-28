@@ -43,12 +43,18 @@ impl std::error::Error for RubyError {}
 
 /// One mruby interpreter. mruby is single-threaded, so this is neither
 /// `Send` nor `Sync`.
+#[derive(Debug)]
 pub(crate) struct Mruby {
     state: *mut MrbState,
 }
 
 impl Mruby {
+    /// # Panics
+    ///
+    /// Panics when mruby cannot allocate its state, that is, out of memory.
     pub(crate) fn new() -> Self {
+        // SAFETY: knut_mrb_open has no preconditions; it returns null only
+        // when allocation fails, which is checked below.
         let state = unsafe { knut_mrb_open() };
         assert!(!state.is_null(), "mruby failed to allocate its state");
         Self { state }
@@ -56,9 +62,16 @@ impl Mruby {
 
     /// Evaluates `code` and returns the result's `to_s`. `filename` is used
     /// in error messages and backtraces.
+    ///
+    /// # Errors
+    ///
+    /// Fails with the exception when the code raises or does not parse.
     pub(crate) fn eval(&mut self, code: &str, filename: &str) -> Result<String, RubyError> {
         let filename = CString::new(filename).unwrap_or_else(|_| c"(invalid)".into());
         let mut out: *mut c_char = std::ptr::null_mut();
+        // SAFETY: `state` is a live interpreter owned by `self`; `code` is
+        // passed with its length, so it needs no NUL; `filename` is a valid
+        // C string; `out` is a valid place for the shim to store its result.
         let failed = unsafe {
             knut_mrb_eval(
                 self.state,
@@ -68,24 +81,33 @@ impl Mruby {
                 &mut out,
             )
         };
-        let text = if out.is_null() {
-            String::from("out of memory")
-        } else {
-            let text = unsafe { CStr::from_ptr(out) }
-                .to_string_lossy()
-                .into_owned();
-            unsafe { knut_mrb_free(out) };
-            text
-        };
+        let text = take_output(out);
         if failed == 0 {
             return Ok(text);
         }
+
         let mut lines = text.lines().map(str::to_owned);
         Err(RubyError {
             message: lines.next().unwrap_or_default(),
             backtrace: lines.collect(),
         })
     }
+}
+
+/// Copies the shim's result into a `String` and frees it. Null means the
+/// shim could not allocate one.
+fn take_output(out: *mut c_char) -> String {
+    if out.is_null() {
+        return String::from("out of memory");
+    }
+    // SAFETY: a non-null `out` is a NUL-terminated string the shim
+    // allocated for us; it is read once and then freed by the shim.
+    let text = unsafe { CStr::from_ptr(out) }
+        .to_string_lossy()
+        .into_owned();
+    // SAFETY: as above; `out` is not used after this.
+    unsafe { knut_mrb_free(out) };
+    text
 }
 
 impl Default for Mruby {
@@ -96,6 +118,7 @@ impl Default for Mruby {
 
 impl Drop for Mruby {
     fn drop(&mut self) {
+        // SAFETY: `state` came from knut_mrb_open and is closed only here.
         unsafe { knut_mrb_close(self.state) };
     }
 }

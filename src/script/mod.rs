@@ -9,7 +9,7 @@ use std::path::Path;
 use chrono::{DateTime, Local};
 use serde::Deserialize;
 
-use crate::model::{Model, RawModel, ValidationErrors};
+use crate::model::{Model, RawModel, Scene, ValidationErrors};
 use crate::sun::{SunPosition, SunTimes};
 use mruby::Mruby;
 pub(crate) use mruby::RubyError;
@@ -69,22 +69,7 @@ impl BlockArgs {
                 position,
                 times,
                 now,
-            } => {
-                // Knut::Sun takes Unix seconds and makes them Time itself.
-                let (sunrise, sunset) = match times {
-                    Some(times) => (
-                        times.sunrise.timestamp().to_string(),
-                        times.sunset.timestamp().to_string(),
-                    ),
-                    None => ("nil".to_string(), "nil".to_string()),
-                };
-                format!(
-                    "Knut::Sun.new({:.4}, {:.4}, {sunrise}, {sunset}), {}",
-                    position.elevation,
-                    position.azimuth,
-                    ruby_time(now)
-                )
-            }
+            } => format!("{}, {}", ruby_sun(position, times.as_ref()), ruby_time(now)),
             Self::Device {
                 path,
                 event,
@@ -103,6 +88,20 @@ impl BlockArgs {
 
 fn ruby_time(time: &DateTime<Local>) -> String {
     format!("Time.at({})", time.timestamp())
+}
+
+/// A `Knut::Sun`; it takes sunrise and sunset as Unix seconds, or `nil`
+/// during polar day or night, and makes them Time itself.
+fn ruby_sun(position: &SunPosition, times: Option<&SunTimes>) -> String {
+    let unix_or_nil = |time: Option<DateTime<chrono::Utc>>| {
+        time.map_or("nil".to_string(), |time| time.timestamp().to_string())
+    };
+    let sunrise = unix_or_nil(times.map(|times| times.sunrise));
+    let sunset = unix_or_nil(times.map(|times| times.sunset));
+    format!(
+        "Knut::Sun.new({:.4}, {:.4}, {sunrise}, {sunset})",
+        position.elevation, position.azimuth
+    )
 }
 
 /// What `set`, `turn_on` or `turn_off` asks of each target.
@@ -149,10 +148,14 @@ pub(crate) enum Action {
     },
 }
 
+/// Why a config did not load.
 #[derive(Debug)]
 pub(crate) enum LoadError {
+    /// The file could not be read.
     Io(std::io::Error),
+    /// The Ruby code raised, including the prelude's own config errors.
     Ruby(RubyError),
+    /// The config ran, but describes a home that does not fit together.
     Invalid(ValidationErrors),
 }
 
@@ -172,27 +175,29 @@ impl std::error::Error for LoadError {}
 /// already name their config line, so the prelude's own location and
 /// backtrace are noise.
 pub(crate) fn describe(error: &RubyError) -> String {
-    let message = error.message.as_str();
-    let config_error = message.ends_with("(Knut::ConfigError)");
-    let message = match message.strip_prefix(PRELUDE_FILE) {
-        Some(rest) => rest.split_once(": ").map_or(rest, |(_, rest)| rest),
-        None => message,
-    };
-    let message = message.trim_end_matches(" (Knut::ConfigError)");
-    if config_error {
-        return message.to_string();
+    let message = without_prelude_location(&error.message);
+    if let Some(config_error) = message.strip_suffix(" (Knut::ConfigError)") {
+        return config_error.to_string();
     }
-    let user_frames: Vec<&String> = error
+
+    let config_frames = error
         .backtrace
         .iter()
-        .filter(|line| !line.starts_with(PRELUDE_FILE))
-        .collect();
+        .filter(|line| !line.starts_with(PRELUDE_FILE));
     let mut text = message.to_string();
-    for frame in user_frames {
+    for frame in config_frames {
         text.push_str("\n    from ");
         text.push_str(frame);
     }
     text
+}
+
+/// The message without a leading "(knut)/file.rb:12: ".
+fn without_prelude_location(message: &str) -> &str {
+    let Some(rest) = message.strip_prefix(PRELUDE_FILE) else {
+        return message;
+    };
+    rest.split_once(": ").map_or(rest, |(_, message)| message)
 }
 
 /// The config's Ruby interpreter, kept alive to run scene and trigger blocks.
@@ -201,13 +206,14 @@ pub(crate) struct Script {
 }
 
 impl Script {
-    /// Loads and validates the config at `path`.
+    /// Loads and validates the config at `path`. Error messages name the
+    /// config by its file name, e.g. `config.rb:12`.
     pub(crate) fn load(path: &Path) -> Result<(Self, Model), LoadError> {
         let code = std::fs::read_to_string(path).map_err(LoadError::Io)?;
-        let filename = path.file_name().map_or_else(
-            || path.display().to_string(),
-            |name| name.to_string_lossy().into(),
-        );
+        let filename = match path.file_name() {
+            Some(name) => name.to_string_lossy().into_owned(),
+            None => path.display().to_string(),
+        };
         Self::load_str(&code, &filename)
     }
 
@@ -245,7 +251,8 @@ impl Script {
             mruby::ruby_literal(state)
         );
         let json = self.ruby.eval(&code, PRELUDE_FILE)?;
-        Ok(serde_json::from_str(&json).expect("the prelude emits valid action JSON"))
+        let actions = serde_json::from_str(&json).expect("the prelude emits valid action JSON");
+        Ok(actions)
     }
 
     /// Runs the staging block `proc_id` for `need` (0–1) at the Unix time
@@ -256,34 +263,32 @@ impl Script {
         need: f64,
         now: i64,
     ) -> Result<Vec<String>, RubyError> {
-        let json = self.ruby.eval(
-            &format!("Knut.staging({proc_id}, {need:?}, {now})"),
-            PRELUDE_FILE,
-        )?;
-        Ok(serde_json::from_str(&json).expect("the prelude emits a JSON array"))
+        let code = format!("Knut.staging({proc_id}, {need:?}, {now})");
+        let json = self.ruby.eval(&code, PRELUDE_FILE)?;
+        let names = serde_json::from_str(&json).expect("the prelude emits a JSON array");
+        Ok(names)
     }
 
     /// Scenes are almost always static, so running them once at load time
     /// catches typos in their targets before the daemon starts.
     fn dry_run_scenes(&mut self, model: &Model) -> Vec<String> {
-        let empty = serde_json::json!({});
         let mut errors = Vec::new();
         for scene in &model.scenes {
-            match self.run(scene.proc_id, &BlockArgs::None, &empty) {
-                Ok(actions) => {
-                    for problem in validate_actions(model, &actions) {
-                        errors.push(format!("{}: scene {:?}: {problem}", scene.line, scene.name));
-                    }
-                }
-                Err(error) => errors.push(format!(
-                    "{}: scene {:?}: {}",
-                    scene.line,
-                    scene.name,
-                    describe(&error)
-                )),
+            let problems = self.scene_problems(model, scene);
+            for problem in problems {
+                errors.push(format!("{}: scene {:?}: {problem}", scene.line, scene.name));
             }
         }
         errors
+    }
+
+    /// What is wrong with the actions `scene` asks for, or why it fails.
+    fn scene_problems(&mut self, model: &Model, scene: &Scene) -> Vec<String> {
+        let no_state = serde_json::json!({});
+        match self.run(scene.proc_id, &BlockArgs::None, &no_state) {
+            Ok(actions) => validate_actions(model, &actions),
+            Err(error) => vec![describe(&error)],
+        }
     }
 }
 
@@ -293,8 +298,10 @@ fn recorded_model(ruby: &mut Mruby, filename: &str) -> Result<RawModel, LoadErro
         .eval("Knut.model_json", PRELUDE_FILE)
         .map_err(LoadError::Ruby)?;
     // The prelude checks shapes; what is left are value errors such as a bad IP address.
-    serde_json::from_str(&json)
-        .map_err(|error| LoadError::Invalid(ValidationErrors(vec![format!("{filename}: {error}")])))
+    serde_json::from_str(&json).map_err(|error| {
+        let message = format!("{filename}: {error}");
+        LoadError::Invalid(ValidationErrors(vec![message]))
+    })
 }
 
 /// Every brightness mapping evaluated for 1..100, keyed by proc id.
