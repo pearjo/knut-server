@@ -34,10 +34,13 @@ pub(crate) struct StagedLights {
 /// the count in use so far; without it the fewest stages that can carry the
 /// value are chosen.
 pub(crate) fn stage_count(stages: &[Vec<String>], value: f64, active: Option<usize>) -> usize {
-    let total: usize = stages.iter().map(Vec::len).sum();
+    let all_lights: usize = stages.iter().map(Vec::len).sum();
+    // With k of n lights on, each carries value · n / k.
     let per_light = |count: usize| {
-        value * total as f64 / stages[..count].iter().map(Vec::len).sum::<usize>() as f64
+        let lit: usize = stages[..count].iter().map(Vec::len).sum();
+        value * all_lights as f64 / lit as f64
     };
+
     let mut count = active.unwrap_or(1).clamp(1, stages.len());
     while count < stages.len() && per_light(count) > STAGE_UP {
         count += 1;
@@ -67,30 +70,32 @@ pub(crate) fn staged_lights(
 /// The paths of the lights a staging block picked by name, in member order.
 /// Every name must be a light of the group, and at least one must be given.
 pub(crate) fn picked_lights(group: &Group, names: &[String]) -> Result<Vec<String>, String> {
-    let room = group.path.rsplit_once('/').map_or("", |(room, _)| room);
-    let paths: Vec<String> = names.iter().map(|name| format!("{room}/{name}")).collect();
-    if let Some(stranger) = names
-        .iter()
-        .zip(&paths)
-        .find(|(_, path)| !group.members.iter().any(|m| &m.light == *path))
-    {
-        return Err(format!(
-            "staging block picked {:?}, which is not a light of group {:?}",
-            stranger.0, group.name
-        ));
-    }
-    if paths.is_empty() {
+    if names.is_empty() {
         return Err(format!(
             "staging block picked no lights of group {:?}",
             group.name
         ));
     }
-    Ok(group
+
+    let room = group.path.rsplit_once('/').map_or("", |(room, _)| room);
+    let paths: Vec<String> = names.iter().map(|name| format!("{room}/{name}")).collect();
+    let is_member = |path: &String| group.members.iter().any(|member| &member.light == path);
+    for (name, path) in names.iter().zip(&paths) {
+        if !is_member(path) {
+            return Err(format!(
+                "staging block picked {name:?}, which is not a light of group {:?}",
+                group.name
+            ));
+        }
+    }
+
+    let picked = group
         .members
         .iter()
-        .filter(|m| paths.contains(&m.light))
-        .map(|m| m.light.clone())
-        .collect())
+        .filter(|member| paths.contains(&member.light))
+        .map(|member| member.light.clone())
+        .collect();
+    Ok(picked)
 }
 
 /// Commands for every physical light behind `path`. A group's brightness is
@@ -121,6 +126,7 @@ fn group_commands(
     let lit = staged.map_or(group.members.len(), |staged| staged.on.len()) as f64;
     // With k of n lights on, each carries value · n / k.
     let spread = |brightness: f64| (brightness * members / lit).min(100.0);
+
     let mut commands = Vec::new();
     for member in &group.members {
         let Some(light) = model.lights.get(&member.light) else {
@@ -148,12 +154,15 @@ fn member_command(
             ..LightCommand::off()
         }),
         Some(staged) if !staged.on.contains(&member.light) => None,
-        _ => Some(LightCommand {
-            brightness: command
+        _ => {
+            let brightness = command
                 .brightness
-                .map(|brightness| member.brightness_for(spread(brightness))),
-            ..command.clone()
-        }),
+                .map(|brightness| member.brightness_for(spread(brightness)));
+            Some(LightCommand {
+                brightness,
+                ..command.clone()
+            })
+        }
     }
 }
 
@@ -177,53 +186,85 @@ pub(crate) async fn send_all(adapters: &Adapters, commands: &[DeviceCommand]) ->
             }
         }
     });
-    futures::future::join_all(sends)
-        .await
-        .into_iter()
-        .flatten()
-        .collect()
+    let results = futures::future::join_all(sends).await;
+    results.into_iter().flatten().collect()
 }
 
 /// Parses `knut set` values: `on`, `off`, a brightness like `40` or `40%`,
 /// a colour temperature like `2700K`, and `transition=2` (seconds).
+///
+/// # Errors
+///
+/// Fails without values, and for a value that is none of these or out of
+/// range.
 pub(crate) fn parse_values(values: &[String]) -> Result<LightCommand> {
-    let mut command = LightCommand::default();
     if values.is_empty() {
         bail!(
             "expected a value: on, off, a brightness like 40%, or a colour temperature like 2700K"
         );
     }
+
+    let mut command = LightCommand::default();
     for value in values {
-        let value = value.trim();
-        let lower = value.to_ascii_lowercase();
-        if lower == "on" {
-            command.on = Some(true);
-        } else if lower == "off" {
-            command.on = Some(false);
-        } else if let Some(seconds) = lower.strip_prefix("transition=") {
-            command.transition = Some(parse_number(seconds, value)?);
-        } else if let Some(kelvin) = lower.strip_suffix('k') {
-            let kelvin = parse_number(kelvin, value)?;
-            if !(1000.0..=10000.0).contains(&kelvin) {
-                bail!("colour temperature {value} is outside 1000K–10000K");
-            }
-            command.kelvin = Some(kelvin);
-        } else {
-            let brightness = parse_number(lower.trim_end_matches('%'), value)?;
-            if !(0.0..=100.0).contains(&brightness) {
-                bail!("brightness {value} is outside 0–100");
-            }
-            if brightness == 0.0 {
-                command.on = Some(false);
-            } else {
-                command.brightness = Some(brightness);
-            }
+        match parse_value(value)? {
+            SetValue::On => command.on = Some(true),
+            SetValue::Off => command.on = Some(false),
+            SetValue::Brightness(brightness) => command.brightness = Some(brightness),
+            SetValue::Kelvin(kelvin) => command.kelvin = Some(kelvin),
+            SetValue::Transition(seconds) => command.transition = Some(seconds),
         }
     }
-    if command.on != Some(false) && (command.brightness.is_some() || command.kelvin.is_some()) {
+
+    // A brightness or colour temperature switches the light on, unless the
+    // values also say off.
+    let sets_a_level = command.brightness.is_some() || command.kelvin.is_some();
+    if sets_a_level && command.on != Some(false) {
         command.on = Some(true);
     }
     Ok(command)
+}
+
+/// One `knut set` value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SetValue {
+    On,
+    Off,
+    /// Percent, above 0.
+    Brightness(f64),
+    Kelvin(f64),
+    /// Seconds.
+    Transition(f64),
+}
+
+fn parse_value(value: &str) -> Result<SetValue> {
+    let value = value.trim();
+    let lower = value.to_ascii_lowercase();
+    if lower == "on" {
+        return Ok(SetValue::On);
+    }
+    if lower == "off" {
+        return Ok(SetValue::Off);
+    }
+    if let Some(seconds) = lower.strip_prefix("transition=") {
+        let seconds = parse_number(seconds, value)?;
+        return Ok(SetValue::Transition(seconds));
+    }
+    if let Some(kelvin) = lower.strip_suffix('k') {
+        let kelvin = parse_number(kelvin, value)?;
+        if !(1000.0..=10000.0).contains(&kelvin) {
+            bail!("colour temperature {value} is outside 1000K–10000K");
+        }
+        return Ok(SetValue::Kelvin(kelvin));
+    }
+
+    let brightness = parse_number(lower.trim_end_matches('%'), value)?;
+    if !(0.0..=100.0).contains(&brightness) {
+        bail!("brightness {value} is outside 0–100");
+    }
+    if brightness == 0.0 {
+        return Ok(SetValue::Off);
+    }
+    Ok(SetValue::Brightness(brightness))
 }
 
 fn parse_number(text: &str, original: &str) -> Result<f64> {
@@ -239,18 +280,25 @@ mod tests {
     use crate::model::Staging;
     use crate::script::Script;
 
+    fn values(values: &[&str]) -> Result<LightCommand> {
+        let values: Vec<String> = values.iter().map(|value| value.to_string()).collect();
+        parse_values(&values)
+    }
+
     #[test]
-    fn parses_set_values() {
-        let values =
-            |v: &[&str]| parse_values(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        assert_eq!(values(&["off"]).unwrap(), LightCommand::off());
-        let command = values(&["40%", "2700K", "transition=2"]).unwrap();
+    fn parses_set_values() -> Result<()> {
+        assert_eq!(values(&["off"])?, LightCommand::off());
+        assert_eq!(values(&["0%"])?, LightCommand::off());
+
+        let command = values(&["40%", "2700K", "transition=2"])?;
         assert_eq!(command.on, Some(true));
         assert_eq!(command.brightness, Some(40.0));
         assert_eq!(command.kelvin, Some(2700.0));
         assert_eq!(command.transition, Some(2.0));
+
         assert!(values(&["bright"]).is_err());
         assert!(values(&["150"]).is_err());
+        Ok(())
     }
 
     #[test]

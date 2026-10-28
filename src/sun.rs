@@ -77,23 +77,29 @@ pub(crate) fn position(lat: f64, lon: f64, time: DateTime<Utc>) -> SunPosition {
         + lat_r.cos() * params.declination.cos() * hour_angle.to_radians().cos();
     let zenith = cos_zenith.clamp(-1.0, 1.0).acos();
 
-    let azimuth_denominator = lat_r.cos() * zenith.sin();
-    let azimuth = if azimuth_denominator.abs() < 1e-9 {
-        180.0
-    } else {
-        let cos_azimuth = ((lat_r.sin() * zenith.cos() - params.declination.sin())
-            / azimuth_denominator)
-            .clamp(-1.0, 1.0);
-        let angle = cos_azimuth.acos().to_degrees();
-        if hour_angle > 0.0 {
-            (angle + 180.0).rem_euclid(360.0)
-        } else {
-            (540.0 - angle).rem_euclid(360.0)
-        }
-    };
     SunPosition {
         elevation: 90.0 - zenith.to_degrees(),
-        azimuth,
+        azimuth: azimuth(lat_r, zenith, params.declination, hour_angle),
+    }
+}
+
+/// Degrees clockwise from north, from the latitude, zenith and declination
+/// in radians and the hour angle in degrees (positive in the afternoon).
+fn azimuth(lat_r: f64, zenith: f64, declination: f64, hour_angle: f64) -> f64 {
+    let denominator = lat_r.cos() * zenith.sin();
+    // At the poles or with the sun straight overhead, every direction is
+    // the same; pick south.
+    if denominator.abs() < 1e-9 {
+        return 180.0;
+    }
+
+    let cos_azimuth = (lat_r.sin() * zenith.cos() - declination.sin()) / denominator;
+    let angle = cos_azimuth.clamp(-1.0, 1.0).acos().to_degrees();
+    let afternoon = hour_angle > 0.0;
+    if afternoon {
+        (angle + 180.0).rem_euclid(360.0)
+    } else {
+        (540.0 - angle).rem_euclid(360.0)
     }
 }
 
