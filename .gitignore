@@ -1,5 +1,10 @@
 /target
 
+# builds of the vendored hap on its own; Knut's Cargo.lock pins its
+# dependencies
+/vendor/hap/target/
+/vendor/hap/Cargo.lock
+
 # local deployment
 .env
 /config.rb
