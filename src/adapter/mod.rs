@@ -104,6 +104,7 @@ pub(crate) enum Adapter {
 }
 
 impl Adapter {
+    /// Sends `command` to the adapter's `device`.
     pub(crate) async fn send(&self, device: &str, command: &LightCommand) -> Result<()> {
         match self {
             Self::Hue(bridge) => bridge.send(device, command).await,
@@ -111,6 +112,7 @@ impl Adapter {
         }
     }
 
+    /// Every device the adapter knows, whether the config uses it or not.
     pub(crate) async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
         match self {
             Self::Hue(bridge) => bridge.discover().await,
@@ -135,25 +137,7 @@ impl Adapters {
     ) -> Result<Self> {
         let mut adapters = HashMap::new();
         for config in &model.adapters {
-            let adapter = match config {
-                AdapterConfig::Hue {
-                    name, host, key, ..
-                } => {
-                    let key = hue_key(state_dir, name, key.as_deref())?;
-                    Adapter::Hue(hue::Bridge::connect(name, host, &key, events.clone()))
-                }
-                AdapterConfig::Zigbee {
-                    name,
-                    mqtt,
-                    base_topic,
-                    ..
-                } => Adapter::Zigbee(zigbee::Zigbee::connect(
-                    name,
-                    mqtt,
-                    base_topic,
-                    events.clone(),
-                )?),
-            };
+            let adapter = connect_one(config, state_dir, events.clone())?;
             adapters.insert(config.name().to_string(), adapter);
         }
         Ok(Self { adapters })
@@ -179,6 +163,31 @@ impl Adapters {
     }
 }
 
+fn connect_one(
+    config: &AdapterConfig,
+    state_dir: &Path,
+    events: mpsc::UnboundedSender<AdapterEvent>,
+) -> Result<Adapter> {
+    match config {
+        AdapterConfig::Hue {
+            name, host, key, ..
+        } => {
+            let key = hue_key(state_dir, name, key.as_deref())?;
+            let bridge = hue::Bridge::connect(name, host, &key, events);
+            Ok(Adapter::Hue(bridge))
+        }
+        AdapterConfig::Zigbee {
+            name,
+            mqtt,
+            base_topic,
+            ..
+        } => {
+            let zigbee = zigbee::Zigbee::connect(name, mqtt, base_topic, events)?;
+            Ok(Adapter::Zigbee(zigbee))
+        }
+    }
+}
+
 /// The application key of a Hue bridge: from the config, or the one
 /// `knut discover` stored when it paired.
 fn hue_key(state_dir: &Path, bridge: &str, configured: Option<&str>) -> Result<String> {
@@ -194,13 +203,13 @@ fn hue_key(state_dir: &Path, bridge: &str, configured: Option<&str>) -> Result<S
 
 /// Snippet to paste into the config for a discovered device.
 pub(crate) fn dsl_snippet(device: &DiscoveredDevice, model: &Model) -> String {
-    let several_of_kind = model
+    let adapters_of_kind = model
         .adapters
         .iter()
-        .filter(|a| a.kind() == device.device.kind)
-        .count()
-        > 1;
-    let adapter = if several_of_kind {
+        .filter(|adapter| adapter.kind() == device.device.kind)
+        .count();
+    // With one adapter of a kind, the DSL picks it without being told.
+    let adapter = if adapters_of_kind > 1 {
         format!(", adapter: {:?}", device.device.adapter)
     } else {
         String::new()

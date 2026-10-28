@@ -23,13 +23,22 @@ use crate::model::{AdapterKind, DeviceRef};
 
 /// The bridge handles about ten light commands per second; more get dropped.
 const COMMAND_SPACING: Duration = Duration::from_millis(100);
+/// How long to wait before reconnecting a broken event stream.
+const RECONNECT_DELAY: Duration = Duration::from_secs(5);
+/// Hue sensors and their description in `knut discover`.
+const SENSOR_RESOURCES: [(&str, &str); 2] = [("motion", "motion sensor"), ("button", "button")];
 
+/// One Hue bridge, reached over HTTPS with its application key.
 pub(crate) struct Bridge {
+    /// The adapter's name in the config.
     name: String,
     base_url: String,
     key: String,
     http: reqwest::Client,
+    /// Colour temperature range per light id; `None` for lights without
+    /// colour temperature. Filled on the first command to an unknown light.
     colour_ranges: Mutex<HashMap<String, Option<MiredRange>>>,
+    /// Held while a command is sent and spaced, so commands queue up.
     send_lock: tokio::sync::Mutex<()>,
 }
 
@@ -101,7 +110,12 @@ struct ProductData {
     product_name: String,
 }
 
+/// A device's name and product, by device id.
+type DeviceNames<'a> = HashMap<&'a str, (&'a str, &'a str)>;
+
 impl Bridge {
+    /// Connects to the bridge at `host` and listens to its events in the
+    /// background, reconnecting when the stream breaks.
     pub(crate) fn connect(
         name: &str,
         host: &str,
@@ -116,127 +130,145 @@ impl Bridge {
             colour_ranges: Mutex::new(HashMap::new()),
             send_lock: tokio::sync::Mutex::new(()),
         });
-        let this = Arc::clone(&bridge);
-        tokio::spawn(async move { this.run_event_stream(events).await });
+        let listener = Arc::clone(&bridge);
+        tokio::spawn(async move { listener.run_event_stream(events).await });
         bridge
     }
 
+    /// Sends `command` to the light with resource id `light_id`.
+    pub(crate) async fn send(&self, light_id: &str, command: &LightCommand) -> Result<()> {
+        let range = self.colour_range(light_id).await;
+        let body = request_body(command, range);
+
+        let _spacing = self.send_lock.lock().await;
+        self.put_light(light_id, &body).await?;
+        tokio::time::sleep(COMMAND_SPACING).await;
+        Ok(())
+    }
+
+    /// Every light and sensor the bridge knows.
+    pub(crate) async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
+        let mut found = self.discover_lights().await?;
+        let devices: Vec<DeviceResource> = self.get("device").await?;
+        let device_names = device_names(&devices);
+        for (resource, label) in SENSOR_RESOURCES {
+            let sensors = self
+                .discover_sensors(resource, label, &device_names)
+                .await?;
+            found.extend(sensors);
+        }
+        Ok(found)
+    }
+
+    async fn discover_lights(&self) -> Result<Vec<DiscoveredDevice>> {
+        let lights: Vec<LightResource> = self.get("light").await?;
+        let found = lights
+            .into_iter()
+            .map(|light| DiscoveredDevice {
+                device: hue_device(&self.name, &light.id),
+                class: DeviceClass::Light,
+                name: light
+                    .metadata
+                    .map(|metadata| metadata.name)
+                    .unwrap_or_default(),
+                description: "Hue light".into(),
+            })
+            .collect();
+        Ok(found)
+    }
+
+    /// The sensors of one `resource` type. They are named after the device
+    /// they belong to, and buttons also after their number on it.
+    async fn discover_sensors(
+        &self,
+        resource: &str,
+        label: &str,
+        device_names: &DeviceNames<'_>,
+    ) -> Result<Vec<DiscoveredDevice>> {
+        let sensors: Vec<SensorResource> = self.get(resource).await?;
+        let mut found = Vec::new();
+        for sensor in sensors {
+            let owner = sensor.owner.rid.as_str();
+            let (name, product) = device_names.get(owner).copied().unwrap_or(("", ""));
+            let button_number = sensor.metadata.and_then(|metadata| metadata.control_id);
+            let name = match button_number {
+                Some(number) => format!("{name} {number}"),
+                None => name.to_string(),
+            };
+            found.push(DiscoveredDevice {
+                device: hue_device(&self.name, &sensor.id),
+                class: DeviceClass::Sensor,
+                name,
+                description: format!("{product} {label}"),
+            });
+        }
+        Ok(found)
+    }
+
+    /// Reads every resource of type `resource`.
     async fn get<T: for<'de> Deserialize<'de>>(&self, resource: &str) -> Result<Vec<T>> {
-        let response: Response<T> = self
+        let url = format!("{}/clip/v2/resource/{resource}", self.base_url);
+        let response = self
             .http
-            .get(format!("{}/clip/v2/resource/{resource}", self.base_url))
+            .get(url)
             .header("hue-application-key", &self.key)
             .send()
             .await
-            .with_context(|| format!("hue {}: cannot reach the bridge", self.name))?
-            .error_for_status()?
-            .json()
-            .await?;
-        if let Some(error) = response.errors.first() {
+            .with_context(|| format!("hue {}: cannot reach the bridge", self.name))?;
+        let response = response.error_for_status()?;
+        let body: Response<T> = response.json().await?;
+
+        if let Some(error) = body.errors.first() {
             bail!("hue {}: {}", self.name, error.description);
         }
-        Ok(response.data)
+        Ok(body.data)
+    }
+
+    async fn put_light(&self, light_id: &str, body: &Value) -> Result<()> {
+        let url = format!("{}/clip/v2/resource/light/{light_id}", self.base_url);
+        let response = self
+            .http
+            .put(url)
+            .header("hue-application-key", &self.key)
+            .json(body)
+            .send()
+            .await
+            .with_context(|| format!("hue {}: cannot reach the bridge", self.name))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            bail!("hue {}: light {light_id}: {status} {text}", self.name);
+        }
+        Ok(())
+    }
+
+    /// The light's colour temperature range, read from the bridge the first
+    /// time it is needed. `None` for lights without colour temperature, or
+    /// when the bridge cannot tell.
+    async fn colour_range(&self, light_id: &str) -> Option<MiredRange> {
+        let known = self.colour_ranges.lock().unwrap().contains_key(light_id);
+        if !known {
+            if let Err(error) = self.refresh_colour_ranges().await {
+                log::warn!("{error:#}");
+            }
+        }
+        let ranges = self.colour_ranges.lock().unwrap();
+        ranges.get(light_id).copied().flatten()
     }
 
     async fn refresh_colour_ranges(&self) -> Result<()> {
         let lights: Vec<LightResource> = self.get("light").await?;
         let mut ranges = self.colour_ranges.lock().unwrap();
         for light in lights {
-            let range = light
-                .color_temperature
-                .and_then(|ct| ct.mirek_schema)
-                .map(|schema| MiredRange {
-                    min: schema.mirek_minimum,
-                    max: schema.mirek_maximum,
-                });
+            let schema = light.color_temperature.and_then(|ct| ct.mirek_schema);
+            let range = schema.map(|schema| MiredRange {
+                min: schema.mirek_minimum,
+                max: schema.mirek_maximum,
+            });
             ranges.insert(light.id, range);
         }
         Ok(())
-    }
-
-    pub(crate) async fn send(&self, light_id: &str, command: &LightCommand) -> Result<()> {
-        if !self.colour_ranges.lock().unwrap().contains_key(light_id) {
-            if let Err(error) = self.refresh_colour_ranges().await {
-                log::warn!("{error:#}");
-            }
-        }
-        let range = self
-            .colour_ranges
-            .lock()
-            .unwrap()
-            .get(light_id)
-            .copied()
-            .flatten();
-        let body = request_body(command, range);
-
-        let _spacing = self.send_lock.lock().await;
-        let response = self
-            .http
-            .put(format!(
-                "{}/clip/v2/resource/light/{light_id}",
-                self.base_url
-            ))
-            .header("hue-application-key", &self.key)
-            .json(&body)
-            .send()
-            .await
-            .with_context(|| format!("hue {}: cannot reach the bridge", self.name))?;
-        let status = response.status();
-        if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
-            bail!("hue {}: light {light_id}: {status} {text}", self.name);
-        }
-        tokio::time::sleep(COMMAND_SPACING).await;
-        Ok(())
-    }
-
-    pub(crate) async fn discover(&self) -> Result<Vec<DiscoveredDevice>> {
-        let devices: Vec<DeviceResource> = self.get("device").await?;
-        let device_names: HashMap<&str, (&str, &str)> = devices
-            .iter()
-            .map(|d| {
-                let product = d
-                    .product_data
-                    .as_ref()
-                    .map_or("", |p| p.product_name.as_str());
-                (d.id.as_str(), (d.metadata.name.as_str(), product))
-            })
-            .collect();
-        let device_ref = |id: &str| DeviceRef {
-            adapter: self.name.clone(),
-            kind: AdapterKind::Hue,
-            device: id.to_string(),
-        };
-
-        let mut found = Vec::new();
-        for light in self.get::<LightResource>("light").await? {
-            let name = light.metadata.map(|m| m.name).unwrap_or_default();
-            found.push(DiscoveredDevice {
-                device: device_ref(&light.id),
-                class: DeviceClass::Light,
-                name,
-                description: "Hue light".into(),
-            });
-        }
-        for (resource, label) in [("motion", "motion sensor"), ("button", "button")] {
-            for sensor in self.get::<SensorResource>(resource).await? {
-                let (name, product) = device_names
-                    .get(sensor.owner.rid.as_str())
-                    .copied()
-                    .unwrap_or(("", ""));
-                let name = match sensor.metadata.and_then(|m| m.control_id) {
-                    Some(control) => format!("{name} {control}"),
-                    None => name.to_string(),
-                };
-                found.push(DiscoveredDevice {
-                    device: device_ref(&sensor.id),
-                    class: DeviceClass::Sensor,
-                    name,
-                    description: format!("{product} {label}"),
-                });
-            }
-        }
-        Ok(found)
     }
 
     async fn run_event_stream(&self, events: mpsc::UnboundedSender<AdapterEvent>) {
@@ -248,46 +280,67 @@ impl Bridge {
                     self.name
                 ),
             }
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(RECONNECT_DELAY).await;
         }
     }
 
+    /// Reports the current light states, then every update until the
+    /// stream ends.
     async fn read_event_stream(&self, events: &mpsc::UnboundedSender<AdapterEvent>) -> Result<()> {
-        let response = self
-            .http
-            .get(format!("{}/eventstream/clip/v2", self.base_url))
-            .header("hue-application-key", &self.key)
-            .header("Accept", "text/event-stream")
-            .timeout(Duration::from_secs(24 * 3600))
-            .send()
-            .await?
-            .error_for_status()?;
+        let response = self.open_event_stream().await?;
         log::info!("hue {}: listening to events", self.name);
         // The stream only carries changes, so start from the current state.
-        let lights: Vec<Value> = self.get("light").await?;
-        for light in &lights {
-            for event in parse_resource_update(&self.name, light) {
-                let _ = events.send(event);
-            }
-        }
+        self.report_current_lights(events).await?;
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
         while let Some(chunk) = stream.next().await {
             buffer.push_str(&String::from_utf8_lossy(&chunk?));
+            // Server-sent events end with an empty line.
             while let Some(end) = buffer.find("\n\n") {
                 let message: String = buffer.drain(..end + 2).collect();
-                for line in message.lines() {
-                    if let Some(data) = line.strip_prefix("data:") {
-                        self.handle_events(data.trim(), events);
-                    }
-                }
+                self.handle_message(&message, events);
             }
         }
         Ok(())
     }
 
-    fn handle_events(&self, data: &str, events: &mpsc::UnboundedSender<AdapterEvent>) {
+    async fn open_event_stream(&self) -> Result<reqwest::Response> {
+        // The bridge keeps the stream open; only a day of silence is a
+        // broken connection.
+        let timeout = Duration::from_secs(24 * 3600);
+        let response = self
+            .http
+            .get(format!("{}/eventstream/clip/v2", self.base_url))
+            .header("hue-application-key", &self.key)
+            .header("Accept", "text/event-stream")
+            .timeout(timeout)
+            .send()
+            .await?;
+        Ok(response.error_for_status()?)
+    }
+
+    async fn report_current_lights(
+        &self,
+        events: &mpsc::UnboundedSender<AdapterEvent>,
+    ) -> Result<()> {
+        let lights: Vec<Value> = self.get("light").await?;
+        for light in &lights {
+            send_events(events, parse_resource_update(&self.name, light));
+        }
+        Ok(())
+    }
+
+    /// One server-sent event: its `data:` lines hold batches of updates.
+    fn handle_message(&self, message: &str, events: &mpsc::UnboundedSender<AdapterEvent>) {
+        for line in message.lines() {
+            if let Some(data) = line.strip_prefix("data:") {
+                self.handle_batches(data.trim(), events);
+            }
+        }
+    }
+
+    fn handle_batches(&self, data: &str, events: &mpsc::UnboundedSender<AdapterEvent>) {
         let Ok(batches) = serde_json::from_str::<Vec<Value>>(data) else {
             log::debug!("hue {}: unparseable event {data}", self.name);
             return;
@@ -297,11 +350,38 @@ impl Bridge {
                 continue;
             }
             for resource in batch["data"].as_array().into_iter().flatten() {
-                for event in parse_resource_update(&self.name, resource) {
-                    let _ = events.send(event);
-                }
+                send_events(events, parse_resource_update(&self.name, resource));
             }
         }
+    }
+}
+
+fn send_events(events: &mpsc::UnboundedSender<AdapterEvent>, batch: Vec<AdapterEvent>) {
+    for event in batch {
+        // Fails only while the daemon shuts down.
+        let _ = events.send(event);
+    }
+}
+
+fn device_names(devices: &[DeviceResource]) -> DeviceNames<'_> {
+    devices
+        .iter()
+        .map(|device| {
+            let product = device
+                .product_data
+                .as_ref()
+                .map_or("", |product| product.product_name.as_str());
+            let name = device.metadata.name.as_str();
+            (device.id.as_str(), (name, product))
+        })
+        .collect()
+}
+
+fn hue_device(bridge: &str, id: &str) -> DeviceRef {
+    DeviceRef {
+        adapter: bridge.to_string(),
+        kind: AdapterKind::Hue,
+        device: id.to_string(),
     }
 }
 
@@ -313,22 +393,16 @@ fn request_body(command: &LightCommand, range: Option<MiredRange>) -> Value {
         body.insert("on".into(), json!({ "on": on }));
     }
     if let Some(brightness) = command.brightness {
-        body.insert(
-            "dimming".into(),
-            json!({ "brightness": brightness.clamp(1.0, 100.0) }),
-        );
+        let brightness = brightness.clamp(1.0, 100.0);
+        body.insert("dimming".into(), json!({ "brightness": brightness }));
     }
     if let (Some(kelvin), Some(range)) = (command.kelvin, range) {
-        body.insert(
-            "color_temperature".into(),
-            json!({ "mirek": range.clamp_kelvin(kelvin).round() as u32 }),
-        );
+        let mirek = range.clamp_kelvin(kelvin).round() as u32;
+        body.insert("color_temperature".into(), json!({ "mirek": mirek }));
     }
     if let Some(transition) = command.transition {
-        body.insert(
-            "dynamics".into(),
-            json!({ "duration": (transition.max(0.0) * 1000.0).round() as u64 }),
-        );
+        let milliseconds = (transition.max(0.0) * 1000.0).round() as u64;
+        body.insert("dynamics".into(), json!({ "duration": milliseconds }));
     }
     Value::Object(body)
 }
@@ -338,11 +412,7 @@ fn parse_resource_update(bridge: &str, resource: &Value) -> Vec<AdapterEvent> {
     let Some(id) = resource["id"].as_str() else {
         return Vec::new();
     };
-    let device = DeviceRef {
-        adapter: bridge.to_string(),
-        kind: AdapterKind::Hue,
-        device: id.to_string(),
-    };
+    let device = hue_device(bridge, id);
     match resource["type"].as_str() {
         Some("light") => vec![AdapterEvent::Light {
             device,
@@ -355,12 +425,11 @@ fn parse_resource_update(bridge: &str, resource: &Value) -> Vec<AdapterEvent> {
 }
 
 fn light_report(resource: &Value) -> LightReport {
+    let mirek = resource["color_temperature"]["mirek"].as_f64();
     LightReport {
         on: resource["on"]["on"].as_bool(),
         brightness: resource["dimming"]["brightness"].as_f64(),
-        kelvin: resource["color_temperature"]["mirek"]
-            .as_f64()
-            .map(mired_to_kelvin),
+        kelvin: mirek.map(mired_to_kelvin),
     }
 }
 
@@ -412,6 +481,11 @@ fn key_path(state_dir: &Path, bridge: &str) -> PathBuf {
     state_dir.join(format!("hue-{bridge}.key"))
 }
 
+/// The application key `pair` stored for `bridge`, if there is one.
+///
+/// # Errors
+///
+/// Fails when the key file exists but cannot be read.
 pub(crate) fn load_key(state_dir: &Path, bridge: &str) -> Result<Option<String>> {
     match std::fs::read_to_string(key_path(state_dir, bridge)) {
         Ok(key) => Ok(Some(key.trim().to_string())),
@@ -420,26 +494,31 @@ pub(crate) fn load_key(state_dir: &Path, bridge: &str) -> Result<Option<String>>
     }
 }
 
-/// Asks the bridge for an application key. Fails until the link button on
-/// the bridge has been pressed (within the last 30 seconds).
+/// Asks the bridge for an application key and stores it.
+///
+/// # Errors
+///
+/// Fails until the link button on the bridge has been pressed (within the
+/// last 30 seconds), and when the key cannot be stored.
 pub(crate) async fn pair(state_dir: &Path, bridge: &str, host: &str) -> Result<String> {
-    let response: Vec<Value> = http_client()
+    let request = json!({ "devicetype": "knut#server", "generateclientkey": true });
+    let response = http_client()
         .post(format!("https://{host}/api"))
-        .json(&json!({ "devicetype": "knut#server", "generateclientkey": true }))
+        .json(&request)
         .send()
         .await
-        .with_context(|| format!("hue {bridge}: cannot reach {host}"))?
-        .json()
-        .await?;
-    let first = response
+        .with_context(|| format!("hue {bridge}: cannot reach {host}"))?;
+    let answers: Vec<Value> = response.json().await?;
+    let answer = answers
         .first()
         .ok_or_else(|| anyhow!("hue {bridge}: empty pairing response"))?;
-    if let Some(key) = first["success"]["username"].as_str() {
+
+    if let Some(key) = answer["success"]["username"].as_str() {
         std::fs::create_dir_all(state_dir).context("cannot create the state directory")?;
         std::fs::write(key_path(state_dir, bridge), key).context("cannot store hue key")?;
         return Ok(key.to_string());
     }
-    let description = first["error"]["description"]
+    let description = answer["error"]["description"]
         .as_str()
         .unwrap_or("unknown error");
     bail!("hue {bridge}: {description}")
@@ -458,7 +537,7 @@ mod tests {
         });
         let events = parse_resource_update("bridge", &light);
         let AdapterEvent::Light { report, .. } = &events[0] else {
-            panic!()
+            panic!("expected a light report, got {events:?}")
         };
         assert_eq!(report.on, Some(true));
         assert_eq!(report.brightness, Some(42.0));
